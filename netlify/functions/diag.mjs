@@ -15,7 +15,7 @@ const strip = (s) => s.replace(/<[^>]+>/g, ' | ').replace(/\s+/g, ' ');
 
 export default async (req) => {
   const sp = new URL(req.url).searchParams;
-  const queries = sp.getAll('q').slice(0, 6);
+  const queries = (sp.get('q') || '').split('~').filter(Boolean).slice(0, 6);
   if (sp.get('book')) {
     const r = await get(`https://www.gutenberg.org/ebooks/${Number(sp.get('book'))}.opds`);
     const entry = (r.text || '').split('<entry')[1] || '';

@@ -59,7 +59,7 @@ export async function loadChapter(tr, book, chapter) {
     const raw = data.chapters[chapter - 1] || [];
     return { tr: info.id, verses: info.id === 'kjv' ? raw.map(plain) : raw.slice(), raw: info.id === 'kjv' ? raw : null, headings: {}, notes: {} };
   }
-  const j = await getRemote(`/api/bible-ext?t=${encodeURIComponent(info.id)}&b=${encodeURIComponent(book)}&c=${chapter}`);
+  const j = await getRemote(`/api/bible-ext?tr=${encodeURIComponent(info.id)}&b=${encodeURIComponent(book)}&c=${chapter}`);
   return { tr: info.id, verses: j.verses || [], raw: null, headings: j.headings || {}, notes: j.notes || {}, subtitle: j.subtitle, missing: j.missing };
 }
 

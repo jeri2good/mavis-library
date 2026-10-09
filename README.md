@@ -2,20 +2,38 @@
 
 *Your books. Your library. Your imagination.*
 
-An installable reading app (Progressive Web App) for Android tablets, phones, and desktop browsers. Discover and read free public-domain books, find library and store editions of anything else, import your own DRM-free books, highlight and take notes, look up words, and listen with read-aloud.
+An installable reading app (Progressive Web App) for Android phones and tablets and desktop browsers. Live at **https://mavis-library.netlify.app**, deployed from this repository by Netlify on every push to `main`.
 
-- **Free books:** Project Gutenberg catalog through Gutendex, downloaded via a locked-down server endpoint and stored on the device for offline reading.
-- **Everything else:** Open Library search, with title-specific links to Libby/OverDrive, hoopla, Kobo, and Google Play Books. Those services handle accounts, loans, purchases, and DRM; Mavis says so plainly.
-- **Reader:** epub.js with chapters, page turns (swipe, tap zones, keys), saved position, typography, Paper/Sepia/Night themes, bookmarks, highlights, notes, dictionary, focus mode, and read-aloud.
-- **Holy Bible, built in:** KJV (with Strong’s numbers) and the World English Bible, verse lookup (“1 Cor 13:4-7”), concordance search by word, phrase, or Strong’s number, Hebrew/Greek lexicon, cross-references, translation compare, highlights, notes, saved quotes, church display mode, and read-aloud. Works offline after the first open.
-- **Real covers:** looked up from Open Library and Google Books, with designed covers as the fallback.
-- **Picked for you:** recommendations from the genres on your shelf; optionally ranked by Jev (TypeSafe AI, via Eden AI).
-- **Car mode and cloud voice:** large driving controls; an optional cloud voice (Fish Audio or Google) keeps reading with the screen off and responds to car/Bluetooth buttons.
-- **Ask Mavis:** an optional AI reading assistant (Anthropic or any OpenAI-compatible API) that summarizes, explains, and can start read-aloud or jump to a chapter.
-- **Saved quotes:** save, copy, and share passages with their citation from any book or the Bible.
-- **Accounts (optional):** Supabase Auth plus Postgres with row-level security. Shelf metadata, progress, bookmarks, notes, and quotes sync across devices. Book files never leave the device.
+**Reading**
+- **Free books:** Project Gutenberg's own catalog (OPDS), downloaded through a locked-down server endpoint and kept on the device for offline reading.
+- **Everything else:** Open Library search, with title-specific links to Libby/OverDrive, hoopla, Kobo, and Google Play Books. Those services handle loans, purchases, and DRM; Mavis says so plainly and never bypasses DRM.
+- **Reader:** chapters, page turns, saved position, typography, Paper/Sepia/Night themes, bookmarks, highlights, notes, saved quotes, dictionary, and focus mode. Import your own DRM-free EPUB, TXT, or PDF.
+- **Word builder:** save a word from the dictionary with the sentence you found it in. Short practice rounds (choose the word, choose the meaning, fill the blank, spell it) bring it back on a spaced-repetition schedule.
 
-See [docs/STATUS.md](docs/STATUS.md) for what's implemented and tested, and [docs/HANDOFF.md](docs/HANDOFF.md) for the architecture and comparison notes.
+**Listening**
+- **Read-aloud** with the device voice, or a **cloud voice** (Fish Audio or Google) that keeps reading with the screen off and answers car and Bluetooth buttons. **Car mode** has huge controls.
+- **Whole books as audio**, saved on the device for offline listening, with chapter skip, speed, and sleep timer.
+- **Voices:** pick a narrator from Fish Audio's licensed library, or make a private copy of your own voice (with consent). **Full cast:** each character gets a fitting voice.
+- **LibriVox:** human-read public-domain audiobooks, streamed from the Internet Archive or saved for offline, in the same player.
+
+**Holy Bible, built in**
+- KJV with Strong's numbers, the World English Bible, plus the Berean Standard Bible, ASV, YLT, and Geneva through HelloAO, with section headings and translators' notes.
+- Verse lookup ("1 Cor 13:4-7"), concordance search, Greek and Hebrew word by word (interlinear) with grammar, Hebrew/Greek lexicon, cross-references, translation compare, seven commentaries (Matthew Henry, Gill, Clarke, Calvin, and more), Nave's topics, reading plans with streaks, highlights and notes, church display mode, read-aloud, and verse pictures and videos.
+
+**Reading together and AI tools**
+- **Book clubs and Bible study groups:** invite with a code, see each other's progress, and talk chapter by chapter. Posts from further along stay hidden until you get there. Share passages from any book or verses from the Bible; groups can follow a Bible reading plan together.
+- **Ask Mavis**, an AI reading assistant (Anthropic or any OpenAI-compatible API). The reading companion can picture the scene, give a spoken "story so far" recap, and draw a character map. All three are spoiler-guarded: they only use text up to your page, and the server removes names the reader hasn't met yet. AI discussion questions for clubs work the same way.
+- **Verse and quote videos:** narrated square videos made on the device, ready to share.
+- **Picked for you:** recommendations from your shelf's genres, optionally ranked by Jev (TypeSafe AI).
+
+**Kids mode** (Settings → Kids mode, protected by a 4-digit PIN)
+- Children's books only (Gutenberg's "juvenile" subjects), plus a hand-picked story shelf and Bible stories.
+- Bigger text, a daily reading goal with stars, and word practice.
+- No store links, and child-safe AI prompts. Settings, accounts, and groups need the PIN.
+
+**Accounts (optional)** keep the shelf, progress, notes, quotes, reading plans, and words in sync across devices, stored in Netlify Blobs. Book files and audio never leave the device.
+
+See [docs/STATUS.md](docs/STATUS.md) for what's tested and how, and [docs/HANDOFF.md](docs/HANDOFF.md) for the architecture.
 
 ---
 
@@ -29,98 +47,90 @@ npm run build          # writes dist/ (app + generated service worker)
 npx netlify-cli dev    # serves the app AND the /api functions on http://localhost:8888
 ```
 
-`npm run dev` (plain Vite) serves the UI only; the catalog and downloads need the functions, so prefer `netlify dev`.
+`npm run dev` (plain Vite) serves the UI only. The catalog, downloads, and accounts need the functions, so use `netlify dev`.
 
-## Deploy to Netlify (public HTTPS URL)
+## Deployment
 
-The `/api/*` endpoints are Netlify Functions, so deploy with Git or the CLI. (Netlify's drag-and-drop "Drop" page does not deploy functions.)
+The site deploys automatically: Netlify builds every push to `main` of `jeri2good/mavis-library`. `netlify.toml` sets the build command, publish folder, functions folder, Node version, and security headers (including the Content Security Policy). Everything runs on Netlify's free plan; functions must finish within about 10 seconds, which every endpoint is designed around.
 
-**Option A — CLI from your computer (about 3 minutes):**
+## Settings in Netlify (environment variables)
 
-```bash
-npm ci
-npx netlify-cli login             # opens Netlify in your browser to approve
-npx netlify-cli deploy --build --prod
-```
+Set these in Netlify under **Project configuration → Environment variables**. On the free plan, add them as plain values with the default scopes; "secret" or functions-only variables were silently dropped during setup.
 
-The first run asks you to create or pick a site; choose a name such as `mavis-library` to get `https://mavis-library.netlify.app`.
+| Variable | What it does |
+|---|---|
+| `AUTH_SECRET` | Turns on accounts, sync, and groups. A long random string; changing it signs everyone out. |
+| `MAVIS_ACCESS_CODE` | Passphrase that unlocks the paid features on a device (enter it in Settings). Without it, paid features stay off. |
+| `TTS_PROVIDER` | `fish` or `google` for the cloud voice. |
+| `FISH_AUDIO_API_KEY` | Fish Audio key (cloud voice, voice library, voice copies). Optional: `FISH_AUDIO_VOICE_ID`, `FISH_AUDIO_MODEL`. |
+| `GOOGLE_TTS_API_KEY` | Google Text-to-Speech key, if `TTS_PROVIDER=google`. Optional: `GOOGLE_TTS_VOICE`. |
+| `LLM_PROVIDER` | `anthropic` or `openai` (any OpenAI-compatible API). |
+| `LLM_API_KEY` | Key for Ask Mavis, the reading companion, word explanations, and discussion questions. Optional: `LLM_MODEL`, `LLM_BASE_URL`, `LLM_REASONING_EFFORT`. |
+| `IMAGE_MODEL`, `IMAGE_LLM_MODEL`, `IMAGE_QUALITY` | Optional picture settings (pictures use the OpenAI Responses API). |
+| `TYPESAFE_API_KEY` or `EDENAI_API_KEY` | Jev ranking for "Picked for you". Optional: `JEV_MODEL`. |
+| `GOOGLE_BOOKS_API_KEY` | Optional; raises Google Books' cover-lookup limits. |
 
-**Option B — Git:** push this folder to a GitHub repository, then in Netlify choose *Add new site → Import an existing project*. `netlify.toml` already sets the build command, publish folder, functions folder, Node version, and security headers.
-
-Both options work on Netlify's free plan. Check Netlify's current function limits if traffic grows.
-
-## Turn on the cloud voice, Ask Mavis, and Jev (optional)
-
-These use your paid accounts, so they are switched on with server-side environment variables in Netlify (**Site configuration → Environment variables**, scope **Functions**) and only answer devices that hold your access code. Keys never reach the browser.
-
-1. `MAVIS_ACCESS_CODE` — any passphrase. Enter the same code on each of your devices under **Settings → Cloud voice and AI**.
-2. Cloud voice: `TTS_PROVIDER=fish` with `FISH_AUDIO_API_KEY` (and optionally `FISH_AUDIO_VOICE_ID`), or `TTS_PROVIDER=google` with `GOOGLE_TTS_API_KEY`. Fish Audio’s API is billed from API credit, which may be separate from a Fish Audio app subscription.
-3. Ask Mavis: `LLM_PROVIDER=anthropic` (or `openai` for any OpenAI-compatible API) with `LLM_API_KEY`; optional `LLM_MODEL` and `LLM_BASE_URL`.
-4. Jev ranking: `TYPESAFE_API_KEY` (TypeSafe’s own API), or `EDENAI_API_KEY`.
-5. Redeploy. **Settings → Cloud voice and AI** shows what is switched on.
-
-## Turn on accounts and sync (optional)
-
-Without these steps the app runs in guest mode and says so on the Account screen.
-
-1. Create a free project at [supabase.com](https://supabase.com).
-2. In **SQL Editor**, run `supabase/migrations/0001_mavis_library.sql`, then `0002_bible_and_quotes.sql`. (Or `supabase db push` with the Supabase CLI.)
-3. In **Authentication → URL Configuration**, set *Site URL* to your deployed URL and add it under *Redirect URLs*.
-4. Keep **Confirm email** on (default). Supabase's built-in email sender is rate-limited and meant for testing; add custom SMTP under *Authentication → Emails* before inviting many people.
-5. In Netlify **Site configuration → Environment variables**, add:
-   - `VITE_SUPABASE_URL` — Project Settings → API → Project URL
-   - `VITE_SUPABASE_ANON_KEY` — Project Settings → API → `anon` public key
-   - optional `VITE_AUTH_GOOGLE=true` after enabling the Google provider in Supabase
-6. Redeploy (these values are baked in at build time).
-
-The anon key is designed to be public; every table is protected by row-level security so each signed-in person can only read and write their own rows. Never put the `service_role` key in this app.
+Keys stay on the server. The browser only ever sends the access code. **Settings → Cloud voice and AI** shows what is switched on.
 
 ## Tests
 
 ```bash
-npm run test:functions   # server endpoint validation, public-domain checks, size caps, rate limit (mocked upstream)
-npm run test:db          # runs the real migration in PGlite: RLS isolation, last-writer-wins, constraints
-
-# Browser tests (Python Playwright + Chromium):
+npm run test:functions   # 65 checks: endpoints, accounts + sync and groups on a real local Blobs server, word builder logic
 npm run build
-VITE_SUPABASE_URL=http://localhost:4322/sb VITE_SUPABASE_ANON_KEY=test-anon-key npx vite build --outDir dist-auth
-npm run test:e2e         # writes docs/test-evidence/e2e-report.md and screenshots
+npm run test:e2e         # 64 browser checks (Python Playwright + Chromium); writes docs/test-evidence/
 ```
 
-The browser suite serves the built app with the production security headers, runs the real function code against fixture upstreams, and emulates the Supabase Auth/REST calls against the real migration in PGlite. See the report for exactly what was simulated.
+The browser suite serves the built app with the production security headers and runs the real function code, with fixtures standing in for Gutenberg, HelloAO, LibriVox, OpenAI, and Fish Audio. Accounts, sync, and groups run against `@netlify/blobs`' own local server.
 
-## Path to an Android APK
+## Path to an Android app
 
-The PWA is installable today from Chrome on Android ("Install app"). For a Play Store package, wrap the deployed URL as a Trusted Web Activity with [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap):
+The PWA installs from Chrome on Android ("Install app"). For a Play Store package, wrap the live URL as a Trusted Web Activity with [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap):
 
 ```bash
-npx @bubblewrap/cli init --manifest https://<your-site>/manifest.webmanifest
+npx @bubblewrap/cli init --manifest https://mavis-library.netlify.app/manifest.webmanifest
 npx @bubblewrap/cli build
 ```
 
-Then host the generated `assetlinks.json` at `https://<your-site>/.well-known/assetlinks.json` (add it under `public/.well-known/`). The TWA uses the same code, storage, and service worker as the web app.
+Then publish the generated `assetlinks.json` at `/.well-known/assetlinks.json` (put it in `public/.well-known/`).
 
 ## Project layout
 
 ```
-index.html                 app entry
-src/main.js                boot, routing, shell, account wiring, service-worker registration
-src/views/                 home, search, book, shelf, reader, bible, quotes, account, settings
-src/lib/                   store (IndexedDB), catalog client, importer, tts + speech (Narrator),
-                           car mode, assistant UI, bible, covers, recommend, features, quotes,
-                           voice input, dictionary, auth, sync, links, fonts, ui toolkit
-public/bible/              KJV (Strong’s), WEB, lexicon, cross-references (generated)
-scripts/build-bible.mjs    regenerates public/bible from the source packages
-src/sw-template.js         service worker (precache list injected at build)
-src/styles/app.css         design tokens and all styles
-netlify/functions/         catalog, openlibrary, epub, covers, tts, assistant, rank, features (/api/*)
-netlify/lib/shared.mjs     shared validation, timeouts, soft rate limiting
-supabase/migrations/       database schema with row-level security
-public/                    manifest and icons
-tests/                     endpoint, database, and browser tests plus fixtures
-docs/                      status matrix, handoff notes, test evidence
+src/main.js                boot, routing, shell (incl. kids mode), accounts, service worker
+src/views/                 home, kids-home, search, book, shelf, reader, listen, bible, bible-study,
+                           quotes, words, groups, account, settings
+src/lib/                   store + idb (IndexedDB), sync, auth, catalog, importer, reader helpers,
+                           tts/speech, audiobook*, librivox, voices*, fullcast, companion, video,
+                           bible, plans, morph, vocab, kids, groups*, features, ui toolkit
+public/bible/              KJV (Strong's), WEB, lexicon, cross-references, interlinear, Nave's (generated)
+scripts/                   build-bible.mjs, build-bible-extra.mjs regenerate public/bible
+netlify/functions/         one file per /api endpoint (see docs/HANDOFF.md)
+netlify/lib/               shared validation, Gutenberg OPDS parser, accounts, LLM client, spoiler guard
+tests/                     function, unit, and browser tests plus fixtures
+docs/                      status, handoff notes, test evidence and screenshots
 ```
 
 ## Credits and sources
 
-Bible: KJV from the [CrossWire Bible Society](https://crosswire.org) module (public domain; Crown copyright in the UK); [World English Bible](https://ebible.org/web/) (public domain); Strong’s lexicon from [STEPBible.org](https://www.stepbible.org) (Tyndale House, Cambridge, CC BY 4.0); cross-references from [OpenBible.info](https://www.openbible.info/labs/cross-references/) (CC BY). Free books: [Project Gutenberg](https://www.gutenberg.org), read from its OPDS catalog. Discovery: [Open Library](https://openlibrary.org). Definitions: [Free Dictionary API](https://dictionaryapi.dev) (Wiktionary data). Reader engine: [epub.js](https://github.com/futurepress/epub.js). Fonts: Literata, Source Serif 4, Atkinson Hyperlegible Next, Fraunces (SIL Open Font License, bundled via Fontsource).
+**Bible**
+- **KJV:** [CrossWire Bible Society](https://crosswire.org). Public domain; Crown copyright in the UK.
+- **World English Bible:** [ebible.org](https://ebible.org/web/), public domain.
+- **Through [HelloAO](https://bible.helloao.org):**
+  - The Berean Standard Bible, ASV, Young's Literal, and Geneva translations (all public domain).
+  - Commentaries by Matthew Henry, Jamieson-Fausset-Brown, John Gill, Adam Clarke, Keil & Delitzsch, and John Calvin (public domain).
+  - Tyndale Open Study Notes (CC BY-SA 4.0, Tyndale House Publishers).
+- **Interlinear and lexicon:**
+  - Hebrew: [OSHB](https://hb.openscriptures.org).
+  - Greek: STEPBible TAGNT/TVTMS and lexicon, [STEPBible.org](https://www.stepbible.org) (Tyndale House, Cambridge, CC BY 4.0).
+- **Cross-references:** [OpenBible.info](https://www.openbible.info/labs/cross-references/), CC BY.
+- **Nave's Topical Bible:** BradyStephenson/bible-data, CC BY.
+
+**Books and audio**
+- Free books: [Project Gutenberg](https://www.gutenberg.org).
+- Human-read audiobooks: [LibriVox](https://librivox.org) volunteers (public domain), hosted by the [Internet Archive](https://archive.org).
+- Discovery and covers: [Open Library](https://openlibrary.org) and Google Books.
+
+**Other**
+- Definitions: [Free Dictionary API](https://dictionaryapi.dev) (Wiktionary data).
+- Reader engine: [epub.js](https://github.com/futurepress/epub.js).
+- Fonts: Literata, Source Serif 4, Atkinson Hyperlegible Next, and Fraunces (SIL Open Font License, bundled via Fontsource).

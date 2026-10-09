@@ -90,6 +90,18 @@ async function fixtureFetch(url, opts = {}) {
     }
     return json({ translation: { id }, chapter: { number: Number(ch), content, footnotes: [{ noteId: 1, caller: '+', text: 'Or his only begotten', reference: { chapter: 3, verse: 16 } }] } });
   }
+  if (u.host === 'librivox.org') {
+    const title = (u.searchParams.get('title') || '').replace(/^\^/, '').toLowerCase();
+    if (!title.startsWith('pride')) return json({ error: 'Audiobooks could not be found' }, 404);
+    const sec = (id, n, t, reader) => ({ section_number: String(n), title: t, listen_url: `https://www.archive.org/download/${id}/part${n}_64kb.mp3`, playtime: '1', readers: [{ display_name: reader }] });
+    return json({ books: [
+      { id: '4023', title: 'Pride and Prejudice (version 4)', language: 'English', url_text_source: 'https://www.gutenberg.org/etext/1342', totaltimesecs: '3', url_librivox: 'https://librivox.org/pride-and-prejudice-v4/', authors: [{ first_name: 'Jane', last_name: 'Austen' }],
+        sections: [sec('pp4', 1, 'Chapter 1', 'Elizabeth Klett'), sec('pp4', 2, 'Chapter 2', 'Elizabeth Klett'), sec('pp4', 3, 'Chapter 3', 'Elizabeth Klett')] },
+      { id: '253', title: 'Pride and Prejudice', language: 'English', url_text_source: 'https://www.gutenberg.org/etext/1342', totaltimesecs: '2', url_librivox: 'https://librivox.org/pride-and-prejudice/', authors: [{ first_name: 'Jane', last_name: 'Austen' }],
+        sections: [sec('pp1', 1, 'Chapters 1-3', 'Chris Goringe'), sec('pp1', 2, 'Chapters 4-6', 'Another Reader')] },
+      { id: '999', title: 'Pride of the Rangers', language: 'English', url_text_source: 'https://www.gutenberg.org/etext/5555', totaltimesecs: '1', authors: [{ first_name: 'Zane', last_name: 'Grey' }], sections: [sec('x', 1, 'One', 'Someone')] },
+    ] });
+  }
   if (u.host === 'openlibrary.org') {
     if (u.pathname.startsWith('/works/')) return json({ title: 'Dune', description: { value: 'A desert planet, a noble family, and a spice that bends the future.' }, subjects: ['Science fiction', 'Ecology'] });
     return json(openLibrarySearch());
@@ -225,6 +237,7 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) body += chunk;
   try {
     if (url.pathname === '/__test/reset-failures') { failOnce = new Set(); res.end('ok'); return; }
+    if (url.pathname === '/__test/silent.mp3') { res.writeHead(200, { 'content-type': 'audio/mpeg' }); res.end(SILENT_MP3); return; }
     if (url.pathname === '/__test/fish') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ voices: globalThis.__fishVoices || [], create: globalThis.__fishCreate || null })); return; }
     if (url.pathname === '/__test/openai') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ calls: globalThis.__openaiCalls || 0, summaries: globalThis.__summaries || 0, imagePrompt: globalThis.__lastImagePrompt || '' })); return; }
     if (url.pathname === '/__test/tts-calls') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(String(globalThis.__ttsCalls || 0)); return; }

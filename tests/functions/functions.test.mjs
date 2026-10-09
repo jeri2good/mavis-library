@@ -439,4 +439,28 @@ await test('features: reports what is on without exposing keys, and verifies the
   assert.equal(res.headers.get('cache-control'), 'no-store');
 });
 
+await test('librivox: exact Gutenberg match first, solo readers ahead of groups, only archive.org audio', async () => {
+  const lv = (await import('../../netlify/functions/librivox.mjs')).default;
+  const sec = (id, n, reader, host = 'https://www.archive.org') => ({ section_number: String(n), title: `Chapter ${n}`, listen_url: `${host}/download/${id}/${n}.mp3`, playtime: '600', readers: [{ display_name: reader }] });
+  let seen = '';
+  routes = [[(u) => u.startsWith('https://librivox.org/api/feed/audiobooks/'), (u) => { seen = u; return respond({ books: [
+    { id: '253', title: 'Pride and Prejudice', language: 'English', url_text_source: 'http://www.gutenberg.org/etext/1342', totaltimesecs: '1200', authors: [{ last_name: 'Austen' }], sections: [sec('a', 1, 'Chris'), sec('a', 2, 'Dana')] },
+    { id: '4023', title: 'Pride and Prejudice (version 3)', language: 'English', url_text_source: 'https://www.gutenberg.org/ebooks/1342', totaltimesecs: '1200', authors: [{ last_name: 'Austen' }], url_librivox: 'https://librivox.org/pp3/', sections: [sec('b', 1, 'Klett'), sec('b', 2, 'Klett')] },
+    { id: '9', title: 'Pride and Prejudice', language: 'French', url_text_source: '', authors: [{ last_name: 'Austen' }], sections: [sec('c', 1, 'Fr')] },
+    { id: '10', title: 'Pride and Prejudice and Zombies', language: 'English', authors: [{ last_name: 'Grahame-Smith' }], sections: [sec('d', 1, 'Z')] },
+    { id: '11', title: 'Pride and Prejudice', language: 'English', authors: [{ last_name: 'Austen' }], sections: [sec('e', 1, 'Evil', 'https://evil.example')] },
+  ] }); }]];
+  const r = await lv(get('/api/librivox?gid=1342&title=Pride%20and%20Prejudice&author=Jane%20Austen'), ctx('lv1'));
+  assert.equal(r.status, 200);
+  const { versions } = await r.json();
+  assert.equal(new URL(seen).searchParams.get('title'), '^Pride and Prejudice');
+  assert.deepEqual(versions.map((v) => v.id), ['4023', '253', '9'], 'exact text, solo first; zombies and non-archive audio dropped');
+  assert.deepEqual(versions[0].readers, ['Klett']);
+  assert.ok(versions[0].sections.every((s) => s.url.startsWith('https://www.archive.org/')));
+  assert.equal(versions[0].url, 'https://librivox.org/pp3/');
+  assert.equal((await lv(get('/api/librivox'), ctx('lv2'))).status, 400);
+  routes = [[(u) => u.startsWith('https://librivox.org/'), () => new Response('nope', { status: 404 })]];
+  assert.deepEqual(await (await lv(get('/api/librivox?title=Nothing'), ctx('lv3'))).json(), { versions: [] });
+});
+
 console.log(`\n${passed} endpoint checks passed.`);

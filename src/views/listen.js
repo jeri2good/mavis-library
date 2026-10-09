@@ -14,14 +14,17 @@ const RATES = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 
 export async function render(root, route, { navigate }) {
   const key = route.segs[0] || '';
+  const bookKey = key.startsWith('lv:') ? key.slice(3) : key;
   const m = await ab.manifest(key);
-  const item = await store.getShelfItem(key).catch(() => null);
-  const book = { ...(recallBook(key) || {}), ...(item || {}) };
-  if (!m || !ab.summarize(m).done) {
+  const item = await store.getShelfItem(bookKey).catch(() => null);
+  const book = { ...(recallBook(bookKey) || {}), ...(item || {}) };
+  const recorded = m?.source === 'librivox';
+  const hasFile = await store.hasFile(bookKey).catch(() => false);
+  if (!m || (!recorded && !ab.summarize(m).done)) {
     root.innerHTML = String(html`<div class="page" style="padding-top:20px">${stateBlock({
       title: 'No audio saved for this book yet',
       text: 'Open the book’s page and choose “Get it as audio” to save it for offline listening.',
-      actions: html`<a class="btn btn-primary btn-sm" href="#/book/${encodeURIComponent(key)}">Book page</a><a class="btn btn-sm" href="#/shelf">My shelf</a>`,
+      actions: html`<a class="btn btn-primary btn-sm" href="#/book/${encodeURIComponent(bookKey)}">Book page</a><a class="btn btn-sm" href="#/shelf">My shelf</a>`,
     })}</div>`);
     return;
   }
@@ -30,12 +33,12 @@ export async function render(root, route, { navigate }) {
     <div class="page listen">
       <div class="listen-top">
         <button type="button" class="btn btn-quiet btn-sm" data-l="back">${icon('back', { size: 18 })} Back</button>
-        <a class="btn btn-quiet btn-sm" id="open-book" href="#/read/${encodeURIComponent(key)}">${icon('book', { size: 18 })} Open the book here</a>
+        <a class="btn btn-quiet btn-sm" id="open-book" href="${hasFile ? `#/read/${encodeURIComponent(bookKey)}` : `#/book/${encodeURIComponent(bookKey)}`}">${icon('book', { size: 18 })} ${hasFile ? (recorded ? 'Open the book' : 'Open the book here') : 'Book page'}</a>
       </div>
       <div class="listen-head">
         <div class="listen-cover">${cover(book, { eager: true })}</div>
         <div class="listen-meta">
-          <p class="eyebrow">Listening offline</p>
+          <p class="eyebrow">${recorded ? `LibriVox recording · read by ${(m.readers || []).join(', ') || 'volunteers'}` : 'Listening offline'}</p>
           <h1>${bookTitle}</h1>
           <p class="listen-chapter" id="l-chapter"></p>
         </div>
@@ -57,9 +60,10 @@ export async function render(root, route, { navigate }) {
       </div>
       <details class="listen-chapters"><summary>Chapters</summary><ol id="l-list">${m.chapters.map((c) => {
         const done = c.chunks.filter((k) => k.done).length;
-        return html`<li><button type="button" class="linklike" data-ch="${c.index}">${c.title}</button> <span class="small faint">${done === c.chunks.length ? ab.durationLabel(c.chunks.reduce((a, k) => a + k.chars, 0)) : done ? `${Math.round((done / c.chunks.length) * 100)}% saved` : 'not saved'}</span></li>`;
+        const len = ab.durationLabel(c.chunks.reduce((a, k) => a + k.chars, 0));
+        return html`<li><button type="button" class="linklike" data-ch="${c.index}">${c.title}</button> <span class="small faint">${recorded ? `${len}${done ? ' · saved' : ''}` : done === c.chunks.length ? len : done ? `${Math.round((done / c.chunks.length) * 100)}% saved` : 'not saved'}</span></li>`;
       })}</ol></details>
-      <p class="small faint listen-note">Plays from this device — no signal needed. You can lock the phone or switch to maps; your car’s and headphones’ buttons work (skip = next chapter).</p>
+      <p class="small faint listen-note">${recorded ? 'Streams from the Internet Archive, or plays from this device for parts you’ve saved.' : 'Plays from this device — no signal needed.'} You can lock the phone or switch to maps; your car’s and headphones’ buttons work (skip = next chapter).</p>
     </div>`);
 
   const $ = (s) => root.querySelector(s);
@@ -83,7 +87,7 @@ export async function render(root, route, { navigate }) {
     $('#l-bar').style.width = `${Math.round(s.progress.fraction * 1000) / 10}%`;
     $('#l-left').textContent = `${Math.round(s.progress.fraction * 100)}% · about ${ab.durationLabel(s.progress.remainingChars / (s.rate || 1))} left`;
     const c = m.chapters[s.chapterIndex]?.chunks[player.pos.n];
-    if (c?.cfi) $('#open-book').href = `#/read/${encodeURIComponent(key)}?at=${encodeURIComponent(c.cfi)}`;
+    if (c?.cfi && hasFile) $('#open-book').href = `#/read/${encodeURIComponent(bookKey)}?at=${encodeURIComponent(c.cfi)}`;
     $('#l-status').textContent = s.error || (s.state === 'loading' ? 'Loading…' : s.state === 'paused' ? 'Paused' : s.state === 'ended' ? 'The end.' : s.reason === 'sleep' ? 'Sleep timer: paused.' : s.sleepAt ? `Stops at ${new Date(s.sleepAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : s.sleepEndOfChapter ? 'Stops at the end of this chapter' : '');
     for (const b of root.querySelectorAll('[data-ch]')) b.toggleAttribute('aria-current', Number(b.dataset.ch) === s.chapterIndex);
   }
@@ -92,7 +96,7 @@ export async function render(root, route, { navigate }) {
     const ch = e.target.closest('[data-ch]');
     if (ch) { player.goToChapter(Number(ch.dataset.ch)); return; }
     const a = e.target.closest('[data-l]')?.dataset.l;
-    if (a === 'back') { history.length > 1 ? history.back() : navigate(`/book/${encodeURIComponent(key)}`); }
+    if (a === 'back') { history.length > 1 ? history.back() : navigate(`/book/${encodeURIComponent(bookKey)}`); }
     if (a === 'toggle') player.toggle();
     if (a === 'back30') player.seekBy(-30);
     if (a === 'fwd30') player.seekBy(30);

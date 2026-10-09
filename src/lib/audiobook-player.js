@@ -49,7 +49,7 @@ export class AudiobookPlayer {
     const frac = this.audio.duration ? this.audio.currentTime / this.audio.duration : 0;
     this.onState?.({
       state: this.state, chapter: this.chapter?.title || '', chapterIndex: this.pos.ch, chapters: this.m.chapters.length,
-      line: c ? sentenceAt(c.text, frac) : '', progress: this.progress(), rate: this.rate, sleepAt: this.sleepAt,
+      line: c ? (c.text ? sentenceAt(c.text, frac) : c.reader ? `Read by ${c.reader}` : '') : '', progress: this.progress(), rate: this.rate, sleepAt: this.sleepAt,
       sleepEndOfChapter: this.sleepEndOfChapter, ...extra,
     });
   }
@@ -84,7 +84,18 @@ export class AudiobookPlayer {
   async urlFor(ch, n) {
     const id = `${ch}|${n}`;
     if (this.urls.has(id)) return this.urls.get(id);
-    const p = this.blobFor(ch, n).then((b) => (b ? URL.createObjectURL(b) : null));
+    const k = this.m.chapters[ch]?.chunks[n];
+    const p = (async () => {
+      const cached = await ab.chunkBlob(this.key, ch, n);
+      if (cached) return URL.createObjectURL(cached);
+      if (k?.url) {
+        // A recorded audiobook (LibriVox): stream it from archive.org.
+        if (!navigator.onLine) throw new Error('This part isn’t saved on the phone and you’re offline. Save the recording for offline when you have signal.');
+        return k.url;
+      }
+      const b = await this.blobFor(ch, n);
+      return b ? URL.createObjectURL(b) : null;
+    })();
     this.urls.set(id, p);
     p.catch(() => this.urls.delete(id));
     return p;
@@ -147,7 +158,7 @@ export class AudiobookPlayer {
   release(id) {
     const p = this.urls.get(id);
     this.urls.delete(id);
-    p?.then((u) => u && setTimeout(() => URL.revokeObjectURL(u), 4000)).catch(() => {});
+    p?.then((u) => u?.startsWith('blob:') && setTimeout(() => URL.revokeObjectURL(u), 4000)).catch(() => {});
   }
 
   tick() {
@@ -306,7 +317,7 @@ export class AudiobookPlayer {
     this.audio.pause();
     this.audio.removeAttribute('src');
     try { this.audio.load(); } catch { /* ignore */ }
-    for (const p of this.urls.values()) p.then((u) => u && URL.revokeObjectURL(u)).catch(() => {});
+    for (const p of this.urls.values()) p.then((u) => u?.startsWith('blob:') && URL.revokeObjectURL(u)).catch(() => {});
     this.urls.clear();
     clearTimeout(this.sleepTimer);
     this.releaseWakeLock();

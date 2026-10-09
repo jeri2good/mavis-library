@@ -117,7 +117,9 @@ export async function render(root, route, { navigate, token }) {
     painting = true;
     try {
       const [items, progress, files, audio] = await Promise.all([store.listShelf(), store.allProgress(), store.fileKeysForOwner(), listDownloaded()]);
-      const audioKeys = new Set(audio.filter((m) => summarize(m).done > 0).map((m) => m.bookKey));
+      // Saved audio (Mavis voice or LibriVox recording) → listen button on the book's card.
+      const listenKey = new Map(audio.filter((m) => summarize(m).done > 0).map((m) => [m.bookKey.replace(/^lv:/, ''), m.bookKey]));
+      const audioKeys = new Set(listenKey.keys());
       if (!token()) return;
       const counts = { all: items.length, reading: 0, want: 0, finished: 0 };
       for (const b of items) counts[b.status] = (counts[b.status] || 0) + 1;
@@ -173,7 +175,7 @@ export async function render(root, route, { navigate, token }) {
       })}</div>`);
       for (const k of audioKeys) {
         const card = [...body.querySelectorAll('[data-menu]')].find((x) => x.dataset.menu === k)?.closest('.shelf-card');
-        if (card) card.insertAdjacentHTML('beforeend', String(html`<a class="icon-btn listen-btn" href="#/listen/${encodeURIComponent(k)}" aria-label="Listen to the saved audio">${icon('headphones', { size: 20 })}</a>`));
+        if (card) card.insertAdjacentHTML('beforeend', String(html`<a class="icon-btn listen-btn" href="#/listen/${encodeURIComponent(listenKey.get(k))}" aria-label="Listen to the saved audio">${icon('headphones', { size: 20 })}</a>`));
       }
       for (const btn of body.querySelectorAll('[data-menu]')) btn.addEventListener('click', () => openMenu(items.find((x) => x.key === btn.dataset.menu), files.has(btn.dataset.menu)));
     } catch (err) {

@@ -92,16 +92,7 @@ async function fixtureFetch(url, opts = {}) {
   }
   throw new TypeError(`fixture fetch: no route for ${url}`);
 }
-{
-  const realFetch = globalThis.fetch;
-  let chain = Promise.resolve();
-  globalThis.__mavisRealFetch = (url, opts = {}) => {
-    if ((opts.method || 'GET').toUpperCase() !== 'PUT') return realFetch(url, opts);
-    const run = chain.then(() => realFetch(url, opts)).then(async (r) => { await new Promise((ok) => setTimeout(ok, 3)); return r; });
-    chain = run.catch(() => {});
-    return run;
-  };
-}
+globalThis.__mavisRealFetch = globalThis.fetch; // Blobs client talks to the real local server
 globalThis.fetch = fixtureFetch;
 
 const handlers = [];
@@ -133,8 +124,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 
 // ---------- Accounts: a real local Netlify Blobs server ----------
 // With --accounts, account and sync functions run against @netlify/blobs'
-// own local server. Hosted Blobs applies If-Match atomically; the local one
-// does not, so PUTs are serialized to model that.
+// own local server.
 let blobsServer = null;
 export const syncLog = [];
 async function startBlobs() {

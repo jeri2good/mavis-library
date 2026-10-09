@@ -1,17 +1,28 @@
 // POST /api/sync — push local changes and pull everything changed elsewhere.
-//   (Bearer) { changes: { shelf: [row…], … }, cursors: { shelf: 12, … } }
-//   → { cursors: { shelf: 15, … }, rows: { shelf: [row…], … }, more: false }
-// Each row carries `k` (its id within the table) and `updatedAt` (the device
-// clock when it last changed). The newer updatedAt wins; ties keep the stored
-// row. Each table is one Blob per user, written with compare-and-swap.
+//   (Bearer) { changes: { shelf: [row…], … }, cursors: { shelf: "<cursor>", … } }
+//   → { cursors: { … }, rows: { shelf: [row…], … }, more: false }
+//
+// Storage never rewrites shared data, so devices syncing at the same moment
+// can't overwrite each other (hosted Blobs' conditional writes proved unreliable
+// under bursts). Each push is a new immutable "batch" blob:
+//     <user>/<table>/b/<13-digit server ms>-<random>
+// Pull lists the batches after the device's cursor (re-reading the last two
+// minutes, in case a batch became visible late) and the newest snapshot:
+//     <user>/<table>/s/<name of the newest batch it includes>
+// Old batches are folded into a snapshot now and then. Rows carry `k` (id in
+// the table) and `updatedAt`; the newest updatedAt wins, here and on devices.
 
+import { randomBytes } from 'node:crypto';
 import { json, fail, onlyPost, readJson, softLimit, clientKey } from '../lib/shared.mjs';
-import { kv, requireUser, readForUpdate, writeIfUnchanged } from '../lib/accounts.mjs';
+import { kv, requireUser } from '../lib/accounts.mjs';
 
 export const TABLES = ['shelf', 'progress', 'annotations', 'vocab', 'plans', 'prefs'];
 const MAX_ROW_BYTES = 16_000;
-const MAX_ROWS_PER_TABLE = 20_000;
-const MAX_PULL = 1500;
+const MAX_PUSH_ROWS = 5000;
+const MAX_BATCH_READS = 300;
+const OVERLAP_MS = 2 * 60_000;
+const COMPACT_AFTER = 40; // batches
+const COMPACT_AGE_MS = 10 * 60_000;
 
 export function cleanRow(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
@@ -25,26 +36,81 @@ export function cleanRow(row) {
   return out;
 }
 
-async function mergeTable(store, key, incoming) {
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const cur = await readForUpdate(store, key);
-    const doc = cur.data || { rev: 0, rows: {} };
-    let rev = doc.rev;
-    let accepted = 0;
-    for (const row of incoming) {
-      const have = doc.rows[row.k];
-      if (have && have.updatedAt >= row.updatedAt) continue;
-      if (!have && Object.keys(doc.rows).length >= MAX_ROWS_PER_TABLE) continue;
-      rev += 1;
-      doc.rows[row.k] = { ...row, _rev: rev };
-      accepted += 1;
-    }
-    if (!accepted) return doc;
-    doc.rev = rev;
-    if (await writeIfUnchanged(store, key, doc, cur)) return doc;
-    await new Promise((r) => setTimeout(r, 20 + Math.random() * 80 * (attempt + 1)));
+const pad = (ms) => String(Math.max(0, Math.floor(ms))).padStart(13, '0');
+export const batchName = (ms = Date.now()) => `${pad(ms)}-${randomBytes(5).toString('hex')}`;
+const nameTime = (name) => Number(String(name || '').slice(0, 13)) || 0;
+const validCursor = (c) => (typeof c === 'string' && /^\d{13}-[0-9a-f]{10}$/.test(c) ? c : '');
+
+/** Newest updatedAt wins; ties keep the first seen. */
+export function mergeRows(into, rows) {
+  for (const r of rows || []) {
+    if (!r?.k) continue;
+    const have = into.get(r.k);
+    if (!have || r.updatedAt > have.updatedAt) into.set(r.k, r);
   }
-  throw Object.assign(new Error('Another device is syncing right now. Try again in a moment.'), { status: 409 });
+  return into;
+}
+
+async function listTable(store, prefix) {
+  const { blobs } = await store.list({ prefix });
+  const batches = [];
+  const snaps = [];
+  for (const b of blobs) {
+    const rest = b.key.slice(prefix.length);
+    if (rest.startsWith('b/')) batches.push(rest.slice(2));
+    else if (rest.startsWith('s/')) snaps.push(rest.slice(2));
+  }
+  batches.sort();
+  snaps.sort();
+  return { batches, snaps };
+}
+
+async function pullTable(store, prefix, since) {
+  const { batches, snaps } = await listTable(store, prefix);
+  const latest = snaps[snaps.length - 1] || '';
+  const merged = new Map();
+  let cursor = since;
+  let complete = true;
+  let from;
+  if (latest && (!since || since <= latest)) {
+    const snap = await store.get(`${prefix}s/${latest}`, { type: 'json' });
+    if (snap) { mergeRows(merged, Object.values(snap.rows || {})); cursor = latest; from = latest; }
+    else complete = false;
+  } else {
+    from = since ? `${pad(nameTime(since) - OVERLAP_MS)}` : '';
+  }
+  const todo = batches.filter((n) => n > (from || ''));
+  const take = todo.slice(0, MAX_BATCH_READS);
+  const docs = await Promise.all(take.map((n) => store.get(`${prefix}b/${n}`, { type: 'json' }).catch(() => null)));
+  take.forEach((n, i) => {
+    if (!docs[i]) { complete = false; return; } // folded into a snapshot mid-read; next sync catches it
+    mergeRows(merged, docs[i].rows);
+    if (complete && n > cursor) cursor = n;
+  });
+  return { rows: [...merged.values()], cursor: complete ? cursor : since, more: !complete || todo.length > take.length, batches, snaps };
+}
+
+/** Fold old batches into a snapshot. Safe to run concurrently: it only adds a snapshot, then deletes what it covered. */
+async function compact(store, prefix, batches, snaps) {
+  const cutoff = pad(Date.now() - COMPACT_AGE_MS);
+  const old = batches.filter((n) => n < cutoff);
+  if (batches.length < COMPACT_AFTER || old.length < COMPACT_AFTER / 2) return false;
+  const merged = new Map();
+  const latest = snaps[snaps.length - 1];
+  if (latest) {
+    const snap = await store.get(`${prefix}s/${latest}`, { type: 'json' });
+    if (!snap) return false;
+    mergeRows(merged, Object.values(snap.rows || {}));
+  }
+  const docs = await Promise.all(old.map((n) => store.get(`${prefix}b/${n}`, { type: 'json' })));
+  if (docs.some((d) => !d)) return false; // another compaction is running
+  docs.forEach((d) => mergeRows(merged, d.rows));
+  const name = old[old.length - 1];
+  if (latest && latest >= name) return false;
+  await store.setJSON(`${prefix}s/${name}`, { rows: Object.fromEntries(merged) });
+  for (const n of old) await store.delete(`${prefix}b/${n}`);
+  for (const s of snaps) if (s < name) await store.delete(`${prefix}s/${s}`);
+  return true;
 }
 
 export default async (req, context) => {
@@ -60,21 +126,23 @@ export default async (req, context) => {
   const cursors = {};
   const rows = {};
   let more = false;
-  let budget = MAX_PULL;
   try {
-    for (const table of TABLES) {
-      const incoming = (Array.isArray(body.changes?.[table]) ? body.changes[table] : []).slice(0, 5000).map(cleanRow).filter(Boolean);
-      const key = `${a.user.id}/${table}`;
-      const doc = incoming.length ? await mergeTable(store, key, incoming) : ((await store.get(key, { type: 'json' })) || { rev: 0, rows: {} });
-      const since = Math.max(0, Number(body.cursors?.[table]) || 0);
-      const changed = Object.values(doc.rows).filter((r) => r._rev > since).sort((x, y) => x._rev - y._rev);
-      const take = changed.slice(0, Math.max(0, budget));
-      budget -= take.length;
-      if (take.length < changed.length) more = true;
-      rows[table] = take;
-      cursors[table] = take.length < changed.length ? (take.length ? take[take.length - 1]._rev : since) : doc.rev;
-    }
+    // 1. Push: one new immutable batch per table with changes.
+    await Promise.all(TABLES.map(async (table) => {
+      const incoming = (Array.isArray(body.changes?.[table]) ? body.changes[table] : []).slice(0, MAX_PUSH_ROWS).map(cleanRow).filter(Boolean);
+      if (incoming.length) await store.setJSON(`${a.user.id}/${table}/b/${batchName()}`, { rows: incoming });
+    }));
+    // 2. Pull everything after each cursor.
+    const pulled = await Promise.all(TABLES.map((table) => pullTable(store, `${a.user.id}/${table}/`, validCursor(body.cursors?.[table]))));
+    TABLES.forEach((table, i) => {
+      rows[table] = pulled[i].rows;
+      cursors[table] = pulled[i].cursor;
+      if (pulled[i].more) more = true;
+    });
+    // 3. Now and then, tidy up (best effort).
+    await Promise.all(TABLES.map((table, i) => compact(store, `${a.user.id}/${table}/`, pulled[i].batches, pulled[i].snaps).catch(() => false)));
   } catch (err) {
+    console.error('sync error', err?.message);
     return fail(err.status || 502, 'sync_failed', err.status ? err.message : 'Sync storage is unavailable right now.');
   }
   return json({ cursors, rows, more });

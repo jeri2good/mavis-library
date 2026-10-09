@@ -11,17 +11,8 @@ const dir = mkdtempSync(join(tmpdir(), 'mavis-blobs-'));
 const server = new BlobsServer({ directory: dir, token: 'local-token', port: 0 });
 const { port } = await server.start();
 process.env.MAVIS_BLOBS_URL = `http://localhost:${port}`;
-// The local Blobs server checks If-Match and then writes in separate steps, and
-// derives ETags from millisecond mtimes. Netlify's hosted Blobs does both
-// atomically, so serialize writes here to model it; the CAS + retry logic in
-// Mavis is still what keeps concurrent devices from losing changes.
-let chain = Promise.resolve();
-globalThis.__mavisRealFetch = (url, opts = {}) => {
-  if ((opts.method || 'GET').toUpperCase() !== 'PUT') return fetch(url, opts);
-  const run = chain.then(() => fetch(url, opts)).then(async (r) => { await new Promise((ok) => setTimeout(ok, 3)); return r; });
-  chain = run.catch(() => {});
-  return run;
-};
+// No write serialization here on purpose: sync never rewrites shared blobs,
+// so concurrent devices are safe even on a store without atomic If-Match.
 process.env.MAVIS_BLOBS_TOKEN = 'local-token';
 process.env.AUTH_SECRET = 'test-secret-'.padEnd(48, 'x');
 
@@ -102,7 +93,7 @@ try {
     assert.equal((await act('me', undefined, `${v}.${forged}.${s}`)).status, 401);
   });
 
-  await test('sync: push rows, pull them on another device, newer change wins, cursors advance', async () => {
+  await test('sync: push rows, pull them on another device, newer change wins, cursors are opaque', async () => {
     const t1 = Date.now() - 10_000;
     const push = await doSync(ada.token, {
       shelf: [{ k: 'gutenberg:84', title: 'Frankenstein', status: 'reading', updatedAt: t1 }],
@@ -112,6 +103,7 @@ try {
     assert.equal(push.status, 200);
     assert.equal(push.body.rows.shelf.length, 1);
     assert.equal(push.body.rows.bogus, undefined);
+    assert.match(push.body.cursors.shelf, /^\d{13}-[0-9a-f]{10}$/);
     const cursors = push.body.cursors;
     // Device 2 starts from nothing and gets both rows.
     const d2 = await doSync(ada.token);
@@ -120,12 +112,16 @@ try {
     // An older change is ignored; a newer one wins.
     await doSync(ada.token, { shelf: [{ k: 'gutenberg:84', title: 'Frankenstein', status: 'finished', updatedAt: t1 - 5000 }] });
     let now = await doSync(ada.token);
+    assert.equal(now.body.rows.shelf.length, 1);
     assert.equal(now.body.rows.shelf[0].status, 'reading');
     await doSync(ada.token, { shelf: [{ k: 'gutenberg:84', title: 'Frankenstein', status: 'finished', updatedAt: t1 + 5000 }] });
     now = await doSync(ada.token, {}, cursors);
-    assert.equal(now.body.rows.shelf.length, 1, 'only rows changed since the cursor');
-    assert.equal(now.body.rows.shelf[0].status, 'finished');
-    assert.equal(now.body.rows.annotations.length, 0);
+    assert.equal(now.body.rows.shelf[0].status, 'finished', 'a device with a cursor gets the newer change');
+    assert.ok(now.body.cursors.shelf > cursors.shelf);
+    // Garbage cursors are treated as "from the start".
+    const g = await doSync(ada.token, {}, { shelf: '../../etc', annotations: 42 });
+    assert.equal(g.status, 200);
+    assert.equal(g.body.rows.annotations.length, 1);
   });
 
   await test('sync: bad rows are dropped (no key, far-future time, oversized); server fields are stripped', async () => {
@@ -134,7 +130,7 @@ try {
       { k: 'future', updatedAt: Date.now() + 10 * 864e5 },
       { k: 'huge', note: 'x'.repeat(20_000), updatedAt: Date.now() },
       { k: 'ok', owner: 'someone-else', dirty: true, id: 'evil|ok', note: 'fine', updatedAt: Date.now() },
-    ] }, { annotations: 0 });
+    ] });
     const keys = r.body.rows.annotations.map((x) => x.k);
     assert.ok(keys.includes('ok'));
     assert.ok(!keys.includes('future') && !keys.includes('huge'));
@@ -142,14 +138,35 @@ try {
     assert.equal(ok.owner, undefined); assert.equal(ok.dirty, undefined); assert.equal(ok.id, undefined);
   });
 
-  await test('sync: concurrent pushes from two devices both land (compare-and-swap)', async () => {
+  await test('sync: six devices pushing at once all land (append-only batches)', async () => {
     const base = Date.now();
     const jobs = [];
-    for (let i = 0; i < 6; i++) jobs.push(doSync(ada.token, { progress: [{ k: `book-${i}`, percent: i / 10, updatedAt: base + i }] }));
+    for (let i = 0; i < 12; i++) jobs.push(doSync(ada.token, { progress: [{ k: `book-${i}`, percent: i / 10, updatedAt: base + i }] }));
     const results = await Promise.all(jobs);
     assert.ok(results.every((r) => r.status === 200), results.map((r) => r.status).join(','));
-    const all = await doSync(ada.token, {}, { progress: 0 });
-    assert.equal(all.body.rows.progress.length, 6);
+    const all = await doSync(ada.token);
+    assert.equal(all.body.rows.progress.length, 12);
+  });
+
+  await test('sync: old batches fold into a snapshot without losing rows; devices with old cursors still catch up', async () => {
+    const { kv } = await import('../../netlify/lib/accounts.mjs');
+    const { batchName } = await import('../../netlify/functions/sync.mjs');
+    const store = kv('mavis-data');
+    const old = Date.now() - 60 * 60_000;
+    const firstName = batchName(old - 1000);
+    for (let i = 0; i < 45; i++) {
+      await store.setJSON(`${ada.id}/vocab/b/${batchName(old + i * 1000)}`, { rows: [{ k: `w${i % 30}`, word: `word ${i}`, updatedAt: old + i * 1000 }] });
+    }
+    const r = await doSync(ada.token);
+    assert.equal(r.body.rows.vocab.length, 30);
+    assert.equal(r.body.rows.vocab.find((x) => x.k === 'w0').word, 'word 30', 'newest version of each word');
+    const { blobs } = await store.list({ prefix: `${ada.id}/vocab/` });
+    assert.ok(blobs.some((b) => b.key.includes('/s/')), 'a snapshot was written');
+    assert.ok(blobs.filter((b) => b.key.includes('/b/')).length < 45, 'old batches were removed');
+    const fromOld = await doSync(ada.token, {}, { vocab: firstName });
+    assert.equal(fromOld.body.rows.vocab.length, 30, 'a long-offline device gets the snapshot');
+    const fresh = await doSync(ada.token, { vocab: [{ k: 'w1', word: 'newer', updatedAt: Date.now() }] }, { vocab: r.body.cursors.vocab });
+    assert.equal(fresh.body.rows.vocab.find((x) => x.k === 'w1').word, 'newer');
   });
 
   await test('another account sees none of this user’s data', async () => {

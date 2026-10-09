@@ -104,7 +104,9 @@ export async function render(root, route, { navigate, token }) {
         return;
       }
       results.innerHTML = String(html`
-        <p class="result-count num" style="margin:4px 0 14px">${(data.count || 0).toLocaleString()} ${data.count === 1 ? 'book' : 'books'} · page ${page} of ${pages.toLocaleString()}</p>
+        <p class="result-count num" style="margin:4px 0 14px">${data.count == null
+          ? `Page ${page}${data.hasNext ? ' · more on the next page' : ''}`
+          : `${data.count.toLocaleString()} ${data.count === 1 ? 'book' : 'books'} · page ${page} of ${pages.toLocaleString()}`}</p>
         <div class="grid">${data.results.map((b) => bookCard(b, { badges: sourceBadges(b) }))}</div>
         <nav class="pager" aria-label="Pages">
           ${data.hasPrev || page > 1 ? html`<a class="btn" href="#${link({ page: String(page - 1) })}" rel="prev">${icon('chevronL', { size: 18 })} Previous</a>` : html`<span class="btn" aria-disabled="true" style="opacity:.4">${icon('chevronL', { size: 18 })} Previous</span>`}

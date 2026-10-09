@@ -12,7 +12,7 @@ import http from 'node:http';
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { join, extname, resolve } from 'node:path';
 import { randomUUID, createHmac } from 'node:crypto';
-import { gutendexBook, gutendexList, openLibrarySearch, makeFixtureEpub } from '../fixtures/fixtures.mjs';
+import { gutendexBook, openLibrarySearch, makeFixtureEpub, opdsSearchFeed, opdsBookFeed } from '../fixtures/fixtures.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => a.startsWith('--') ? [a.slice(2), arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : true] : null).filter(Boolean));
 const DIST = resolve(args.dist || 'dist');
@@ -40,24 +40,28 @@ async function fixtureFetch(url, opts = {}) {
   url = String(url);
   const u = new URL(url);
   const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } });
-  if (u.host === 'gutendex.com') {
-    if (u.pathname.startsWith('/books/')) {
-      const id = Number(u.pathname.split('/')[2]);
-      const b = CATALOG.find((x) => x.id === id);
-      return b ? json(b) : json({ detail: 'Not found.' }, 404);
-    }
-    const search = (u.searchParams.get('search') || '').toLowerCase();
-    if (search.includes('failonce') && !failOnce.has(search)) { failOnce.add(search); return json({ detail: 'busy' }, 503); }
-    if (search.includes('alwaysfail')) return json({ detail: 'busy' }, 503);
+  const atom = (b, st = 200) => new Response(b, { status: st, headers: { 'content-type': 'application/atom+xml; charset=UTF-8' } });
+  if (u.host === 'www.gutenberg.org' && /^\/ebooks\/\d+\.opds$/.test(u.pathname)) {
+    const id = Number(u.pathname.match(/(\d+)\.opds$/)[1]);
+    const b = CATALOG.find((x) => x.id === id);
+    return b ? atom(opdsBookFeed(b)) : new Response('Not found', { status: 404 });
+  }
+  if (u.host === 'www.gutenberg.org' && u.pathname.startsWith('/ebooks/search.opds')) {
+    const query = (u.searchParams.get('query') || '').toLowerCase();
+    const words = query.split(/\s+/).filter((w) => w && !/^(s|l|bs)\./.test(w));
+    const lang = (query.match(/(?:^|\s)l\.([a-z]{2})/) || [])[1];
+    const topic = /(?:^|\s)s\./.test(query);
+    const search = words.join(' ');
+    if (search.includes('failonce') && !failOnce.has(search)) { failOnce.add(search); return atom('busy', 503); }
+    if (search.includes('alwaysfail')) return atom('busy', 503);
     let list = CATALOG;
-    if (u.searchParams.get('ids')) { const ids = u.searchParams.get('ids').split(',').map(Number); list = list.filter((b) => ids.includes(b.id)); }
-    if (search && !search.includes('failonce')) list = list.filter((b) => `${b.title} ${b.authors[0].name}`.toLowerCase().includes(search.split(' ')[0]));
+    if (search && !search.includes('failonce')) list = list.filter((b) => `${b.title} ${b.authors[0].name}`.toLowerCase().includes(words[0]));
     if (search.includes('zzzz')) list = [];
-    if (u.searchParams.get('languages')) list = list.filter((b) => u.searchParams.get('languages').split(',').some((l) => b.languages.includes(l)));
-    if (u.searchParams.get('topic')) list = list.slice(5, 17);
-    const page = Number(u.searchParams.get('page') || 1);
-    const slice = list.slice((page - 1) * 32, page * 32);
-    return json(gutendexList(slice, { next: page * 32 < list.length, prev: page > 1, count: list.length }));
+    if (lang) list = list.filter((b) => b.languages.includes(lang));
+    if (topic) list = list.slice(5, 17);
+    const start = Number(u.searchParams.get('start_index') || 1);
+    const slice = list.slice(start - 1, start - 1 + 25);
+    return atom(opdsSearchFeed(slice, { next: start - 1 + 25 < list.length, query }));
   }
   if (u.host === 'www.gutenberg.org') {
     epubBytes ||= await makeFixtureEpub();

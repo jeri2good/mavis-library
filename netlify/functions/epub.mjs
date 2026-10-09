@@ -11,8 +11,8 @@
 //    are answered from Netlify's CDN cache so Gutenberg is not hit again.
 
 import { fail, onlyGet, upstream, softLimit, clientKey, UA } from '../lib/shared.mjs';
+import { fetchBook } from '../lib/gutenberg.mjs';
 
-const GUTENDEX = process.env.GUTENDEX_BASE || 'https://gutendex.com';
 const MIRROR = process.env.GUTENBERG_MIRROR || ''; // e.g. https://mirror.example.org (must contain /cache/epub/)
 const MAX_BYTES = 19 * 1024 * 1024;
 
@@ -32,8 +32,8 @@ export function candidates(id, listedUrl) {
     list.push(`${MIRROR.replace(/\/$/, '')}/cache/epub/${id}/pg${id}-images-3.epub`);
     list.push(`${MIRROR.replace(/\/$/, '')}/cache/epub/${id}/pg${id}.epub`);
   }
-  if (listedUrl && isAllowed(listedUrl.replace(/^http:/, 'https:'))) list.push(listedUrl.replace(/^http:/, 'https:'));
   list.push(`https://www.gutenberg.org/ebooks/${id}.epub3.images`);
+  if (listedUrl && isAllowed(listedUrl.replace(/^http:/, 'https:'))) list.push(listedUrl.replace(/^http:/, 'https:'));
   list.push(`https://www.gutenberg.org/ebooks/${id}.epub.noimages`);
   return [...new Set(list)];
 }
@@ -58,20 +58,18 @@ export default async (req, context) => {
   const id = new URL(req.url).searchParams.get('id') || '';
   if (!/^\d{1,6}$/.test(id)) return fail(400, 'bad_request', 'id must be a numeric Gutenberg id.');
 
-  // 1. Confirm public-domain status and an EPUB format in the catalog.
+  // 1. Confirm public-domain status and an EPUB format in Gutenberg's own record.
   let listed = null;
   try {
-    const res = await upstream(`${GUTENDEX}/books/${id}`);
-    if (res.status === 404) return fail(404, 'not_found', 'That book is not in the Project Gutenberg catalog.');
-    if (!res.ok) return fail(502, 'upstream_error', 'The Gutenberg catalog could not confirm this book right now.');
-    const book = await res.json();
+    const book = await fetchBook(Number(id), 6000);
+    if (!book) return fail(404, 'not_found', 'That book is not in the Project Gutenberg catalog.');
     if (book.copyright !== false) {
       return fail(451, 'not_public_domain', 'This book is not marked public domain in the USA, so Mavis will not download it.');
     }
-    listed = Object.entries(book.formats || {}).find(([k]) => k.startsWith('application/epub+zip'))?.[1];
-    if (!listed) return fail(404, 'no_epub', 'Project Gutenberg does not offer an EPUB for this book.');
+    if (!book.epub) return fail(404, 'no_epub', 'Project Gutenberg does not offer an EPUB for this book.');
+    listed = book.epubUrl;
   } catch (err) {
-    return fail(502, 'upstream_unreachable', 'Could not reach the Gutenberg catalog to confirm this book.');
+    return fail(502, err?.status === 502 ? 'upstream_error' : 'upstream_unreachable', 'The Gutenberg catalog could not confirm this book right now.');
   }
 
   // 2. Fetch the file from an allowed host, trying smaller editions if needed.
@@ -79,7 +77,7 @@ export default async (req, context) => {
   for (const url of candidates(id, listed)) {
     let res;
     try {
-      res = await upstream(url, { timeoutMs: 20000, accept: 'application/epub+zip' });
+      res = await upstream(url, { timeoutMs: 7000, accept: 'application/epub+zip' });
     } catch {
       lastProblem = 'Project Gutenberg took too long to send the file.';
       continue;

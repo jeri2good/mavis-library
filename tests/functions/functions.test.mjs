@@ -2,7 +2,8 @@
 //   npm run test:functions
 
 import assert from 'node:assert/strict';
-import { gutendexBook, gutendexList, openLibrarySearch, makeFixtureEpub } from '../fixtures/fixtures.mjs';
+import { gutendexBook, openLibrarySearch, makeFixtureEpub, opdsSearchFeed, opdsBookFeed } from '../fixtures/fixtures.mjs';
+const xml = (body, status = 200) => new Response(body, { status, headers: { 'content-type': 'application/atom+xml; charset=UTF-8' } });
 
 const calls = [];
 let routes = [];
@@ -39,19 +40,60 @@ async function test(name, fn) {
   console.log(`  ✓ ${name}`);
 }
 
-await test('catalog list forwards only validated params and forces public-domain EPUBs', async () => {
-  routes = [[(u) => u.startsWith('https://gutendex.com/books?'), () => respond(gutendexList([gutendexBook(1342, 'Pride and Prejudice')], { next: true }))]];
-  const res = await catalog(get('/api/catalog?search=austen&languages=en&page=2&evil=1&sort=popular'), ctx());
+await test('catalog list reads Gutenberg search feeds with only validated params', async () => {
+  const fr = { ...gutendexBook(13951, 'Les trois mousquetaires'), languages: ['fr'] };
+  routes = [[(u) => u.startsWith('https://www.gutenberg.org/ebooks/search.opds/'), () => xml(opdsSearchFeed([gutendexBook(1342, 'Pride and Prejudice', { author: 'Austen, Jane' }), fr], { next: true, query: 'austen' }))]];
+  const res = await catalog(get('/api/catalog?search=austen&topic=love&page=2&evil=1&sort=popular'), ctx());
   assert.equal(res.status, 200);
   const body = await res.json();
+  assert.equal(body.results.length, 2, 'facet entries are skipped');
+  assert.equal(body.results[0].id, 1342);
   assert.equal(body.results[0].title, 'Pride and Prejudice');
-  assert.equal(body.results[0].epub, true);
+  assert.equal(body.results[0].authors[0].name, 'Jane Austen');
+  assert.deepEqual(body.results[0].languages, ['en']);
+  assert.equal(body.results[0].cover, 'https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg');
+  assert.equal(body.results[1].title, 'Les trois mousquetaires');
+  assert.deepEqual(body.results[1].languages, ['fr']);
   assert.equal(body.hasNext, true);
+  assert.equal(body.hasPrev, true);
+  assert.equal(body.count, null);
   const u = new URL(calls[0]);
-  assert.equal(u.searchParams.get('copyright'), 'false');
-  assert.equal(u.searchParams.get('mime_type'), 'application/epub');
-  assert.equal(u.searchParams.get('page'), '2');
-  assert.equal(u.searchParams.has('evil'), false);
+  assert.equal(u.host, 'www.gutenberg.org');
+  assert.equal(u.searchParams.get('query'), 'austen s.love');
+  assert.equal(u.searchParams.get('sort_order'), 'downloads');
+  assert.equal(u.searchParams.get('start_index'), '26');
+  assert.equal([...u.searchParams.keys()].includes('evil'), false);
+});
+
+await test('catalog language filter and single-book record', async () => {
+  routes = [
+    [(u) => u.startsWith('https://www.gutenberg.org/ebooks/search.opds/'), () => xml(opdsSearchFeed([gutendexBook(1342, 'Pride and Prejudice')]))],
+    [(u) => u === 'https://www.gutenberg.org/ebooks/1342.opds', () => xml(opdsBookFeed(gutendexBook(1342, 'Pride & Prejudice', { author: 'Austen, Jane', subjects: ['Love stories', 'England -- Fiction'], downloads: 191414 })))],
+  ];
+  const list = await (await catalog(get('/api/catalog?search=pride&languages=en'), ctx())).json();
+  assert.equal(new URL(calls[0]).searchParams.get('query'), 'pride l.en');
+  assert.deepEqual(list.results[0].languages, ['en']);
+  const res = await catalog(get('/api/catalog?id=1342'), ctx());
+  assert.equal(res.status, 200);
+  const { book } = await res.json();
+  assert.equal(book.title, 'Pride & Prejudice');
+  assert.equal(book.authors[0].name, 'Austen, Jane');
+  assert.equal(book.copyright, false);
+  assert.equal(book.downloads, 191414);
+  assert.deepEqual(book.subjects, ['Love stories', 'England -- Fiction']);
+  assert.deepEqual(book.languages, ['en']);
+  assert.equal(book.summary, 'A test summary for Pride & Prejudice.');
+  assert.equal(book.epub, true);
+  assert.equal(book.cover, 'https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg');
+});
+
+await test('catalog ids list fetches each record and drops copyrighted ones', async () => {
+  routes = [[(u) => /\/ebooks\/\d+\.opds$/.test(u), (u) => {
+    const id = Number(u.match(/(\d+)\.opds$/)[1]);
+    return xml(opdsBookFeed({ ...gutendexBook(id, `Book ${id}`), copyright: id !== 77 ? false : true }));
+  }]];
+  const body = await (await catalog(get('/api/catalog?ids=84,77,11'), ctx())).json();
+  assert.deepEqual(body.results.map((b) => b.id), [84, 11]);
 });
 
 await test('catalog rejects malformed parameters without calling upstream', async () => {
@@ -94,7 +136,7 @@ await test('epub endpoint refuses non-numeric ids', async () => {
 });
 
 await test('epub endpoint refuses books not marked public domain', async () => {
-  routes = [[(u) => u.includes('gutendex.com/books/77'), () => respond({ ...gutendexBook(77, 'Modern Book'), copyright: true })]];
+  routes = [[(u) => u.endsWith('/ebooks/77.opds'), () => xml(opdsBookFeed({ ...gutendexBook(77, 'Modern Book'), copyright: true }))]];
   const res = await epub(get('/api/epub?id=77'), ctx('5.5.5.5'));
   assert.equal(res.status, 451);
   assert.equal(calls.length, 1);
@@ -103,7 +145,7 @@ await test('epub endpoint refuses books not marked public domain', async () => {
 await test('epub endpoint streams a real EPUB from gutenberg.org', async () => {
   const bytes = await makeFixtureEpub();
   routes = [
-    [(u) => u.includes('gutendex.com/books/1342'), () => respond(gutendexBook(1342, 'Pride and Prejudice'))],
+    [(u) => u.endsWith('/ebooks/1342.opds'), () => xml(opdsBookFeed(gutendexBook(1342, 'Pride and Prejudice')))],
     [(u) => u.startsWith('https://www.gutenberg.org/'), (u) => withUrl(respond(bytes, { headers: { 'content-type': 'application/epub+zip', 'content-length': String(bytes.length) } }), 'https://www.gutenberg.org/cache/epub/1342/pg1342-images-3.epub')],
   ];
   const res = await epub(get('/api/epub?id=1342'), ctx('6.6.6.6'));
@@ -112,12 +154,12 @@ await test('epub endpoint streams a real EPUB from gutenberg.org', async () => {
   const out = new Uint8Array(await res.arrayBuffer());
   assert.equal(out.length, bytes.length);
   assert.equal(out[0], 0x50); assert.equal(out[1], 0x4b); // "PK"
-  assert.ok(calls.every((u) => u.startsWith('https://gutendex.com/') || u.startsWith('https://www.gutenberg.org/')));
+  assert.ok(calls.every((u) => u.startsWith('https://www.gutenberg.org/')));
 });
 
 await test('epub endpoint ignores redirects to other hosts and HTML rate-limit pages', async () => {
   routes = [
-    [(u) => u.includes('gutendex.com/books/84'), () => respond(gutendexBook(84, 'Frankenstein'))],
+    [(u) => u.endsWith('/ebooks/84.opds'), () => xml(opdsBookFeed(gutendexBook(84, 'Frankenstein')))],
     [(u) => u.endsWith('.epub3.images'), (u) => withUrl(respond('x', { headers: { 'content-type': 'application/epub+zip' } }), 'https://evil.example/file.epub')],
     [(u) => u.endsWith('.epub.noimages'), (u) => withUrl(respond('<html>slow down</html>', { headers: { 'content-type': 'text/html' } }), u)],
   ];
@@ -129,7 +171,7 @@ await test('epub endpoint ignores redirects to other hosts and HTML rate-limit p
 await test('epub endpoint skips oversized editions and falls back to a smaller one', async () => {
   const bytes = await makeFixtureEpub();
   routes = [
-    [(u) => u.includes('gutendex.com/books/2701'), () => respond(gutendexBook(2701, 'Moby Dick'))],
+    [(u) => u.endsWith('/ebooks/2701.opds'), () => xml(opdsBookFeed(gutendexBook(2701, 'Moby Dick')))],
     [(u) => u.endsWith('.epub3.images'), (u) => withUrl(respond('x', { headers: { 'content-type': 'application/epub+zip', 'content-length': String(50 * 1024 * 1024) } }), u)],
     [(u) => u.endsWith('.epub.noimages'), (u) => withUrl(respond(bytes, { headers: { 'content-type': 'application/epub+zip' } }), u)],
   ];

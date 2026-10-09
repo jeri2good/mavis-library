@@ -1,48 +1,15 @@
-// GET /api/catalog — Project Gutenberg catalog via Gutendex.
-//   ?search=&topic=&languages=en,fr&page=1&sort=popular   → list
-//   ?ids=1342,84                                           → specific books
-//   ?id=1342                                               → one book
-// Only these parameters are forwarded, after validation, to the fixed host.
+// GET /api/catalog — the Project Gutenberg catalog, read from Gutenberg's own
+// OPDS feeds (Gutendex, used before, blocks requests from Netlify's servers).
+//   ?search=&topic=&languages=en&page=1&sort=popular   → list (25 per page)
+//   ?ids=1342,84                                        → specific books
+//   ?id=1342                                            → one book, full record
+// Only these parameters are accepted, after validation; requests go only to
+// www.gutenberg.org.
 
-import { json, fail, onlyGet, upstream, softLimit, clientKey, clean } from '../lib/shared.mjs';
-
-const BASE = process.env.GUTENDEX_BASE || 'https://gutendex.com';
-const PAGE_SIZE = 32; // Gutendex's fixed page size
-
-export function shapeBook(b) {
-  const formats = b.formats || {};
-  const epubUrl = Object.entries(formats).find(([k]) => k.startsWith('application/epub+zip'))?.[1] || null;
-  const cover = Object.entries(formats).find(([k]) => k.startsWith('image/'))?.[1] || null;
-  const htmlUrl = Object.entries(formats).find(([k]) => k.startsWith('text/html'))?.[1] || null;
-  return {
-    id: b.id,
-    title: clean(b.title, 400),
-    authors: (b.authors || []).slice(0, 6).map((a) => ({ name: clean(a.name, 160), birthYear: a.birth_year ?? null, deathYear: a.death_year ?? null })),
-    translators: (b.translators || []).slice(0, 4).map((a) => clean(a.name, 160)),
-    subjects: (b.subjects || []).slice(0, 12).map((s) => clean(s, 200)),
-    bookshelves: (b.bookshelves || []).slice(0, 8).map((s) => clean(s, 120).replace(/^Browsing:\s*/, '')),
-    languages: (b.languages || []).slice(0, 6),
-    summary: clean((b.summaries || [])[0] || '', 3000) || null,
-    copyright: b.copyright ?? null,
-    mediaType: b.media_type || null,
-    downloads: b.download_count ?? null,
-    cover: safeUrl(cover),
-    epub: !!epubUrl,
-    epubUrl: safeUrl(epubUrl),
-    htmlUrl: safeUrl(htmlUrl),
-    sourceUrl: `https://www.gutenberg.org/ebooks/${b.id}`,
-  };
-}
-
-function safeUrl(u) {
-  try {
-    const url = new URL(u);
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href.replace(/^http:/, 'https:') : null;
-  } catch { return null; }
-}
+import { json, fail, onlyGet, softLimit, clientKey, clean } from '../lib/shared.mjs';
+import { fetchSearch, fetchBook, buildQuery, OPDS_PAGE_SIZE } from '../lib/gutenberg.mjs';
 
 export function parseListParams(sp) {
-  const out = new URLSearchParams();
   const search = clean(sp.get('search'), 120);
   const topic = clean(sp.get('topic'), 60);
   const languages = (sp.get('languages') || '').toLowerCase();
@@ -52,20 +19,11 @@ export function parseListParams(sp) {
   if (languages && !/^[a-z]{2}(,[a-z]{2}){0,4}$/.test(languages)) return { error: 'Language codes must be two letters, comma separated.' };
   if (!['popular', 'ascending', 'descending'].includes(sort)) return { error: 'Unknown sort order.' };
   if (!Number.isInteger(page) || page < 1 || page > 2000) return { error: 'Page must be a whole number from 1 to 2000.' };
-  if (ids != null) {
-    if (!/^\d{1,6}(,\d{1,6}){0,31}$/.test(ids)) return { error: 'ids must be up to 32 numeric Gutenberg ids.' };
-    out.set('ids', ids);
-  }
-  if (search) out.set('search', search);
-  if (topic) out.set('topic', topic);
-  if (languages) out.set('languages', languages);
-  out.set('sort', sort);
-  if (page > 1) out.set('page', String(page));
-  // Mavis only lists books it can legally offer: public domain in the USA.
-  out.set('copyright', 'false');
-  out.set('mime_type', 'application/epub');
-  return { params: out, page };
+  if (ids != null && !/^\d{1,6}(,\d{1,6}){0,31}$/.test(ids)) return { error: 'ids must be up to 32 numeric Gutenberg ids.' };
+  return { search, topic, languages, sort, page, ids: ids ? [...new Set(ids.split(',').map(Number))].slice(0, 24) : null };
 }
+
+const LIST_CACHE = { cache: 'public, max-age=300', cdn: 'public, s-maxage=3600, stale-while-revalidate=86400' };
 
 export default async (req, context) => {
   const pre = onlyGet(req);
@@ -77,28 +35,36 @@ export default async (req, context) => {
     if (sp.has('id')) {
       const id = sp.get('id');
       if (!/^\d{1,6}$/.test(id)) return fail(400, 'bad_request', 'id must be a numeric Gutenberg id.');
-      const res = await upstream(`${BASE}/books/${id}`);
-      if (res.status === 404) return fail(404, 'not_found', 'That book is not in the Project Gutenberg catalog.');
-      if (!res.ok) return fail(502, 'upstream_error', `The Gutenberg catalog answered ${res.status}.`);
-      const book = shapeBook(await res.json());
+      const book = await fetchBook(Number(id));
+      if (!book) return fail(404, 'not_found', 'That book is not in the Project Gutenberg catalog.');
       return json({ book }, { cache: 'public, max-age=600', cdn: 'public, s-maxage=86400, stale-while-revalidate=604800' });
     }
-    const parsed = parseListParams(sp);
-    if (parsed.error) return fail(400, 'bad_request', parsed.error);
-    const res = await upstream(`${BASE}/books?${parsed.params}`);
-    if (!res.ok) return fail(502, 'upstream_error', `The Gutenberg catalog answered ${res.status}.`);
-    const data = await res.json();
-    const results = (data.results || []).map(shapeBook);
+    const q = parseListParams(sp);
+    if (q.error) return fail(400, 'bad_request', q.error);
+    if (q.ids) {
+      const books = await Promise.all(q.ids.map((id) => fetchBook(id, 6500).catch(() => undefined)));
+      if (books.every((b) => b === undefined)) return fail(502, 'upstream_error', 'The Gutenberg catalog did not answer.');
+      const results = books.filter((b) => b && b.copyright !== true);
+      return json({ count: results.length, page: 1, pageSize: Math.max(results.length, 1), hasNext: false, hasPrev: false, results }, LIST_CACHE);
+    }
+    const langs = q.languages ? q.languages.split(',') : [];
+    const out = await fetchSearch({
+      query: buildQuery(q), sort: q.sort, page: q.page,
+      language: langs.length === 1 ? langs[0] : '',
+    });
+    let results = out.results;
+    if (langs.length > 1) results = results.filter((b) => b.languages.some((l) => langs.includes(l)));
     return json({
-      count: data.count ?? results.length,
-      page: parsed.page,
-      pageSize: PAGE_SIZE,
-      hasNext: !!data.next,
-      hasPrev: !!data.previous,
+      count: null, // Gutenberg's feed does not report a total
+      page: q.page,
+      pageSize: OPDS_PAGE_SIZE,
+      hasNext: out.hasNext,
+      hasPrev: q.page > 1,
       results,
-    }, { cache: 'public, max-age=300', cdn: 'public, s-maxage=3600, stale-while-revalidate=86400' });
+    }, LIST_CACHE);
   } catch (err) {
     const timeout = err?.name === 'AbortError';
+    if (err?.status === 502) return fail(502, 'upstream_error', err.message);
     return fail(timeout ? 504 : 502, timeout ? 'upstream_timeout' : 'upstream_unreachable',
       timeout ? 'The Gutenberg catalog took too long to answer.' : 'Could not reach the Gutenberg catalog.');
   }

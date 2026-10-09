@@ -173,12 +173,12 @@ def run_public(browser):
     @test('Search by title/author, pagination, and language filter')
     def _(page):
         page.goto(BASE + '/#/search?q=austen')
-        expect(page.locator('.result-count')).to_contain_text('page 1 of')
+        expect(page.locator('.result-count')).to_contain_text('Page 1')
         n1 = page.locator('#results .book-card').count()
-        assert n1 == 32, n1
+        assert n1 == 25, n1
         page.get_by_role('link', name=re.compile('Next')).click()
         expect(page).to_have_url(re.compile('page=2'))
-        expect(page.locator('.result-count')).to_contain_text('page 2 of')
+        expect(page.locator('.result-count')).to_contain_text('Page 2')
         page.select_option('#lang', 'fr')
         expect(page).to_have_url(re.compile('lang=fr'))
         expect(page.locator('#results .book-card').first).to_contain_text(re.compile('.'))

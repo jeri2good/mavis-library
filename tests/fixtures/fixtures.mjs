@@ -36,6 +36,34 @@ export function gutendexList(results, { next = false, prev = false, count } = {}
   };
 }
 
+// Project Gutenberg OPDS feeds, shaped like www.gutenberg.org/ebooks/search.opds
+// and /ebooks/<id>.opds (checked against the live service).
+const xmlEsc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const firstLast = (n) => { const m = /^([^,]+),\s*(.+)$/.exec(n); return m ? `${m[2]} ${m[1]}` : n; };
+const LANG_LABEL = { fr: 'French', de: 'German', es: 'Spanish', it: 'Italian' };
+const FEED_HEAD = '<?xml version="1.0" encoding="utf-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:relevance="http://a9.com/-/opensearch/extensions/relevance/1.0/">';
+
+export function opdsSearchFeed(books, { next = false, query = '' } = {}) {
+  const facet = `<entry><updated>2026-10-09T00:00:00Z</updated><id>https://www.gutenberg.org/ebooks/authors/search.opds/?query=${xmlEsc(query)}</id><title>Authors</title><content type="text">2 author names match your search.</content><link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/authors/search.opds/?query=${xmlEsc(query)}"/><link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/></entry>`;
+  const entries = books.map((b) => {
+    const lang = b.languages?.[0];
+    const title = lang && lang !== 'en' ? `${b.title} (${LANG_LABEL[lang] || 'French'})` : b.title;
+    return `<entry><updated>2026-10-09T00:00:00Z</updated><id>https://www.gutenberg.org/ebooks/${b.id}.opds</id><title>${xmlEsc(title)}</title><content type="text">${xmlEsc(firstLast(b.authors[0].name))}</content><link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/${b.id}.opds"/><link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/></entry>`;
+  });
+  const nextLink = next ? `<link type="application/atom+xml;profile=opds-catalog" rel="next" href="/ebooks/search.opds/?query=${xmlEsc(query)}&amp;sort_order=downloads&amp;start_index=26" title="Next Page"/>` : '';
+  return `${FEED_HEAD}<id>https://www.gutenberg.org/ebooks/search.opds/</id><title>Search</title>${nextLink}<opensearch:itemsPerPage>25</opensearch:itemsPerPage><opensearch:startIndex>1</opensearch:startIndex>${facet}${entries.join('')}</feed>`;
+}
+
+export function opdsBookFeed(b) {
+  const id = b.id;
+  const rights = b.copyright === false ? 'Public domain in the USA.' : 'Copyrighted. Read the copyright notice inside this book for details.';
+  const p = (label, value) => `<p><strong>${label}:</strong> ${xmlEsc(value)}</p>`;
+  const content = `<div xmlns="http://www.w3.org/1999/xhtml">${p('Title', b.title)}${p('Summary', `${b.summaries?.[0] || ''} (This is an automatically generated summary.)`)}${p('Author', `${b.authors[0].name}, 1775-1817`)}${p('EBook No.', id)}${p('Published', 'Jun 1, 1998')}${p('Downloads', b.download_count)}${p('Language', 'English')}${(b.subjects || []).map((x) => p('Subject', x)).join('')}${p('Category', 'Text')}${p('Rights', rights)}</div>`;
+  return `${FEED_HEAD}<id>http://www.gutenberg.org/ebooks/${id}.opds</id><title>${xmlEsc(b.title)}</title>
+<entry><updated>2026-10-09T00:00:00Z</updated><title>${xmlEsc(b.title)}</title><content type="xhtml">${content}</content><id>urn:gutenberg:${id}:2</id><published>1998-06-01T00:00:00+00:00</published><rights>${rights}</rights><author><name>${xmlEsc(b.authors[0].name)}</name></author>${(b.subjects || []).map((x) => `<category scheme="http://purl.org/dc/terms/LCSH" term="${xmlEsc(x)}"/>`).join('')}<category scheme="http://purl.org/dc/terms/DCMIType" term="Text"/>${(b.languages || ['en']).map((l) => `<dcterms:language>${l}</dcterms:language>`).join('')}<relevance:score>1</relevance:score><link type="application/epub+zip" rel="http://opds-spec.org/acquisition" title="EPUB (no images)" length="561102" href="https://www.gutenberg.org/ebooks/${id}.epub.noimages"/><link type="image/jpeg" rel="http://opds-spec.org/image" href="https://www.gutenberg.org/cache/epub/${id}/pg${id}.cover.medium.jpg"/><link type="image/jpeg" rel="http://opds-spec.org/image/thumbnail" href="https://www.gutenberg.org/cache/epub/${id}/pg${id}.cover.small.jpg"/></entry>
+<entry><updated>2026-10-09T00:00:00Z</updated><title>${xmlEsc(b.title)}</title><id>urn:gutenberg:${id}:3</id><link type="application/epub+zip" rel="http://opds-spec.org/acquisition" title="EPUB3 (E-readers incl. Send-to-Kindle)" href="https://www.gutenberg.org/ebooks/${id}.epub3.images"/></entry></feed>`;
+}
+
 export function openLibrarySearch() {
   return {
     numFound: 2,

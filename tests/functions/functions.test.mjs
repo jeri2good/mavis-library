@@ -221,6 +221,21 @@ await test('rank: builds Jev score questions and maps scores to candidates', asy
   assert.deepEqual(body.scores, { 'g:1': 1, 'g:2': 0.25 });
 });
 
+await test('rank: prefers TypeSafe’s own API when TYPESAFE_API_KEY is set', async () => {
+  process.env.TYPESAFE_API_KEY = 'apikey_test';
+  let sent, auth;
+  routes = [[(u) => u === 'https://api.typesafe.ai/v1/systemone', (u, o) => { sent = JSON.parse(o.body); auth = o.headers.authorization; return respond({ model: 'jev-1.13.0', answers: { c0: { type: 'score', score: 2 } } }); }]];
+  const res = await rank(post('/api/rank', { profile: { genres: ['poetry'] }, candidates: [{ id: 'g:9', title: 'Leaves of Grass' }] }, { 'x-mavis-access': 'right-code' }), ctx('r2'));
+  const body = await res.json();
+  assert.equal(auth, 'Bearer apikey_test');
+  assert.equal(sent.model, 'jev-latest');
+  assert.deepEqual(body.scores, { 'g:9': 0.5 });
+  assert.equal(body.via, 'typesafe');
+  const f = await (await featuresFn(get('/api/features'))).json();
+  assert.equal(f.jev, 'typesafe');
+  delete process.env.TYPESAFE_API_KEY;
+});
+
 await test('features: reports what is on without exposing keys, and verifies the code', async () => {
   let res = await featuresFn(get('/api/features'));
   let body = await res.json();

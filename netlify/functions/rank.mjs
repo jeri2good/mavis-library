@@ -1,15 +1,23 @@
 // POST /api/rank — re-rank "You might like" picks with Jev (TypeSafe AI's
-// decision model) through Eden AI. Optional: without EDENAI_API_KEY the app
-// ranks picks itself by genre overlap.
+// decision model). Uses TypeSafe's own API when TYPESAFE_API_KEY is set,
+// otherwise Eden AI with EDENAI_API_KEY. Without either key the app ranks
+// picks itself by genre overlap.
 // Body: { profile: { genres: [..], recent: [..] }, candidates: [{ id, title, authors, subjects }] }
 // Reply: { scores: { [id]: 0..1 }, model }
 
 import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
 
-const URL_ = 'https://api.edenai.run/v3/alpha/decisions';
+const EDEN_URL = 'https://api.edenai.run/v3/alpha/decisions';
+const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
+
+export function jevProvider() {
+  if (env('TYPESAFE_API_KEY')) return { name: 'typesafe', url: TYPESAFE_URL, key: env('TYPESAFE_API_KEY'), model: env('JEV_MODEL') || 'jev-latest' };
+  if (env('EDENAI_API_KEY')) return { name: 'edenai', url: EDEN_URL, key: env('EDENAI_API_KEY'), model: env('JEV_MODEL') || 'typesafe/jev-latest' };
+  return null;
+}
 const LEVELS = ['not a fit', 'weak fit', 'possible fit', 'good fit', 'excellent fit'];
 
-export function buildRequest(profile, candidates) {
+export function buildRequest(profile, candidates, model = 'typesafe/jev-latest') {
   const state = {
     reader_likes_genres: (profile.genres || []).slice(0, 12).map((g) => String(g).slice(0, 80)),
     reader_recently_read: (profile.recent || []).slice(0, 8).map((t) => String(t).slice(0, 160)),
@@ -22,7 +30,7 @@ export function buildRequest(profile, candidates) {
       criteria: LEVELS,
     };
   });
-  return { model: env('JEV_MODEL') || 'typesafe/jev-latest', state, questions };
+  return { model, state, questions };
 }
 
 export function readScores(data, candidates) {
@@ -38,24 +46,25 @@ export function readScores(data, candidates) {
 export default async (req, context) => {
   const bad = onlyPost(req) || await requireOwner(req);
   if (bad) return bad;
-  const key = env('EDENAI_API_KEY');
-  if (!key) return fail(503, 'not_configured', 'Jev ranking is not set up. Add EDENAI_API_KEY in Netlify.');
+  const jev = jevProvider();
+  if (!jev) return fail(503, 'not_configured', 'Jev ranking is not set up. Add TYPESAFE_API_KEY (or EDENAI_API_KEY) in Netlify.');
   if (softLimit(`rank:${clientKey(req, context)}`, { limit: 20 })) return fail(429, 'rate_limited', 'Too many ranking requests.');
   let body;
   try { body = await readJson(req, 60_000); } catch (err) { return fail(err.status || 400, 'bad_request', err.message); }
   const candidates = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 24).filter((c) => c && c.id && c.title);
   if (!candidates.length) return fail(400, 'bad_request', 'No candidates to rank.');
   try {
-    const r = await fetch(URL_, {
+    const r = await fetch(jev.url, {
       method: 'POST',
-      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify(buildRequest(body.profile || {}, candidates)),
+      headers: { authorization: `Bearer ${jev.key}`, 'content-type': 'application/json' },
+      body: JSON.stringify(buildRequest(body.profile || {}, candidates, jev.model)),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) return fail(502, 'jev_failed', data?.message || data?.error?.message || `Eden AI answered ${r.status}.`);
-    return json({ scores: readScores(data, candidates), model: data.model || 'jev' });
+    const who = jev.name === 'typesafe' ? 'TypeSafe' : 'Eden AI';
+    if (!r.ok) return fail(502, 'jev_failed', data?.message || data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || `${who} answered ${r.status}.`);
+    return json({ scores: readScores(data, candidates), model: data.model || 'jev', via: jev.name });
   } catch {
-    return fail(502, 'jev_unreachable', 'Could not reach Eden AI.');
+    return fail(502, 'jev_unreachable', 'Could not reach the Jev service.');
   }
 };
 

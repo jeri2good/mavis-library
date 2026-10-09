@@ -4,6 +4,7 @@
 import { json, onlyGet, env, requireOwner } from '../lib/shared.mjs';
 import { ttsProvider } from './tts.mjs';
 import { llmConfig } from './assistant.mjs';
+import { jevProvider } from './rank.mjs';
 
 export default async (req) => {
   const pre = onlyGet(req);
@@ -16,7 +17,7 @@ export default async (req) => {
     accessCode: Boolean(env('MAVIS_ACCESS_CODE')),
     cloudVoice: ttsProvider(),
     assistant: llm ? { provider: llm.provider, model: llm.model } : null,
-    jev: Boolean(env('EDENAI_API_KEY')),
+    jev: jevProvider()?.name || false,
     googleBooksKey: Boolean(env('GOOGLE_BOOKS_API_KEY')),
   }, { cache: checking ? 'no-store' : 'public, max-age=60' });
 };

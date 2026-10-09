@@ -1,8 +1,8 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 09:03 EDT · Chromium 141.0.7390.37 (headless, Linux) · 125s
+Run: 2026-10-09 09:08 EDT · Chromium 141.0.7390.37 (headless, Linux) · 148s
 
-**47 of 47 checks passed.**
+**45 of 47 checks passed.**
 
 | Result | Check |
 |---|---|
@@ -19,8 +19,8 @@ Run: 2026-10-09 09:03 EDT · Chromium 141.0.7390.37 (headless, Linux) · 125s
 | ✅ pass | Display settings: night theme, larger text, font, margins apply live |
 | ✅ pass | Immersive focus mode hides controls and exits with Escape or the visible button |
 | ✅ pass | Page-turn animation runs and follows navigation |
-| ✅ pass | Read-aloud (simulated speech engine): reads the visible page, turns pages, pause/resume/stop |
-| ✅ pass | Read-aloud restarts from the new page after manual navigation, and stops when the book closes |
+| ❌ fail | Read-aloud (simulated speech engine): reads the visible page, turns pages, pause/resume/stop — AssertionError: ['and the light became the only thing anyone could trust.'] |
+| ❌ fail | Read-aloud restarts from the new page after manual navigation, and stops when the book closes — TimeoutError: Locator.click: Timeout 30000ms exceeded. |
 | ✅ pass | Imports: EPUB, TXT (converted), PDF; rejects malformed, DRM, oversized, and unsupported files |
 | ✅ pass | Shelf: collections, filter, sort, safe removal with confirmation and undo |
 | ✅ pass | Keyboard only: reach search, submit, and dialogs trap and return focus |

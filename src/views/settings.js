@@ -65,7 +65,7 @@ export async function render(root) {
       <dt>This device</dt><dd>${f.owner ? yes('Owner access') : f.accessCode ? no('No access code yet') : no('Owner hasn’t set an access code')}</dd>
       <dt>Cloud voice</dt><dd>${f.cloudVoice ? yes(f.cloudVoice === 'fish' ? 'Fish Audio' : 'Google Text-to-Speech') : no('Not set up')}</dd>
       <dt>Ask Mavis (AI)</dt><dd>${f.assistant ? yes(`${f.assistant.provider === 'anthropic' ? 'Anthropic' : 'OpenAI-compatible'} · ${f.assistant.model}`) : no('Not set up')}</dd>
-      <dt>Jev picks</dt><dd>${f.jev ? yes('Eden AI') : no('Not set up (free genre ranking in use)')}</dd>`);
+      <dt>Jev picks</dt><dd>${f.jev ? yes(f.jev === 'typesafe' ? 'TypeSafe AI' : 'Eden AI') : no('Not set up (free genre ranking in use)')}</dd>`);
     if (!f.reachable) root.querySelector('#feat-list').innerHTML = String(html`<dt>Status</dt><dd>The Mavis server can’t be reached right now.</dd>`);
   }
   paintFeatures();

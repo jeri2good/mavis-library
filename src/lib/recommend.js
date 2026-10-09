@@ -1,6 +1,6 @@
 // "Picked for you": recommendations from the genres on your shelf.
-// Free by default (genre overlap + popularity). When the owner has added an
-// Eden AI key, Jev re-ranks the candidates.
+// Free by default (genre overlap + popularity). When the owner has added a
+// TypeSafe (or Eden AI) key, Jev re-ranks the candidates.
 
 import * as store from './store.js';
 import { searchGutenberg } from './catalog.js';

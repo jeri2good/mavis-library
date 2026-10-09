@@ -56,7 +56,7 @@ These use your paid accounts, so they are switched on with server-side environme
 1. `MAVIS_ACCESS_CODE` — any passphrase. Enter the same code on each of your devices under **Settings → Cloud voice and AI**.
 2. Cloud voice: `TTS_PROVIDER=fish` with `FISH_AUDIO_API_KEY` (and optionally `FISH_AUDIO_VOICE_ID`), or `TTS_PROVIDER=google` with `GOOGLE_TTS_API_KEY`. Fish Audio’s API is billed from API credit, which may be separate from a Fish Audio app subscription.
 3. Ask Mavis: `LLM_PROVIDER=anthropic` (or `openai` for any OpenAI-compatible API) with `LLM_API_KEY`; optional `LLM_MODEL` and `LLM_BASE_URL`.
-4. Jev ranking: `EDENAI_API_KEY`.
+4. Jev ranking: `TYPESAFE_API_KEY` (TypeSafe’s own API), or `EDENAI_API_KEY`.
 5. Redeploy. **Settings → Cloud voice and AI** shows what is switched on.
 
 ## Turn on accounts and sync (optional)

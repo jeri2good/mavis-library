@@ -61,14 +61,20 @@ export async function render(root, route) {
         <div class="quote-actions">
           <button type="button" class="btn btn-sm btn-quiet" data-copy="${a.uid}">${icon('copy', { size: 16 })} Copy</button>
           <button type="button" class="btn btn-sm btn-quiet" data-share="${a.uid}">${icon('share', { size: 16 })} Share</button>
+          ${a.text ? html`<button type="button" class="btn btn-sm btn-quiet" data-video="${a.uid}">${icon('present', { size: 16 })} Video</button>` : ''}
           <button type="button" class="icon-btn" data-del="${a.uid}" aria-label="Delete">${icon('trash', { size: 18 })}</button>
         </div>
       </li>`)}</ul>`);
     el.onclick = async (e) => {
-      const id = e.target.closest('[data-copy],[data-share],[data-del]');
+      const id = e.target.closest('[data-copy],[data-share],[data-del],[data-video]');
       if (!id) return;
-      const a = list.find((x) => x.uid === (id.dataset.copy || id.dataset.share || id.dataset.del));
+      const a = list.find((x) => x.uid === (id.dataset.copy || id.dataset.share || id.dataset.del || id.dataset.video));
       if (!a) return;
+      if (id.dataset.video) {
+        const { openVideoMaker } = await import('../lib/video.js');
+        openVideoMaker({ text: a.text, citation: citeOf(a), bookKey: a.bookKey, title: citeOf(a), defaultStyle: a.bookKey === 'bible' ? 'stained glass' : 'painterly' });
+        return;
+      }
       if (id.dataset.copy) copyQuote(a.text, citeOf(a));
       if (id.dataset.share) shareQuote(a.text, citeOf(a));
       if (id.dataset.del) {

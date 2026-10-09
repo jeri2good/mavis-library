@@ -1237,6 +1237,31 @@ def run_v2(browser):
         page.locator('[data-act="close"]').first.click()
     _(page)
 
+    @test('Verse video: a narrated square video of John 3:16 made on the device, previewable and shareable')
+    def _(page):
+        page.goto(FEAT + '/#/bible/John/3?fresh=vid')
+        page.locator('#v16 .vn').click()
+        page.get_by_role('button', name='Video', exact=True).click()
+        d = page.get_by_role('dialog', name='Make a video')
+        expect(d.locator('.vm-text')).to_contain_text('For God so loved')
+        d.locator('#vm-format').select_option('square')
+        d.locator('#vm-bg').select_option('theme:sea')
+        expect(d.locator('#vm-voice')).to_be_checked()
+        before = page.evaluate("fetch('/__test/tts-calls').then(r => r.json())")
+        d.get_by_role('button', name='Make video').click()
+        expect(d.locator('video.vm-preview')).to_be_visible(timeout=30000)
+        assert page.evaluate("fetch('/__test/tts-calls').then(r => r.json())") == before + 1, 'one narration request'
+        wait_until(page, "document.querySelector('video.vm-preview').readyState >= 1", timeout=10000)
+        dims = page.evaluate("(() => { const v = document.querySelector('video.vm-preview'); return [v.videoWidth, v.videoHeight]; })()")
+        assert dims == [1080, 1080], dims
+        expect(d).to_contain_text(re.compile(r'(MP4|WEBM) · \d+\.\d MB'))
+        expect(d.get_by_role('link', name='Save video')).to_have_attribute('download', re.compile(r'John-3-16'))
+        shot(page, '46-verse-video')
+        page.keyboard.press('Escape')
+        page.goto(FEAT + '/#/quotes')
+        expect(page.locator('.quote-card [data-video]').first).to_be_visible()
+    _(page)
+
     @test('Offline audiobook: save a whole book as audio, listen, keep playing with no network, resume where you stopped')
     def _(page):
         page.goto(FEAT + '/#/book/gutenberg:1342')

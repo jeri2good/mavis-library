@@ -226,6 +226,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         <button type="button" class="vb-btn" data-vb="commentary">${icon('note', { size: 20 })}<span>Commentary</span></button>
         ${single ? html`<button type="button" class="vb-btn" data-vb="topics">${icon('library', { size: 20 })}<span>Topics</span></button>` : ''}
         <button type="button" class="vb-btn" data-vb="picture">${icon('present', { size: 20 })}<span>Picture</span></button>
+        <button type="button" class="vb-btn" data-vb="video">${icon('play', { size: 20 })}<span>Video</span></button>
         <button type="button" class="vb-btn" data-vb="listen">${icon('headphones', { size: 20 })}<span>Listen</span></button>
         <button type="button" class="vb-btn" data-vb="present">${icon('present', { size: 20 })}<span>Display</span></button>
         <button type="button" class="vb-btn" data-vb="ask">${icon('spark', { size: 20 })}<span>Ask</span></button>
@@ -628,6 +629,9 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       if (vb === 'original') showInterlinear();
       if (vb === 'commentary') showCommentary(r.verse);
       if (vb === 'topics') showTopics(r.verse);
+      if (vb === 'video') {
+        import('../lib/video.js').then(({ openVideoMaker }) => openVideoMaker({ text: selText(), citation: citation(r), bookKey: KEY, title: 'the Holy Bible', defaultStyle: 'stained glass' }));
+      }
       if (vb === 'picture') {
         const passage = `${B.labelSync(idx, r)} (${trShort()}): ${selText()}`;
         import('../lib/companion.js').then(({ openCompanion }) => openCompanion({

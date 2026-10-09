@@ -1,8 +1,8 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 18:05 EDT · Chromium 141.0.7390.37 (headless, Linux) · 150s
+Run: 2026-10-09 18:10 EDT · Chromium 141.0.7390.37 (headless, Linux) · 157s
 
-**57 of 57 checks passed.**
+**58 of 58 checks passed.**
 
 | Result | Check |
 |---|---|
@@ -60,6 +60,7 @@ Run: 2026-10-09 18:05 EDT · Chromium 141.0.7390.37 (headless, Linux) · 150s
 | ✅ pass | Reading companion: picture this page, a spoiler-free spoken recap with cached chapter notes, and a character map |
 | ✅ pass | Voices: choose a narrator from the voice library, and make a private copy of your own voice (with consent) |
 | ✅ pass | Full cast: each character gets a voice that fits, the narrator uses your voice, and the cast can be changed |
+| ✅ pass | Verse video: a narrated square video of John 3:16 made on the device, previewable and shareable |
 | ✅ pass | Offline audiobook: save a whole book as audio, listen, keep playing with no network, resume where you stopped |
 | ✅ pass | Picked for you: recommendations from shelf genres, ranked by Jev when available |
 | ✅ pass | Phone at 360px: Bible, search, quotes, and settings fit without sideways scrolling |

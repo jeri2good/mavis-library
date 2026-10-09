@@ -126,7 +126,7 @@ export default async (req, context) => {
   const dbg = new URL(req.url).searchParams.get('dbg') === '1';
   try {
     const res = await handler(req, context);
-    if (dbg) return json({ status: res.status, headers: Object.fromEntries(res.headers), body: (await res.text()).slice(0, 600) });
+    if (dbg) return json({ url: req.url, status: res.status, body: (await res.text()).slice(0, 600) });
     return res;
   } catch (err) {
     if (dbg) return json({ thrown: `${err.name}: ${err.message}`, stack: String(err.stack).slice(0, 800) });

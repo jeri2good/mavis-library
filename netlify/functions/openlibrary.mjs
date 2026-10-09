@@ -59,7 +59,7 @@ export default async (req, context) => {
     if (lang && !/^[a-z]{3}$/.test(lang)) return fail(400, 'bad_request', 'lang must be a three-letter code like eng.');
     const params = new URLSearchParams({ q, page: String(page), limit: String(PAGE_SIZE), fields: FIELDS });
     if (lang) params.set('lang', lang);
-    const res = await upstream(`${BASE}/search.json?${params}`, { timeoutMs: 15000 });
+    const res = await upstream(`${BASE}/search.json?${params}`, { timeoutMs: 8500 });
     if (!res.ok) return fail(502, 'upstream_error', `Open Library answered ${res.status}.`);
     const data = await res.json();
     const results = (data.docs || []).map(shapeDoc);

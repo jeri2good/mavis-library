@@ -26,7 +26,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k.startsWith('mavis-shell-') && k !== SHELL).map((k) => caches.delete(k)));
+    await Promise.all(keys.filter((k) => (k.startsWith('mavis-shell-') && k !== SHELL) || k === 'mavis-bible-ext-v1').map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -80,11 +80,11 @@ self.addEventListener('fetch', (event) => {
     if (url.pathname.startsWith('/api/bible-ext')) {
       // Extra translations and commentaries never change: keep them offline once read.
       event.respondWith((async () => {
-        const cache = await caches.open('mavis-bible-ext-v1');
+        const cache = await caches.open('mavis-bible-ext-v2');
         const hit = await cache.match(req);
         if (hit) return hit;
         const res = await fetch(req);
-        if (res.ok) { cache.put(req, res.clone()); trim('mavis-bible-ext-v1', 3000); }
+        if (res.ok) { cache.put(req, res.clone()); trim('mavis-bible-ext-v2', 3000); }
         return res;
       })());
       return;

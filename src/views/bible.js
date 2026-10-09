@@ -15,6 +15,7 @@ import { loadFeatures, can } from '../lib/features.js';
 import { listen } from '../lib/voice-input.js';
 import { stateBlock } from '../components.js';
 import { planDayFor, describeDay, setDayDone } from '../lib/plans.js';
+import { bibleGroups, myGroups } from '../lib/groups.js';
 
 const KEY = 'bible';
 const HL = { sun: '#e9c46a', mint: '#86c7a1', sky: '#8fb8e6', rose: '#e7a1a8' };
@@ -33,6 +34,7 @@ export async function ensureOnShelf() {
 }
 
 export async function render(root, route, { navigate, token }) {
+  myGroups().catch(() => {}); // so the verse bar knows about your study groups
   let idx;
   try { idx = await B.loadIndex(); }
   catch (err) {
@@ -220,6 +222,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         <button type="button" class="vb-btn" data-vb="note">${icon('note', { size: 20 })}<span>Note</span></button>
         <button type="button" class="vb-btn" data-vb="copy">${icon('copy', { size: 20 })}<span>Copy</span></button>
         <button type="button" class="vb-btn" data-vb="share">${icon('share', { size: 20 })}<span>Share</span></button>
+        ${bibleGroups().length ? html`<button type="button" class="vb-btn" data-vb="group">${icon('user', { size: 20 })}<span>Group</span></button>` : ''}
         ${single ? html`<button type="button" class="vb-btn" data-vb="xref">${icon('link', { size: 20 })}<span>Cross-refs</span></button>` : ''}
         <button type="button" class="vb-btn" data-vb="compare">${icon('compare', { size: 20 })}<span>Compare</span></button>
         <button type="button" class="vb-btn" data-vb="original">${icon('dict', { size: 20 })}<span>Original</span></button>
@@ -624,6 +627,10 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       if (vb === 'note') editNote(null);
       if (vb === 'copy') copyQuote(selText(), citation(r));
       if (vb === 'share') shareQuote(selText(), citation(r));
+      if (vb === 'group') {
+        const { openShareToGroup } = await import('../lib/groups-ui.js');
+        openShareToGroup({ groups: bibleGroups(), quote: selText().slice(0, 1200), cite: citation(r), ref: { kind: 'bible', osis: B.osis(r) }, chapter: B.labelSync(idx, { book: r.book, chapter: r.chapter }) });
+      }
       if (vb === 'xref') showXrefs(r.verse);
       if (vb === 'compare') compare();
       if (vb === 'original') showInterlinear();

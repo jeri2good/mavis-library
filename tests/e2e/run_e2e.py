@@ -427,7 +427,14 @@ def run_public(browser):
         spoken = page.evaluate('window.__utter')
         assert sum('quiet close' in s for s in spoken) == 1, 'chapter end read more than once'
         expect(page.locator('#tts-line')).to_have_text('Reached the end of the book.', timeout=10000)
-        assert len(set(spoken)) / len(spoken) > 0.3, f'too many repeats: {len(set(spoken))} unique of {len(spoken)}: {spoken[-8:]}'
+        # The fixture chapter reuses ~15 sentences across 44 lines, so check for a stuck loop directly:
+        # every line of the chapter at most once more than it appears (a sentence split by a page
+        # break, or the one repeated on resume), and never the same sentence three times running.
+        lines = frame(page).locator('body').evaluate("""b => [...b.ownerDocument.querySelectorAll('h1, p')].map(e => e.textContent)""")
+        total = sum(len(re.findall(r'[^.!?”]+[.!?]+[”]?', l)) or 1 for l in lines)
+        assert len(spoken) <= total + 8, f'spoke {len(spoken)} lines for a {total}-sentence chapter: {spoken[-8:]}'
+        runs = max((len(list(g)) for _, g in __import__('itertools').groupby(spoken)), default=0)
+        assert runs <= 2, f'the same sentence was read {runs} times in a row: {spoken[-8:]}'
     _(page)
 
     @test('Read-aloud restarts from the new page after manual navigation, and stops when the book closes')
@@ -1283,7 +1290,7 @@ def run_v2(browser):
         wait_until(page, "document.querySelector('.listen')?.classList.contains('is-playing')", timeout=10000)
         expect(page.locator('#l-chapter')).to_contain_text('of 3')
         shot(page, '47-librivox-listen')
-        page.get_by_role('button', name='Pause').click()
+        stop_if_playing(page)
         page.goto(FEAT + '/#/book/gutenberg:1342')
         panel.get_by_role('button', name='Find recordings').click()
         panel.get_by_role('button', name=re.compile('Save for offline')).click()
@@ -1293,7 +1300,7 @@ def run_v2(browser):
         page.get_by_role('button', name='Next chapter').click()
         wait_until(page, "document.querySelector('.listen')?.classList.contains('is-playing')", timeout=10000)
         ctx.set_offline(False)
-        page.get_by_role('button', name='Pause').click()
+        stop_if_playing(page)
         page.goto(FEAT + '/#/shelf')
         card = page.locator('.shelf-card').filter(has_text='Pride and Prejudice')
         expect(card.get_by_role('link', name='Listen to the saved audio')).to_have_attribute('href', re.compile('lv%3A'))
@@ -1518,6 +1525,145 @@ def run_v2(browser):
     _(k)
     c.close()
 
+GRP = 'http://localhost:4324'
+
+def run_groups(browser):
+    def sign_up(page, email):
+        page.goto(GRP + '/#/account')
+        page.get_by_role('button', name='Create account').first.click()
+        page.fill('#email', email); page.fill('#password', 'correct-horse-9')
+        page.locator('#auth-submit').click()
+        expect(page.get_by_role('heading', name='Save your recovery code')).to_be_visible(timeout=10000)
+        page.check('#saved'); page.get_by_role('button', name='Continue').click()
+        expect(page.locator('.account')).to_contain_text(email, timeout=10000)
+
+    da = new_context(browser)
+    pa = watch(da.new_page(), 'club-ada')
+    db = new_context(browser)
+    pb = watch(db.new_page(), 'club-ben')
+
+    @test('Book club: start a club from a book page, share a passage and AI discussion questions from the reader')
+    def _(pa):
+        sign_up(pa, 'ada@club.test')
+        pa.goto(GRP + '/#/settings')
+        pa.fill('#access-code', 'test-code'); pa.get_by_role('button', name='Save code').click()
+        expect(pa.locator('#code-msg')).to_contain_text('Code accepted')
+        download_first_classic_at(pa, GRP)
+        pa.locator('[data-act="toc"]').click()
+        pa.get_by_role('dialog', name='Contents').get_by_role('button', name='Notes in the Margins').click()
+        expect(pa.locator('#r-chapter')).to_have_text('Notes in the Margins')
+        pa.wait_for_timeout(1500)
+        pa.locator('[data-act="close"]').first.click()
+        pa.goto(GRP + '/#/book/gutenberg:1342')
+        panel = pa.locator('.ab-panel', has_text='Read together')
+        panel.get_by_role('link', name='Start a book club').click()
+        expect(pa.locator('#gn-name')).to_have_value('Pride and Prejudice club')
+        expect(pa.locator('#gn-book')).to_have_value('gutenberg:1342')
+        pa.fill('#gn-you', 'Ada')
+        pa.get_by_role('button', name='Create group').click()
+        expect(pa.locator('h1')).to_have_text('Pride and Prejudice club', timeout=10000)
+        code = pa.locator('.invite-code').inner_text().strip()
+        assert re.fullmatch(r'[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}', code), code
+        globals()['_club_code'] = code
+        globals()['_club_url'] = pa.url
+        expect(pa.locator('#g-members')).to_contain_text('Ada (you)')
+        pa.fill('#g-text', 'The margin notes are my favourite part so far.')
+        pa.get_by_role('button', name='Post', exact=True).click()
+        expect(pa.locator('#g-posts')).to_contain_text('my favourite part')
+        # From inside the book: share a passage and post discussion questions.
+        pa.goto(GRP + '/#/read/gutenberg%3A1342'); wait_reader(pa)
+        expect(pa.locator('[data-act="club"]')).to_be_visible(timeout=10000)
+        frame(pa).locator('body').evaluate("""b => { const d = b.ownerDocument; const p = d.querySelectorAll('p')[1]; const t = p.firstChild; const r = d.createRange(); r.setStart(t, 0); r.setEnd(t, 40); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); }""")
+        pa.get_by_role('button', name='Share to book club').click()
+        dlg = pa.get_by_role('dialog', name='Share to a group')
+        dlg.locator('#sg-text').fill('Look at this line.')
+        dlg.get_by_role('button', name='Share').click()
+        expect(pa.locator('.toast').filter(has_text='Shared with')).to_be_visible()
+        pa.locator('[data-act="club"]').click()
+        sheet = pa.get_by_role('dialog', name='Book club')
+        sheet.get_by_role('button', name='Discussion questions for this chapter').click()
+        expect(pa.locator('.toast').filter(has_text='Discussion questions posted')).to_be_visible(timeout=10000)
+        pa.locator('[data-act="close"]').first.click()
+        pa.goto(globals()['_club_url'])
+        posts = pa.locator('#g-posts')
+        expect(posts.locator('.post.questions')).to_contain_text('Discussion questions')
+        expect(posts.locator('.post-quote')).to_contain_text('Pride and Prejudice')
+        expect(posts).to_contain_text('Look at this line.')
+        shot(pa, '53-book-club', full=True)
+    _(pa)
+
+    @test('Book club: a friend joins with the invite link, sees progress, spoiler-safe posts, replies; the leader can remove posts')
+    def _(pb):
+        sign_up(pb, 'ben@club.test')
+        pb.goto(GRP + '/#/groups/join?code=' + globals()['_club_code'].lower())
+        expect(pb.locator('#gj-code')).to_have_value(globals()['_club_code'].lower())
+        pb.fill('#gj-name', 'Ben')
+        pb.get_by_role('button', name='Join', exact=True).click()
+        expect(pb.locator('h1')).to_have_text('Pride and Prejudice club', timeout=10000)
+        members = pb.locator('#g-members')
+        expect(members).to_contain_text('Ben (you)')
+        expect(members).to_contain_text('Hasn’t started')
+        expect(members.locator('.member', has_text='Ada')).to_contain_text('Notes in the Margins')
+        assert '@club.test' not in pb.content(), 'emails must never be shown to other members'
+        # Ada posted from further along than Ben has read: hidden until he asks.
+        spoilers = pb.locator('.spoiler')
+        expect(spoilers.first).to_be_visible()
+        expect(pb.locator('#g-posts')).not_to_contain_text('my favourite part')
+        shot(pb, '54-club-spoiler-safe')
+        thread = pb.locator('.thread', has_text='Posted from further along').filter(has=pb.locator('[data-reveal]')).last
+        thread.get_by_role('button', name='Show anyway').click()
+        expect(pb.locator('#g-posts')).to_contain_text('my favourite part')
+        pb.locator('.thread', has_text='my favourite part').get_by_role('button', name='Reply').click()
+        expect(pb.locator('#g-replying')).to_contain_text('Replying to Ada')
+        pb.fill('#g-text', 'Agreed, they are lovely.')
+        pb.get_by_role('button', name='Post', exact=True).click()
+        expect(pb.locator('.post.reply')).to_contain_text('Agreed, they are lovely.')
+        # Ada sees the reply and Ben's membership, and as leader removes the reply.
+        pa.get_by_role('button', name='Refresh').click()
+        expect(pa.locator('#g-members')).to_contain_text('Ben')
+        reply = pa.locator('.post.reply', has_text='Agreed')
+        reply.get_by_role('button', name='Remove').click()
+        pa.get_by_role('dialog', name='Remove this post?').get_by_role('button', name='Remove').click()
+        expect(pa.locator('.thread', has_text='my favourite part')).to_contain_text('Removed by the group leader.')
+    _(pb)
+
+    @test('Bible study group: follow the group’s reading plan and share a verse to the group')
+    def _(pb):
+        pb.goto(GRP + '/#/groups')
+        expect(pb.locator('.group-card')).to_have_count(1)
+        pb.get_by_role('button', name='Bible study').click()
+        pb.fill('#gn-name', 'Gospels together')
+        pb.select_option('#gn-plan', 'gospels-30')
+        pb.get_by_role('button', name='Create group').click()
+        expect(pb.locator('h1')).to_have_text('Gospels together', timeout=10000)
+        expect(pb.locator('.group-plan')).to_contain_text('Group day 1 of 30')
+        pb.get_by_role('button', name='Follow this plan with the group').click()
+        expect(pb.locator('.toast').filter(has_text='following the plan')).to_be_visible()
+        expect(pb.locator('.group-plan')).to_contain_text('You’ve read 0 of 30 days')
+        pb.goto(GRP + '/#/bible/John/3')
+        pb.locator('#v16').click()
+        pb.get_by_role('button', name='Group', exact=True).click()
+        dlg = pb.get_by_role('dialog', name='Share to a group')
+        expect(dlg).to_contain_text('John 3:16')
+        dlg.get_by_role('button', name='Share').click()
+        expect(pb.locator('.toast').filter(has_text='Shared with “Gospels together”')).to_be_visible()
+        pb.locator('.toast').get_by_role('button', name='Open').click()
+        expect(pb.locator('.post-quote')).to_contain_text('For God so loved')
+        link = pb.locator('.post-quote cite a')
+        expect(link).to_have_attribute('href', '#/bible/John/3?v=16')
+        shot(pb, '55-bible-group')
+        pb.set_viewport_size({'width': 360, 'height': 760})
+        for url in (globals()['_club_url'], GRP + '/#/groups'):
+            pb.goto(url); pb.wait_for_timeout(1200)
+            assert no_hscroll(pb), f'horizontal scroll at 360px on {url}'
+        shot(pb, '56-phone-groups')
+    _(pb)
+    da.close(); db.close()
+
+def stop_if_playing(page):
+    # Fixture recordings are a few seconds long, so playback may already have reached the end.
+    page.evaluate("() => { const b = document.querySelector('[data-l=\"toggle\"]'); if (document.querySelector('.listen')?.classList.contains('is-playing')) b.click(); }")
+
 def download_first_classic_at(page, base):
     page.goto(base + '/#/book/gutenberg:1342')
     page.get_by_role('button', name=re.compile('Download')).click()
@@ -1537,6 +1683,8 @@ def main():
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4322', '--accounts'], cwd=ROOT),
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4323'], cwd=ROOT,
                          env={**os.environ, 'MAVIS_ACCESS_CODE': 'test-code', 'TTS_PROVIDER': 'fish', 'FISH_AUDIO_API_KEY': 'fixture', 'LLM_PROVIDER': 'openai', 'LLM_MODEL': 'gpt-5.6-luna', 'LLM_API_KEY': 'fixture', 'EDENAI_API_KEY': 'fixture'}),
+        subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4324', '--accounts'], cwd=ROOT,
+                         env={**os.environ, 'MAVIS_ACCESS_CODE': 'test-code', 'LLM_PROVIDER': 'openai', 'LLM_MODEL': 'gpt-5.6-luna', 'LLM_API_KEY': 'fixture'}),
     ]
     time.sleep(2.5)
     started = time.time()
@@ -1550,6 +1698,8 @@ def main():
             run_accounts(browser)
             print('0.2 features (cloud voice, AI, Jev on fixtures):')
             run_v2(browser)
+            print('Book clubs and study groups (accounts + AI on fixtures):')
+            run_groups(browser)
             version = browser.version
             browser.close()
     finally:

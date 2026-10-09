@@ -63,8 +63,9 @@ export async function myPlans() {
   return (await store.listRecords('plans')).filter((r) => r.planId).sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
 }
 
-export async function startPlan(planId) {
-  return store.putRecord('plans', planId, { planId, startDate: localDate(), startedAt: Date.now(), done: {}, log: {} });
+export async function startPlan(planId, { startDate } = {}) {
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(startDate || '') ? startDate : localDate();
+  return store.putRecord('plans', planId, { planId, startDate: start, startedAt: Date.now(), done: {}, log: {} });
 }
 
 export async function stopPlan(planId) { await store.deleteRecord('plans', planId); }

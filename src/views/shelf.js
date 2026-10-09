@@ -60,6 +60,7 @@ export async function render(root, route, { navigate, token }) {
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <a class="btn" href="#/quotes">${icon('quote', { size: 20 })} Saved quotes</a>
             <a class="btn" href="#/words">${icon('dict', { size: 20 })} Word builder</a>
+            ${isKids() ? '' : html`<a class="btn" href="#/groups">${icon('user', { size: 20 })} Book clubs</a>`}
             <label class="btn btn-primary" for="import-input" style="cursor:pointer">${icon('upload', { size: 20 })} Import a book</label>
             <input id="import-input" type="file" accept="${ACCEPT}" multiple class="visually-hidden" />
           </div>

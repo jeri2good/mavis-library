@@ -8,6 +8,7 @@ import { fontFaceCSS, READER_FONTS } from '../lib/fonts.js';
 import { define, normalizeTerm } from '../lib/dictionary.js';
 import * as vocab from '../lib/vocab.js';
 import { trackReading, isKids } from '../lib/kids.js';
+import { groupsForBook, myGroups } from '../lib/groups.js';
 import { listen } from '../lib/voice-input.js';
 import { ReadAloud, ttsSupported, whenVoicesReady, speakWord } from '../lib/tts.js';
 import { stateBlock } from '../components.js';
@@ -101,6 +102,7 @@ async function renderEpub(root, item, file, close, route) {
       <button class="icon-btn" type="button" data-act="lookup" aria-label="Look up a word">${icon('dict')}</button>
       <button class="icon-btn" type="button" data-act="ask" aria-label="Ask Mavis about this book">${icon('spark')}</button>
       <button class="icon-btn" type="button" data-act="companion" aria-label="Reading companion: picture this page, story so far, characters">${icon('present')}</button>
+      <button class="icon-btn" type="button" data-act="club" aria-label="Book club: share and discuss" ${groupsForBook(key).length ? '' : 'hidden'}>${icon('user')}</button>
       <button class="icon-btn" type="button" data-act="immersive" aria-label="Focus mode (hide controls)">${icon('expand')}</button>
     </header>
     <div class="reader-stage" id="stage">
@@ -347,6 +349,7 @@ async function renderEpub(root, item, file, close, route) {
       <button type="button" class="icon-btn" data-sel="quote" aria-label="Save as a quote">${icon('star', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="share" aria-label="Share quote">${icon('share', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="picture" aria-label="Picture this passage">${icon('present', { size: 20 })}</button>
+      ${groupsForBook(key).length ? html`<button type="button" class="icon-btn" data-sel="club" aria-label="Share to book club">${icon('user', { size: 20 })}</button>` : ''}
       <button type="button" class="icon-btn" data-sel="copy" aria-label="Copy text">${icon('copy', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="close" aria-label="Close">${icon('close', { size: 18 })}</button>`);
     sel.hidden = false;
@@ -387,6 +390,10 @@ async function renderEpub(root, item, file, close, route) {
       annotations.push(a); drawAnnotation(a);
       hideSelection(true);
       toast('Saved to your quotes.', { action: { label: 'View', run: () => { location.hash = '#/quotes'; } } });
+    } else if (b.dataset.sel === 'club') {
+      const { openShareToGroup } = await import('../lib/groups-ui.js');
+      hideSelection(true);
+      openShareToGroup({ groups: groupsForBook(key), quote: text.slice(0, 1200), cite: citeHere(), ref: { kind: 'book', key, cfi: cfiRange }, chapter: chapterLabel(lastLoc), percent: pct(), container: readerEl });
     } else if (b.dataset.sel === 'picture') {
       openReadingCompanion('picture');
     } else if (b.dataset.sel === 'share') {
@@ -589,6 +596,7 @@ async function renderEpub(root, item, file, close, route) {
     if (act === 'display') openDisplay();
     if (act === 'tts') toggleTts();
     if (act === 'lookup') openDictionary('');
+    if (act === 'club') openClub();
     if (act === 'ask') askMavis();
     if (act === 'companion') openReadingCompanion();
     if (act === 'immersive') setImmersive(!immersive);
@@ -1130,6 +1138,20 @@ async function renderEpub(root, item, file, close, route) {
       chapter: () => chapterLabel(rendition.location || lastLoc), pageText, selectionText: () => sel, textSoFar, previousSections,
     }, { tab });
   }
+
+  async function openClub() {
+    const selection = pendingSel?.text || '';
+    const selCfi = pendingSel?.cfiRange || '';
+    hideSelection(true);
+    const { openBookClubSheet } = await import('../lib/groups-ui.js');
+    openBookClubSheet({
+      groups: groupsForBook(key), title: item.title, author: (item.authors || []).join(', '), container: readerEl,
+      chapter: () => chapterLabel(rendition.location || lastLoc), textSoFar, percent: pct, selection: () => selection,
+      cite: citeHere, ref: () => ({ kind: 'book', key, cfi: selCfi || (rendition.location || lastLoc)?.start?.cfi || '' }),
+    });
+  }
+  // Show the Book club button once the group list is known (it's cached between visits).
+  myGroups().then(() => { const b = root.querySelector('[data-act="club"]'); if (b) b.hidden = !groupsForBook(key).length; }).catch(() => {});
 
   async function askMavis() {
     const selection = pendingSel?.text || '';

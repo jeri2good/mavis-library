@@ -1,8 +1,8 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 18:44 EDT · Chromium 141.0.7390.37 (headless, Linux) · 180s
+Run: 2026-10-09 19:18 EDT · Chromium 141.0.7390.37 (headless, Linux) · 197s
 
-**61 of 61 checks passed.**
+**64 of 64 checks passed.**
 
 | Result | Check |
 |---|---|
@@ -67,6 +67,9 @@ Run: 2026-10-09 18:44 EDT · Chromium 141.0.7390.37 (headless, Linux) · 180s
 | ✅ pass | Word builder: save a word from the dictionary with its sentence, add one by typing, explain it simply, practice, and words move up |
 | ✅ pass | Phone at 360px: Bible, search, quotes, and settings fit without sideways scrolling |
 | ✅ pass | Kids mode: a grown-up turns it on with a PIN; children’s books only, no store links, kid-safe AI, grown-up screens need the PIN, PIN turns it off |
+| ✅ pass | Book club: start a club from a book page, share a passage and AI discussion questions from the reader |
+| ✅ pass | Book club: a friend joins with the invite link, sees progress, spoiler-safe posts, replies; the leader can remove posts |
+| ✅ pass | Bible study group: follow the group’s reading plan and share a verse to the group |
 
 ## Console and CSP problems seen during the run
 

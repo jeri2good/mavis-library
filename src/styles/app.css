@@ -991,3 +991,46 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 3px; paddi
 .bible-stories a:hover { border-color: var(--primary); }
 .practice.is-kids .practice-opt { min-height: 64px; font-size: 1.15rem; }
 .btn-lg { min-height: 56px; padding: 0 22px; font-size: 1.08rem; }
+
+/* ---------- Book clubs and groups ---------- */
+.group-forms { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); margin-top: 22px; align-items: start; }
+.group-forms .panel { display: grid; gap: 12px; }
+.group-forms h2 { margin: 0; }
+.group-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.group-card { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 16px; background: var(--paper-raised); border: 1px solid var(--line); text-decoration: none; color: var(--ink); }
+.group-card:hover { border-color: var(--primary); }
+.group-card .cover { width: 46px; flex: none; }
+.group-card-body { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.group-icon { width: 46px; height: 64px; flex: none; display: grid; place-items: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
+.group-icon.big { width: 84px; height: 116px; border-radius: 12px; }
+.group-head { display: flex; gap: 18px; align-items: flex-start; margin-top: 10px; }
+.group-head h1 { margin: 2px 0 6px; }
+.group-cover { width: 84px; flex: none; }
+.group-plan { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+.group-plan > div:first-child { display: grid; gap: 2px; }
+.invite { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.invite-code { font: 700 1rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; padding: 6px 10px; border-radius: 8px; background: var(--paper-sunk); }
+.member-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.member { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--paper-raised); border: 1px solid var(--line); }
+.member-body { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.member-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.avatar { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--primary) 16%, var(--paper-raised)); color: var(--primary); font: 700 1rem var(--font-ui); }
+.avatar.sm { width: 28px; height: 28px; font-size: .85rem; }
+.compose { display: grid; gap: 8px; margin-bottom: 8px; }
+.compose textarea { min-height: 84px; padding: 10px 12px; resize: vertical; }
+.compose-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.thread { display: grid; gap: 8px; padding: 14px 0; border-top: 1px solid var(--line); }
+.post { display: grid; gap: 8px; }
+.post header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.post footer { display: flex; gap: 4px; }
+.post.reply { margin-left: 36px; padding-left: 12px; border-left: 2px solid var(--line); }
+.post.removed { margin-left: 36px; font-style: italic; }
+.post.questions { padding: 12px 14px; border-radius: 14px; background: var(--accent-soft); }
+.post-text { margin: 0; white-space: pre-wrap; line-height: 1.55; }
+.post-quote { margin: 0; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--paper-raised); border-radius: 0 10px 10px 0; font-family: var(--font-read); line-height: 1.55; }
+.post-quote cite { display: block; margin-top: 6px; font: 600 .82rem var(--font-ui); font-style: normal; color: var(--ink-soft); }
+.q-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.spoiler { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; background: var(--paper-sunk); color: var(--ink-soft); font-size: .92rem; }
+.group-mini { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.group-mini a { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--paper-raised); border: 1px solid var(--line); text-decoration: none; color: var(--ink); }
+@media (max-width: 520px) { .group-head { gap: 12px; } .group-cover, .group-icon.big { width: 64px; } .post.reply, .post.removed { margin-left: 14px; } }

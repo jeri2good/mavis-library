@@ -167,6 +167,7 @@ async function fixtureFetch(url, opts = {}) {
         const lines = Array.from({ length: n }, (_, i) => ({ i, speaker: i === 0 ? 'The Ferryman' : 'The Keeper' }));
         return say(JSON.stringify({ speakers: { 'The Ferryman': { gender: 'male', age: 'old' }, 'The Keeper': { gender: 'female', age: 'adult' } }, lines }));
       }
+      if (/write discussion questions/i.test(sys)) return say(JSON.stringify({ questions: ['Why do you think the keeper writes in the margins?', 'Which note surprised you most, and why?', 'What would you have written back?'] }));
       if (/explain one English word/i.test(sys)) {
         globalThis.__lastWord = { system: sys, user: q };
         return say(JSON.stringify({ meaning: /kids mode/.test(sys) ? 'A safe place by the sea where boats can stay.' : 'A sheltered place where ships can stay.', example: 'The boats rested in the harbor.' }));

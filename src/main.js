@@ -8,6 +8,7 @@ import { brandMark, installCoverFallback } from './components.js';
 import { enhanceCovers } from './lib/covers.js';
 import { StorageUnavailableError } from './lib/idb.js';
 import { isKids, applyKidsClass, onKids, grownUpUnlocked, askPin, kidsName } from './lib/kids.js';
+import { watchProgress, forgetCache as forgetGroups } from './lib/groups.js';
 
 const routes = {
   '': () => import('./views/home.js'),
@@ -22,6 +23,7 @@ const routes = {
   listen: () => import('./views/listen.js'),
   settings: () => import('./views/settings.js'),
   words: () => import('./views/words.js'),
+  groups: () => import('./views/groups.js'),
 };
 
 const NAV = [
@@ -39,7 +41,7 @@ const KIDS_NAV = [
   { id: 'bible', label: 'Bible', icon: 'cross', href: '#/bible' },
   { id: 'shelf', label: 'My books', icon: 'shelf', href: '#/shelf' },
 ];
-const GROWN_UP = new Set(['settings', 'account']);
+const GROWN_UP = new Set(['settings', 'account', 'groups']);
 
 export function parseRoute(hash = location.hash) {
   const raw = hash.replace(/^#\/?/, '');
@@ -133,7 +135,7 @@ export async function renderRoute() {
   }
 
   for (const a of document.querySelectorAll('[data-nav]')) {
-    const active = a.dataset.nav === (route.name || 'discover') || (route.name === 'book' && a.dataset.nav === 'search') || ((route.name === 'quotes' || route.name === 'listen') && a.dataset.nav === 'shelf') || (route.name === 'words' && a.dataset.nav === 'shelf' && !isKids());
+    const active = a.dataset.nav === (route.name || 'discover') || (route.name === 'book' && a.dataset.nav === 'search') || ((route.name === 'quotes' || route.name === 'listen') && a.dataset.nav === 'shelf') || ((route.name === 'words' || route.name === 'groups') && a.dataset.nav === 'shelf' && !isKids());
     if (active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
 
@@ -220,6 +222,7 @@ async function boot() {
   applyKidsClass();
   renderShell();
   onKids(() => { renderShell(); navigate('/', { replace: true }); });
+  watchProgress();
 
   window.addEventListener('error', (e) => {
     if (e.message && !/ResizeObserver/.test(e.message)) console.error(e.error || e.message);
@@ -234,7 +237,7 @@ async function boot() {
   onAuth(async ({ user: u, event }) => {
     if (event?.error) { toast(event.error, { tone: 'error', timeout: 9000 }); return; }
     if (event === 'SIGNED_IN' && u && store.getOwner() !== u.id) { await onSignedIn(u); renderRoute(); }
-    if (event === 'SIGNED_OUT') { stopSync(); store.setOwner(store.GUEST); renderRoute(); }
+    if (event === 'SIGNED_OUT') { stopSync(); forgetGroups(); store.setOwner(store.GUEST); renderRoute(); }
   });
   // Restore a saved session right away (works offline), then confirm it with the server.
   if (currentUser()) await onSignedIn(currentUser(), { quiet: true });

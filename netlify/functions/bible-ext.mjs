@@ -86,7 +86,7 @@ export function normalizeCommentary(j) {
   return { intro: intro || undefined, sections };
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   if (softLimit(`bx:${clientKey(req, context)}`, { limit: 240 })) return fail(429, 'rate_limited', 'Too many requests. Wait a minute.');
@@ -115,6 +115,14 @@ export default async (req, context) => {
   } catch (err) {
     return fail(err?.name === 'AbortError' ? 504 : 502, 'upstream_unreachable', 'The Bible service didn’t answer. Try again in a moment.');
   }
+};
+
+export default async (req, context) => {
+  const res = await handler(req, context);
+  if (new URL(req.url).searchParams.get('debug') === '1' && res.status !== 200) {
+    return json({ debugStatus: res.status, body: await res.text() });
+  }
+  return res;
 };
 
 export const config = {

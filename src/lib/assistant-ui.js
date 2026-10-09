@@ -24,7 +24,7 @@ export async function openAssistant({ container, getContext, actions = {} }) {
   const d = openDialog({
     title: 'Ask Mavis', variant: 'side', container, className: 'assistant',
     body: html`
-      <p class="hint">${f.assistant.provider === 'anthropic' ? 'Claude' : 'Your AI provider'} (${f.assistant.model}) answers using the part of “${ctx.title}” you’re reading. Answers can be wrong; check anything important.</p>
+      <p class="hint">${f.assistant.provider === 'anthropic' ? 'Claude' : 'OpenAI'} (${f.assistant.model}) answers using the part of “${ctx.title}” you’re reading. Answers can be wrong; check anything important.</p>
       <div class="chat" id="chat" aria-live="polite"></div>
       <div class="chips" id="suggest">${SUGGESTIONS[ctx.bible ? 'bible' : 'book'].map((s) => html`<button type="button" class="chip" data-suggest="${s}">${s}</button>`)}</div>
       <form class="chat-form" id="chat-form">
@@ -89,7 +89,7 @@ function consent(container) {
     const f = features();
     const d = openDialog({
       title: 'Before you ask', container,
-      body: html`<p class="dialog-text">Ask Mavis sends your question, the chapter or passage you’re on, and any text you selected to ${f.assistant?.provider === 'openai' ? 'your AI provider' : 'Anthropic (Claude)'} to write an answer. Each question uses a little of the site owner’s AI credit.</p>
+      body: html`<p class="dialog-text">Ask Mavis sends your question, the chapter or passage you’re on, and any text you selected to ${f.assistant?.provider === 'openai' ? 'OpenAI' : 'Anthropic (Claude)'} to write an answer. Each question uses a little of the site owner’s AI credit.</p>
         <p class="dialog-text">Nothing is sent until you ask, and nothing else from your library is shared.</p>
         <div class="dialog-actions"><button type="button" class="btn btn-quiet" data-close>Not now</button><button type="button" class="btn btn-primary" data-ok autofocus>Got it</button></div>`,
       onClose: () => resolve(ok),

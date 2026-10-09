@@ -86,7 +86,10 @@ async function callOpenAI(cfg, system, messages) {
     method: 'POST',
     headers: { authorization: `Bearer ${cfg.key}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: cfg.model, max_tokens: 900,
+      model: cfg.model,
+      // OpenAI's current models take max_completion_tokens (which also covers
+      // their internal reasoning); other compatible APIs use max_tokens.
+      ...(/api\.openai\.com/.test(cfg.base) ? { max_completion_tokens: 4000 } : { max_tokens: 900 }),
       messages: [{ role: 'system', content: system }, ...messages],
       tools: TOOLS.map((t) => ({ type: 'function', function: t })),
     }),
@@ -99,7 +102,11 @@ async function callOpenAI(cfg, system, messages) {
     try { input = JSON.parse(c.function?.arguments || '{}'); } catch { /* ignore */ }
     return { name: c.function?.name, input };
   });
-  return { reply: (msg.content || '').trim(), actions };
+  const reply = (typeof msg.content === 'string' ? msg.content : '').trim();
+  if (!reply && !actions.length && j.choices?.[0]?.finish_reason === 'length') {
+    throw Object.assign(new Error('The AI ran out of room before answering. Try a shorter question.'), { status: 502 });
+  }
+  return { reply, actions };
 }
 
 export default async (req, context) => {

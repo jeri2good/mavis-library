@@ -184,7 +184,10 @@ export class ReadAloud {
     if (!ttsSupported) throw new Error('Read-aloud isn’t supported in this browser.');
     this.cancelSpeech();
     this.state = 'loading'; this.emit();
-    this.sentences = await this.gather();
+    const sentences = await this.gather();
+    // Paused or stopped while the page text was being gathered.
+    if (this.state !== 'loading') return;
+    this.sentences = sentences;
     this.idx = 0;
     this.requestWakeLock();
     this.setupMediaSession();
@@ -245,7 +248,9 @@ export class ReadAloud {
     const after = this.r.location?.start?.cfi;
     if (!after || after === before) { this.stop({ reason: 'end' }); return; }
     if (this.sleepChapter != null && this.r.location.start.index !== this.sleepChapter) { this.stop({ reason: 'sleep' }); return; }
-    this.sentences = await this.gather();
+    const sentences = await this.gather();
+    if (this.state !== 'loading') { this.sentences = []; return; }
+    this.sentences = sentences;
     this.idx = 0;
     if (!this.sentences.length) return this.turnPage();
     this.state = 'playing';

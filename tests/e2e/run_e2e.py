@@ -394,6 +394,8 @@ def run_public(browser):
         page.locator('[data-act="toc"]').click()
         page.get_by_role('dialog', name='Contents').get_by_role('button', name='The Morning Watch').click()
         expect(page.locator('#r-chapter')).to_have_text('The Morning Watch')
+        expect(page.locator('#r-page')).to_contain_text(re.compile(r'pages? 1\b'))
+        page.wait_for_timeout(300)
         page.locator('[data-act="tts"]').click()
         expect(page.locator('#tts')).to_be_visible()
         expect(page.locator('#tts-voice option')).to_have_count(2)
@@ -457,7 +459,7 @@ def run_public(browser):
         inp.set_input_files(str(FILES / 'tide-tables.txt'))
         expect(page.locator('.toast').filter(has_text='converted from plain text')).to_be_visible()
         inp.set_input_files(str(FILES / 'field-notes.pdf'))
-        expect(page.locator('.toast').filter(has_text='field-notes')).to_be_visible()
+        expect(page.locator('.toast').filter(has_text='Imported “field-notes”')).to_be_visible()
         for f, msg in [('not-a-book.epub', "isn't a ZIP"), ('broken.epub', 'missing its EPUB container'), ('drm.epub', 'DRM-protected'), ('huge.epub', 'limited to 60 MB'), ('picture.png', "isn't a supported book file")]:
             inp.set_input_files(str(FILES / f))
             expect(page.locator('.toast-error').filter(has_text=msg)).to_be_visible()

@@ -211,6 +211,22 @@ await test('assistant: sends passage + tools to Anthropic and returns reply and 
   assert.ok(sent.body.tools.some((t) => t.name === 'go_to' && t.input_schema));
 });
 
+await test('assistant: OpenAI provider sends max_completion_tokens and maps tool calls', async () => {
+  process.env.LLM_PROVIDER = 'openai'; process.env.LLM_MODEL = 'gpt-test';
+  let sent;
+  routes = [[(u) => u === 'https://api.openai.com/v1/chat/completions', (u, o) => { sent = { headers: o.headers, body: JSON.parse(o.body) }; return respond({ choices: [{ message: { content: 'Sure.', tool_calls: [{ function: { name: 'car_mode', arguments: '{}' } }] }, finish_reason: 'tool_calls' }] }); }]];
+  const res = await assistant(post('/api/assistant', { messages: [{ role: 'user', content: 'Car mode please' }], context: { title: 'Emma' } }, { 'x-mavis-access': 'right-code' }), ctx('a2'));
+  const body = await res.json();
+  assert.equal(sent.headers.authorization, 'Bearer k');
+  assert.equal(sent.body.model, 'gpt-test');
+  assert.equal(sent.body.max_completion_tokens, 4000);
+  assert.equal(sent.body.max_tokens, undefined);
+  assert.equal(sent.body.messages[0].role, 'system');
+  assert.deepEqual(body.actions, [{ name: 'car_mode', input: {} }]);
+  assert.equal(body.reply, 'Sure.');
+  process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
+});
+
 await test('rank: builds Jev score questions and maps scores to candidates', async () => {
   let sent;
   routes = [[(u) => u === 'https://api.edenai.run/v3/alpha/decisions', (u, o) => { sent = JSON.parse(o.body); return respond({ model: 'typesafe/jev-1', answers: { c0: { score: 4 }, c1: { score: 1 } } }); }]];

@@ -266,6 +266,33 @@ await test('assistant: OpenAI provider sends max_completion_tokens and maps tool
   assert.equal(sent.body.messages[0].role, 'system');
   assert.deepEqual(body.actions, [{ name: 'car_mode', input: {} }]);
   assert.equal(body.reply, 'Sure.');
+  assert.equal(sent.body.reasoning_effort, undefined);
+  process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
+});
+
+await test('assistant: GPT-5 models get reasoning off so tools work; others retry once if asked', async () => {
+  process.env.LLM_PROVIDER = 'openai'; process.env.LLM_MODEL = 'gpt-5.6-luna';
+  const bodies = [];
+  const ok = () => respond({ choices: [{ message: { content: 'Jane Austen wrote it.' }, finish_reason: 'stop' }] });
+  routes = [[(u) => u === 'https://api.openai.com/v1/chat/completions', (u, o) => { bodies.push(JSON.parse(o.body)); return ok(); }]];
+  let res = await assistant(post('/api/assistant', { messages: [{ role: 'user', content: 'Who wrote this?' }], context: { title: 'Emma' } }, { 'x-mavis-access': 'right-code' }), ctx('a3'));
+  assert.equal(res.status, 200);
+  assert.equal(bodies[0].reasoning_effort, 'none');
+  assert.equal(bodies[0].max_completion_tokens, 1200);
+  assert.ok(Array.isArray(bodies[0].tools));
+
+  process.env.LLM_MODEL = 'o-future';
+  bodies.length = 0;
+  routes = [[(u) => u === 'https://api.openai.com/v1/chat/completions', (u, o) => {
+    const b = JSON.parse(o.body); bodies.push(b);
+    return b.reasoning_effort ? ok() : respond({ error: { message: 'Function tools with reasoning_effort are not supported for o-future in /v1/chat/completions. Set reasoning_effort to none.' } }, { status: 400 });
+  }]];
+  res = await assistant(post('/api/assistant', { messages: [{ role: 'user', content: 'Who wrote this?' }], context: { title: 'Emma' } }, { 'x-mavis-access': 'right-code' }), ctx('a4'));
+  assert.equal(res.status, 200);
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].reasoning_effort, undefined);
+  assert.equal(bodies[1].reasoning_effort, 'none');
+  assert.equal((await res.json()).reply, 'Jane Austen wrote it.');
   process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
 });
 

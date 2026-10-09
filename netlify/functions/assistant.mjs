@@ -81,19 +81,37 @@ async function callAnthropic(cfg, system, messages) {
   return { reply, actions };
 }
 
+// OpenAI's GPT-5 family rejects function tools on chat completions unless
+// reasoning is off; "none" also keeps answers fast enough for Netlify's
+// function time limit. LLM_REASONING_EFFORT overrides the default.
+export function reasoningEffort(cfg) {
+  const set = env('LLM_REASONING_EFFORT');
+  if (set) return set === 'default' ? null : set;
+  return /api\.openai\.com/.test(cfg.base) && /^gpt-5/i.test(cfg.model) ? 'none' : null;
+}
+
 async function callOpenAI(cfg, system, messages) {
-  const r = await fetch(`${cfg.base}/chat/completions`, {
+  const official = /api\.openai\.com/.test(cfg.base);
+  const send = (effort) => fetch(`${cfg.base}/chat/completions`, {
     method: 'POST',
     headers: { authorization: `Bearer ${cfg.key}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       model: cfg.model,
       // OpenAI's current models take max_completion_tokens (which also covers
-      // their internal reasoning); other compatible APIs use max_tokens.
-      ...(/api\.openai\.com/.test(cfg.base) ? { max_completion_tokens: 4000 } : { max_tokens: 900 }),
+      // any internal reasoning); other compatible APIs use max_tokens.
+      ...(official ? { max_completion_tokens: effort === 'none' ? 1200 : 4000 } : { max_tokens: 900 }),
+      ...(effort ? { reasoning_effort: effort } : {}),
       messages: [{ role: 'system', content: system }, ...messages],
       tools: TOOLS.map((t) => ({ type: 'function', function: t })),
     }),
   });
+  const effort = reasoningEffort(cfg);
+  let r = await send(effort);
+  if (r.status === 400 && !effort && official) {
+    // A model that needs reasoning off for tools says so; retry once that way.
+    const peek = await r.clone().json().catch(() => ({}));
+    if (/reasoning_effort/i.test(peek.error?.message || '')) r = await send('none');
+  }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(j.error?.message ? `AI provider: ${j.error.message}` : `AI provider answered ${r.status}.`), { status: 502 });
   const msg = j.choices?.[0]?.message || {};

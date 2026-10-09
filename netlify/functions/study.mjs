@@ -29,7 +29,7 @@ const tasks = {
     const text = cut(b.text, 30_000);
     if (text.length < 40) return { summary: '' };
     const summary = await complete({
-      system: 'You summarize one chapter of a book for a reader’s private notes. Write 2–4 plain sentences (under 90 words): what happens, who is involved, and any turning point. Use only this chapter’s text; never mention later events. No preamble.',
+      system: 'You summarize one chapter of a book for a reader’s private notes. Write 2–4 plain sentences (under 90 words): what happens, who is involved, and any turning point. Never mention later events. No preamble. Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text.',
       user: `Book: ${about(b)}\nChapter: ${cut(b.chapter, 160)}\n\n"""${text}"""`,
       maxTokens: 260,
     });
@@ -40,7 +40,7 @@ const tasks = {
     const prior = summariesBlock(b.summaries);
     const cur = cut(b.current?.text, 12_000);
     const recap = await complete({
-      system: 'You are Mavis, a reading companion. Give a warm, spoken-style “story so far” recap for a reader returning to a book, in 120–180 words: main characters, what has happened, and where things stand at the reader’s exact point. Only use what you are given — it ends where the reader stopped; never hint at what happens next. No headings or lists; it will be read aloud.',
+      system: 'You are Mavis, a reading companion. Give a warm, spoken-style “story so far” recap for a reader returning to a book, in 120–180 words: main characters, what has happened, and where things stand at the reader’s exact point. Only use what you are given — it ends where the reader stopped; never hint at what happens next. No headings or lists; it will be read aloud. Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text.',
       user: `Book: ${about(b)}\n\nChapter summaries so far:\n${prior || '(this is the first chapter)'}\n\nCurrent chapter: ${cut(b.current?.chapter, 160)}\nText of the current chapter up to where the reader stopped:\n"""${cur}"""`,
       maxTokens: 450,
     });
@@ -51,7 +51,7 @@ const tasks = {
     const prior = summariesBlock(b.summaries);
     const cur = cut(b.current?.text, 10_000);
     const out = await complete({
-      system: 'You build a character list for a reader, using only the text given (it ends where the reader stopped — never reveal later events). Return JSON: {"characters":[{"name":"","aka":[""],"role":"one short phrase","description":"1–2 sentences, spoiler-free","firstSeen":"chapter name","importance":1-3,"relations":[{"to":"other character name","relation":"short phrase"}]}]}. Include up to 16 characters, most important first (importance 3 = central).',
+      system: 'You build a character list for a reader, using only the text given (it ends where the reader stopped — never reveal later events). Return JSON: {"characters":[{"name":"","aka":[""],"role":"one short phrase","description":"1–2 sentences, spoiler-free","firstSeen":"chapter name","importance":1-3,"relations":[{"to":"other character name","relation":"short phrase"}]}]}. Include up to 16 characters, most important first (importance 3 = central). Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text. A character the text mentions without naming gets a descriptive name (for example, “the new tenant”).',
       user: `Book: ${about(b)}\n\nChapter summaries so far:\n${prior || '(first chapter)'}\n\nCurrent chapter (${cut(b.current?.chapter, 160)}) up to the reader’s position:\n"""${cur}"""`,
       json: true, maxTokens: 1400,
     });

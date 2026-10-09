@@ -1,35 +1,35 @@
-// TEMPORARY: reports whether the server can reach the public book services.
-// Returns only status codes and timings. Remove after deployment checks.
+// TEMPORARY: inspects Project Gutenberg's OPDS feed shape. Remove after checks.
 import { json, UA } from '../lib/shared.mjs';
 
-const TARGETS = {
-  gutendex: 'https://gutendex.com/books/1342',
-  gutendexList: 'https://gutendex.com/books?search=pride&copyright=false&mime_type=application%2Fepub',
-  gutenbergEpub: 'https://www.gutenberg.org/cache/epub/1342/pg1342-images-3.epub',
-  openlibrary: 'https://openlibrary.org/search.json?q=pride+and+prejudice&limit=1',
-  olCovers: 'https://covers.openlibrary.org/b/isbn/9780141439518-M.jpg?default=false',
-  googleBooks: 'https://www.googleapis.com/books/v1/volumes?q=intitle:pride+inauthor:austen&maxResults=1',
-};
-
-async function probe(url, ua) {
-  const t = Date.now();
+async function get(url) {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 4000);
+  const timer = setTimeout(() => ctl.abort(), 7000);
+  const t = Date.now();
   try {
-    const r = await fetch(url, { method: 'GET', headers: ua ? { 'user-agent': ua } : {}, signal: ctl.signal, redirect: 'follow' });
-    const body = (await r.text()).slice(0, 120).replace(/\s+/g, ' ');
-    return { status: r.status, ms: Date.now() - t, body: r.ok ? body.slice(0, 40) : body };
-  } catch (err) {
-    return { error: `${err.name}: ${String(err.message).slice(0, 120)}`, cause: String(err.cause?.code || err.cause?.message || '').slice(0, 120), ms: Date.now() - t };
-  } finally { clearTimeout(timer); }
+    const r = await fetch(url, { headers: { 'user-agent': UA, accept: 'application/atom+xml, */*' }, signal: ctl.signal });
+    const text = await r.text();
+    return { status: r.status, ms: Date.now() - t, ctype: r.headers.get('content-type'), len: text.length, text };
+  } catch (err) { return { error: String(err) }; } finally { clearTimeout(timer); }
 }
 
-export default async () => {
-  const out = {};
-  await Promise.all(Object.entries(TARGETS).map(async ([k, u]) => {
-    [out[k], out[`${k}_noUA`]] = await Promise.all([probe(u, UA), probe(u, null)]);
-  }));
-  return json(out);
+export default async (req) => {
+  const which = new URL(req.url).searchParams.get('w') || 'search';
+  const urls = {
+    search: 'https://www.gutenberg.org/ebooks/search.opds/?query=pride&sort_order=downloads',
+    popular: 'https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads',
+    book: 'https://www.gutenberg.org/ebooks/1342.opds',
+    subject: 'https://www.gutenberg.org/ebooks/search.opds/?query=s.mystery&sort_order=downloads',
+    page2: 'https://www.gutenberg.org/ebooks/search.opds/?query=pride&sort_order=downloads&start_index=26',
+  };
+  const r = await get(urls[which]);
+  if (r.text) {
+    // Strip the text to tag skeleton: element names and attributes, values masked.
+    const entries = r.text.split('<entry').length - 1;
+    const firstEntry = r.text.slice(r.text.indexOf('<entry'), r.text.indexOf('</entry>') + 8);
+    const head = r.text.slice(0, r.text.indexOf('<entry') > 0 ? r.text.indexOf('<entry') : 1500);
+    return json({ status: r.status, ms: r.ms, ctype: r.ctype, len: r.len, entries, head: head.slice(0, 3000), firstEntry: firstEntry.slice(0, 4000) });
+  }
+  return json(r);
 };
 
 export const config = { path: '/api/diag' };

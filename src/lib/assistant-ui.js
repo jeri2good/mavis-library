@@ -11,7 +11,7 @@ const SUGGESTIONS = {
 /**
  * openAssistant({ container, getContext: () => ({ title, author, chapter, text, selection, bible }), actions: { read_aloud, stop_reading, go_to, car_mode, define_word } })
  */
-export async function openAssistant({ container, getContext, actions = {} }) {
+export async function openAssistant({ container, getContext, actions = {}, initialQuestion = '' }) {
   await loadFeatures();
   if (!can('assistant')) return showSetup(container);
   if (!getSetting('aiConsent', false)) {
@@ -81,6 +81,7 @@ export async function openAssistant({ container, getContext, actions = {} }) {
     const s = e.target.closest('[data-suggest]')?.dataset.suggest;
     if (s) ask(s);
   });
+  if (initialQuestion) ask(initialQuestion);
 }
 
 function consent(container) {

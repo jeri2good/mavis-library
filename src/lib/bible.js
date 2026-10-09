@@ -8,7 +8,104 @@ const books = new Map(); // `${tr}/${id}` → Promise<{chapters}>
 const lex = new Map();
 const xrefs = new Map();
 
-export const TRANSLATIONS = ['kjv', 'web'];
+export const TRANSLATIONS = ['kjv', 'web']; // bundled with the app (offline from the first visit)
+
+/** Every translation Mavis can show. "remote" ones come through /api/bible-ext and are kept offline once read. */
+export const ALL_TRANSLATIONS = [
+  { id: 'kjv', short: 'KJV', name: 'King James Version', local: true },
+  { id: 'web', short: 'WEB', name: 'World English Bible', local: true },
+  { id: 'BSB', short: 'BSB', name: 'Berean Standard Bible', note: 'Berean Standard Bible: public domain (dedicated 2023), berean.bible.' },
+  { id: 'eng_asv', short: 'ASV', name: 'American Standard Version (1901)', note: 'ASV (1901): public domain.' },
+  { id: 'eng_ylt', short: 'YLT', name: 'Young’s Literal Translation', note: 'Young’s Literal Translation: public domain.' },
+  { id: 'eng_gnv', short: 'Geneva', name: 'Geneva Bible (1599)', note: 'Geneva Bible (1599): public domain.' },
+];
+export const trInfo = (id) => ALL_TRANSLATIONS.find((t) => t.id === id) || ALL_TRANSLATIONS[0];
+
+export const COMMENTARIES = [
+  { id: 'matthew-henry', name: 'Matthew Henry' },
+  { id: 'jamieson-fausset-brown', name: 'Jamieson, Fausset & Brown' },
+  { id: 'john-gill', name: 'John Gill' },
+  { id: 'adam-clarke', name: 'Adam Clarke' },
+  { id: 'keil-delitzsch', name: 'Keil & Delitzsch', ot: true },
+  { id: 'john-calvin', name: 'John Calvin' },
+  { id: 'tyndale', name: 'Tyndale Open Study Notes' },
+];
+export const EXTRA_CREDITS = 'More translations and commentaries via the HelloAO Free Use Bible API (bible.helloao.org). Tyndale Open Study Notes © Tyndale House Publishers, CC BY-SA 4.0.';
+
+const remote = new Map(); // url → Promise
+function getRemote(url) {
+  if (!remote.has(url)) {
+    const p = (async () => {
+      let r;
+      try { r = await fetch(url); } catch { throw new Error('This isn’t saved on the device yet and you’re offline. Open it once with signal to keep it.'); }
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || `Couldn’t load it (${r.status}).`);
+      return j;
+    })();
+    remote.set(url, p);
+    p.catch(() => remote.delete(url));
+  }
+  return remote.get(url);
+}
+
+/**
+ * One chapter in any translation:
+ * { tr, verses: [plain text], raw?: [KJV token strings], headings: {v: [..]}, notes: {v: [..]}, subtitle? }
+ */
+export async function loadChapter(tr, book, chapter) {
+  const info = trInfo(tr);
+  if (info.local) {
+    const data = await loadBook(info.id, book);
+    const raw = data.chapters[chapter - 1] || [];
+    return { tr: info.id, verses: info.id === 'kjv' ? raw.map(plain) : raw.slice(), raw: info.id === 'kjv' ? raw : null, headings: {}, notes: {} };
+  }
+  const j = await getRemote(`/api/bible-ext?t=${encodeURIComponent(info.id)}&b=${encodeURIComponent(book)}&c=${chapter}`);
+  return { tr: info.id, verses: j.verses || [], raw: null, headings: j.headings || {}, notes: j.notes || {}, subtitle: j.subtitle, missing: j.missing };
+}
+
+export function loadCommentary(id, book, chapter) {
+  return getRemote(`/api/bible-ext?cm=${encodeURIComponent(id)}&b=${encodeURIComponent(book)}&c=${chapter}`);
+}
+
+const il = new Map();
+/** Word-by-word Hebrew/Greek for a chapter, in English verse numbering. */
+export function loadInterlinear(book, chapter) {
+  const k = `${book}/${chapter}`;
+  if (!il.has(k)) { const p = getJSON(`${BASE}/il/${encodeURIComponent(book)}/${chapter}.json`); il.set(k, p); p.catch(() => il.delete(k)); }
+  return il.get(k);
+}
+
+// ---------- Nave's Topical Bible ----------
+let navesList = null;
+const navesShards = new Map();
+const navesVerse = new Map();
+export function navesTopics() {
+  if (!navesList) { navesList = getJSON(`${BASE}/naves/topics.json`); navesList.catch(() => { navesList = null; }); }
+  return navesList;
+}
+export async function navesTopic(id) {
+  const { topics } = await navesTopics();
+  const t = topics[id];
+  if (!t) return null;
+  const letter = /^[A-Z]/.test(t[0]) ? t[0][0] : '_';
+  if (!navesShards.has(letter)) { const p = getJSON(`${BASE}/naves/${letter}.json`); navesShards.set(letter, p); p.catch(() => navesShards.delete(letter)); }
+  const shard = await navesShards.get(letter);
+  const e = shard[id];
+  return e ? { id, subject: e.s, entries: e.e.map(([label, ...refs]) => ({ label, refs })) } : null;
+}
+export async function navesForVerse(book, chapter, verse) {
+  if (!navesVerse.has(book)) { const p = getJSON(`${BASE}/naves/v/${encodeURIComponent(book)}.json`).catch(() => ({})); navesVerse.set(book, p); }
+  const map = await navesVerse.get(book);
+  const ids = map[`${chapter}:${verse}`] || [];
+  const { topics } = await navesTopics();
+  return ids.map((id) => ({ id, subject: topics[id]?.[0], count: topics[id]?.[1] }));
+}
+/** "Ps 23:1-4" (the format Nave's data uses) → { book, chapter, verse, verseEnd } */
+export function parseShortRef(s) {
+  const m = /^([1-3]?[A-Za-z]+) (\d+)(?::(\d+)(?:-(\d+))?)?$/.exec(String(s || ''));
+  return m ? { book: m[1], chapter: Number(m[2]), verse: m[3] ? Number(m[3]) : null, verseEnd: m[4] ? Number(m[4]) : null } : null;
+}
+export const titleCase = (s) => String(s || '').toLowerCase().replace(/(^|[\s(,'-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
 
 async function getJSON(path) {
   const r = await fetch(path);
@@ -143,12 +240,11 @@ export function labelSync(idx, r) {
 }
 
 export async function passageText(tr, r) {
-  const b = await loadBook(tr, r.book);
-  const ch = b.chapters[r.chapter - 1] || [];
+  const ch = (await loadChapter(tr, r.book, r.chapter)).verses;
   const from = r.verse || 1;
   const to = r.verseEnd || r.verse || ch.length;
   const out = [];
-  for (let v = from; v <= to && v <= ch.length; v++) out.push({ v, text: plain(ch[v - 1]) });
+  for (let v = from; v <= to && v <= ch.length; v++) out.push({ v, text: ch[v - 1] || '' });
   return out;
 }
 

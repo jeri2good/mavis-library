@@ -1,8 +1,8 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 16:48 EDT · Chromium 141.0.7390.37 (headless, Linux) · 129s
+Run: 2026-10-09 17:25 EDT · Chromium 141.0.7390.37 (headless, Linux) · 129s
 
-**48 of 48 checks passed.**
+**54 of 54 checks passed.**
 
 | Result | Check |
 |---|---|
@@ -44,6 +44,11 @@ Run: 2026-10-09 16:48 EDT · Chromium 141.0.7390.37 (headless, Linux) · 129s
 | ✅ pass | Concordance word and phrase search with scope, counts by book, and highlighted matches |
 | ✅ pass | Cross-references and translation compare for a verse |
 | ✅ pass | Church display mode shows large verses, steps with arrow keys, exits with Escape |
+| ✅ pass | Translations: the Berean Standard Bible with section headings and translators’ notes, side by side with the KJV |
+| ✅ pass | Original language: Greek and Hebrew word by word, with transliteration, gloss, Strong’s, and grammar |
+| ✅ pass | Commentary: Matthew Henry on the passage around a verse, and other commentaries |
+| ✅ pass | Topics: Nave’s subjects for a verse, a topic’s passages read in place, and topic search |
+| ✅ pass | Reading plans: start a plan, today’s chapter shows a banner, mark it read, progress and streak update |
 | ✅ pass | Bible read-aloud with the device voice follows verses and continues into the next chapter |
 | ✅ pass | Owner access code unlocks cloud voice, AI, and Jev; a wrong code is refused |
 | ✅ pass | Car mode with the cloud voice: MP3 audio from /api/tts plays, big controls pause and exit |
@@ -51,6 +56,7 @@ Run: 2026-10-09 16:48 EDT · Chromium 141.0.7390.37 (headless, Linux) · 129s
 | ✅ pass | Books: save a quote from a selection, share/copy with citation, and jump back from Saved quotes |
 | ✅ pass | Ask Mavis inside a book sends the chapter and answers |
 | ✅ pass | Cloud voice in a book reads the chapter as audio and follows along |
+| ✅ pass | Commentary summarized by Ask Mavis |
 | ✅ pass | Offline audiobook: save a whole book as audio, listen, keep playing with no network, resume where you stopped |
 | ✅ pass | Picked for you: recommendations from shelf genres, ranked by Jev when available |
 | ✅ pass | Phone at 360px: Bible, search, quotes, and settings fit without sideways scrolling |

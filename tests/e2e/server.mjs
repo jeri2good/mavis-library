@@ -68,6 +68,26 @@ async function fixtureFetch(url, opts = {}) {
     Object.defineProperty(r, 'url', { value: url });
     return r;
   }
+  if (u.host === 'bible.helloao.org') {
+    // Shaped like the HelloAO Free Use Bible API (checked against the live service).
+    const m = /^\/api\/(?:c\/([^/]+)|([^/]+))\/([1-3]?[A-Z]{2,3})\/(\d+)\.json$/.exec(u.pathname);
+    if (!m) return json({ error: 'not found' }, 404);
+    const [, commentary, id, book, ch] = m;
+    if (commentary) {
+      return json({ commentary: { id: commentary }, chapter: { number: Number(ch), introduction: 'Fixture introduction.', content: [
+        { type: 'verse', number: 1, content: [`${commentary} fixture comment on ${book} ${ch}:1-21. Nicodemus came by night.\n\nA second paragraph.`] },
+        { type: 'verse', number: 22, content: [`${commentary} fixture comment on ${book} ${ch}:22-36.`] },
+      ] } });
+    }
+    const n = id === 'BSB' && book === 'JHN' && ch === '3' ? 36 : 20;
+    const content = [{ type: 'heading', content: ['Jesus and Nicodemus'] }];
+    for (let v = 1; v <= n; v++) {
+      if (book === 'JHN' && ch === '3' && v === 16) content.push({ type: 'verse', number: 16, content: ['For God so loved the world that He gave His one and only', { noteId: 1 }, 'Son, that everyone who believes in Him shall not perish but have eternal life.'] });
+      else content.push({ type: 'verse', number: v, content: [`${id} fixture text of ${book} ${ch}:${v}.`] });
+      if (v === 21) content.push({ type: 'heading', content: ['John the Baptist’s Testimony'] });
+    }
+    return json({ translation: { id }, chapter: { number: Number(ch), content, footnotes: [{ noteId: 1, caller: '+', text: 'Or his only begotten', reference: { chapter: 3, verse: 16 } }] } });
+  }
   if (u.host === 'openlibrary.org') {
     if (u.pathname.startsWith('/works/')) return json({ title: 'Dune', description: { value: 'A desert planet, a noble family, and a spice that bends the future.' }, subjects: ['Science fiction', 'Ecology'] });
     return json(openLibrarySearch());

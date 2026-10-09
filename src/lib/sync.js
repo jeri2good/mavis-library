@@ -29,8 +29,8 @@ const toRemote = (r) => {
   return { ...rest, k: suffix(id) };
 };
 const toLocal = (x) => {
-  const { k, _rev, ...rest } = x; // eslint-disable-line no-unused-vars
-  return { ...rest, id: `${uid}|${k}` };
+  const { _rev, ...rest } = x; // eslint-disable-line no-unused-vars
+  return { ...rest, id: `${uid}|${x.k}` };
 };
 
 class SyncError extends Error { constructor(m, status) { super(m); this.status = status; } }

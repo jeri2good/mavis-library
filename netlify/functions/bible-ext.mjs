@@ -75,18 +75,22 @@ export function normalizeChapter(j) {
   return { verses, headings, notes, subtitle: subtitle || undefined };
 }
 
+// Like clean(), but keeps paragraph breaks.
+const cleanProse = (s, max) => String(s || '').replace(/\r/g, '').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ')
+  .replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
+
 export function normalizeCommentary(j) {
   const sections = [];
   for (const item of j?.chapter?.content || []) {
     if (item.type !== 'verse') continue;
-    const text = clean(textOf(item.content), 40_000).trim();
+    const text = cleanProse(textOf(item.content), 200_000);
     if (text) sections.push({ v: item.number, text });
   }
-  const intro = clean(textOf(j?.chapter?.introduction || ''), 20_000).trim();
+  const intro = cleanProse(textOf(j?.chapter?.introduction || ''), 20_000);
   return { intro: intro || undefined, sections };
 }
 
-const handler = async (req, context) => {
+export default async (req, context) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   if (softLimit(`bx:${clientKey(req, context)}`, { limit: 240 })) return fail(429, 'rate_limited', 'Too many requests. Wait a minute.');
@@ -94,11 +98,12 @@ const handler = async (req, context) => {
   const book = USFM[sp.get('b') || ''];
   const chapter = Number(sp.get('c'));
   if (!book || !Number.isInteger(chapter) || chapter < 1 || chapter > 150) return fail(400, 'bad_request', 'Give a book (like John) and a chapter number.');
-  const t = sp.get('t');
-  const cm = sp.get('cm');
+  const pick = (obj, v) => Object.keys(obj).find((k) => k.toLowerCase() === String(v || '').toLowerCase()) || null;
+  const t = pick(TRANSLATIONS, sp.get('t'));
+  const cm = pick(COMMENTARIES, sp.get('cm'));
   let url, kind;
-  if (t && Object.hasOwn(TRANSLATIONS, t)) { url = `${BASE}/${t}/${book}/${chapter}.json`; kind = 'tr'; }
-  else if (cm && Object.hasOwn(COMMENTARIES, cm)) { url = `${BASE}/c/${cm}/${book}/${chapter}.json`; kind = 'cm'; }
+  if (t) { url = `${BASE}/${t}/${book}/${chapter}.json`; kind = 'tr'; }
+  else if (cm) { url = `${BASE}/c/${cm}/${book}/${chapter}.json`; kind = 'cm'; }
   else return fail(400, 'bad_request', 'Unknown translation or commentary.');
   try {
     const r = await upstream(url, { timeoutMs: 8000 });
@@ -115,14 +120,6 @@ const handler = async (req, context) => {
   } catch (err) {
     return fail(err?.name === 'AbortError' ? 504 : 502, 'upstream_unreachable', 'The Bible service didn’t answer. Try again in a moment.');
   }
-};
-
-export default async (req, context) => {
-  const res = await handler(req, context);
-  if (new URL(req.url).searchParams.get('debug') === '1' && res.status !== 200) {
-    return json({ debugStatus: res.status, body: await res.text() });
-  }
-  return res;
 };
 
 export const config = {

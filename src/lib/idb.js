@@ -2,7 +2,7 @@
 // reload lives here; failures surface as errors the UI reports (never silent).
 
 const DB_NAME = 'mavis-library';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORES = {
   shelf: 'shelf', //            id = `${owner}|${bookKey}`
@@ -13,6 +13,8 @@ export const STORES = {
   kv: 'kv', //                  device settings
   audiobooks: 'audiobooks', //  id = `${owner}|${bookKey}` → downloaded-audio manifest (device only)
   audio: 'audio', //            id = `${owner}|${bookKey}|${chapter}|${chunk}` → { blob }
+  plans: 'plans', //            id = `${owner}|${planId}` → reading-plan progress (synced)
+  vocab: 'vocab', //            id = `${owner}|${word}` → word builder (synced)
 };
 
 let dbPromise = null;
@@ -41,7 +43,7 @@ export function openDB() {
     }
     req.onupgradeneeded = () => {
       const db = req.result;
-      for (const name of ['shelf', 'progress', 'annotations']) {
+      for (const name of ['shelf', 'progress', 'annotations', 'plans', 'vocab']) {
         if (!db.objectStoreNames.contains(name)) {
           const s = db.createObjectStore(name, { keyPath: 'id' });
           s.createIndex('owner', 'owner');

@@ -13,7 +13,7 @@ let owner = 'guest';
 
 export const GUEST = 'guest';
 /** Stores whose rows belong to an owner and sync to their account. */
-export const SYNCED_STORES = ['shelf', 'progress', 'annotations'];
+export const SYNCED_STORES = ['shelf', 'progress', 'annotations', 'plans', 'vocab'];
 
 export function onChange(fn) {
   listeners.add(fn);
@@ -346,4 +346,32 @@ export async function storageEstimate() {
     const persisted = await navigator.storage?.persisted?.();
     return est ? { usage: est.usage || 0, quota: est.quota || 0, persisted: !!persisted } : null;
   } catch { return null; }
+}
+
+// ---------- Generic synced records (reading plans, word builder) ----------
+// Each row: { id: `${owner}|${k}`, k, owner, ...fields, updatedAt, deleted, dirty }
+
+export async function listRecords(store) {
+  const rows = await idb.byOwner(store, owner);
+  return rows.filter((r) => !r.deleted);
+}
+
+export async function getRecord(store, k) {
+  const r = await idb.get(store, rid(k));
+  return r && !r.deleted ? r : null;
+}
+
+export async function putRecord(store, k, fields) {
+  const cur = await idb.get(store, rid(k));
+  const row = { ...(cur || {}), ...fields, id: rid(k), k, owner, updatedAt: now(), deleted: false, dirty: true };
+  await idb.put(store, row);
+  emit({ type: store, key: k });
+  return row;
+}
+
+export async function deleteRecord(store, k) {
+  const cur = await idb.get(store, rid(k));
+  if (!cur) return;
+  await idb.put(store, { ...cur, deleted: true, updatedAt: now(), dirty: true });
+  emit({ type: store, key: k });
 }

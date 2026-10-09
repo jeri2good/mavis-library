@@ -77,6 +77,18 @@ self.addEventListener('fetch', (event) => {
       })());
       return;
     }
+    if (url.pathname.startsWith('/api/bible-ext')) {
+      // Extra translations and commentaries never change: keep them offline once read.
+      event.respondWith((async () => {
+        const cache = await caches.open('mavis-bible-ext-v1');
+        const hit = await cache.match(req);
+        if (hit) return hit;
+        const res = await fetch(req);
+        if (res.ok) { cache.put(req, res.clone()); trim('mavis-bible-ext-v1', 3000); }
+        return res;
+      })());
+      return;
+    }
     if (url.pathname.startsWith('/api/')) return; // accounts, sync, features, paid services: always live
     if (url.pathname.startsWith('/bible/')) {
       // Bible text, lexicon, and cross-references: cache first, kept offline.

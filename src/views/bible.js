@@ -14,12 +14,13 @@ import { openAssistant } from '../lib/assistant-ui.js';
 import { loadFeatures, can } from '../lib/features.js';
 import { listen } from '../lib/voice-input.js';
 import { stateBlock } from '../components.js';
+import { planDayFor, describeDay, setDayDone } from '../lib/plans.js';
 
 const KEY = 'bible';
 const HL = { sun: '#e9c46a', mint: '#86c7a1', sky: '#8fb8e6', rose: '#e7a1a8' };
-const TR_LABEL = { kjv: 'KJV', web: 'WEB', both: 'Both' };
+const TR_IDS = B.ALL_TRANSLATIONS.map((t) => t.id);
 
-export const title = (route) => (route.segs[0] === 'search' ? 'Search the Bible' : 'Bible');
+export const title = (route) => ({ search: 'Search the Bible', topics: 'Topics', topic: 'Topic', plans: 'Reading plans' }[route.segs[0]] || 'Bible');
 
 export async function ensureOnShelf() {
   const item = await store.getShelfItem(KEY).catch(() => null);
@@ -44,6 +45,11 @@ export async function render(root, route, { navigate, token }) {
     setTimeout(() => B.prefetchAll().then((ok) => { if (ok) store.setSetting('bibleCached', true); }), 1500);
   }
   if (route.segs[0] === 'search') return renderSearch(root, route, { idx, navigate, token });
+  if (['topics', 'topic', 'plans'].includes(route.segs[0])) {
+    const study = await import('./bible-study.js');
+    const fn = { topics: study.renderTopics, topic: study.renderTopic, plans: study.renderPlans }[route.segs[0]];
+    return fn(root, route, { idx, navigate, token });
+  }
   return renderChapter(root, route, { idx, navigate, token });
 }
 
@@ -60,7 +66,11 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   if (!ref || !idx.byId.get(ref.book)) ref = { book: 'John', chapter: 1 };
   const focusVerse = Number(route.params.get('v')) || null;
   const focusEnd = Number(route.params.get('ve')) || focusVerse;
-  let tr = ['kjv', 'web', 'both'].includes(route.params.get('t')) ? route.params.get('t') : store.getSetting('bibleTr', 'kjv');
+  let tr = route.params.get('t') || store.getSetting('bibleTr', 'kjv');
+  let tr2 = store.getSetting('bibleTr2', '');
+  if (tr === 'both') { tr = 'kjv'; tr2 = 'web'; } // older setting
+  if (!TR_IDS.includes(tr)) tr = 'kjv';
+  if (!TR_IDS.includes(tr2) || tr2 === tr) tr2 = '';
   let strongsOn = store.getSetting('bibleStrongs', false);
   const book = idx.byId.get(ref.book);
   const chLabel = `${book.name} ${ref.chapter}`;
@@ -70,14 +80,18 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     <div class="page bible">
       <div class="bible-bar">
         <button type="button" class="btn bible-pick" data-act="pick" aria-haspopup="dialog">${icon('book', { size: 20 })} <span>${chLabel}</span> ${icon('chevronR', { size: 16 })}</button>
-        <div class="seg" role="group" aria-label="Translation">
-          ${['kjv', 'web', 'both'].map((t) => html`<button type="button" data-tr="${t}" aria-pressed="${tr === t}">${TR_LABEL[t]}</button>`)}
-        </div>
+        <span class="tr-picks">
+          <label class="visually-hidden" for="tr-pick">Translation</label>
+          <select class="select tr-pick" id="tr-pick" title="Translation">${B.ALL_TRANSLATIONS.map((t) => html`<option value="${t.id}" ${t.id === tr ? 'selected' : ''}>${t.short}</option>`)}</select>
+          <label class="visually-hidden" for="tr2-pick">Side by side with</label>
+          <select class="select tr-pick" id="tr2-pick" title="Side by side with"><option value="">+ side by side</option>${B.ALL_TRANSLATIONS.map((t) => html`<option value="${t.id}" ${t.id === tr2 ? 'selected' : ''}>+ ${t.short}</option>`)}</select>
+        </span>
         <span class="bible-tools">
         <button type="button" class="icon-btn" data-act="strongs" aria-pressed="${strongsOn}" aria-label="Show Strong’s numbers (tap a word for its Hebrew or Greek)" title="Strong’s concordance">${icon('dict')}</button>
         <a class="icon-btn" href="#/bible/search" aria-label="Search the Bible">${icon('search')}</a>
         <button type="button" class="icon-btn" data-act="listen" aria-label="Listen to this chapter">${icon('headphones')}</button>
         <button type="button" class="icon-btn" data-act="ask" aria-label="Ask Mavis about this chapter">${icon('spark')}</button>
+        <button type="button" class="icon-btn" data-act="study" aria-label="Study tools: commentary, topics, reading plans" title="Study tools">${icon('library')}</button>
         </span>
       </div>
       <form class="searchbar bible-lookup" role="search" id="lookup">
@@ -87,6 +101,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         <button type="button" class="icon-btn" data-act="mic" aria-label="Say a verse or words">${icon('mic')}</button>
         <button type="submit" class="icon-btn go" aria-label="Go">${icon('chevronR')}</button>
       </form>
+      <div id="plan-banner"></div>
       <article class="chapter" aria-labelledby="ch-title">
         <h1 id="ch-title" class="bible-title"><span class="bk">${book.name}</span> <span class="cn">${ref.chapter}</span></h1>
         <div class="verses ${strongsOn ? 'strongs-on' : ''}" id="verses" lang="en" data-ref="${ref.book}.${ref.chapter}"><div class="skeleton line"></div><div class="skeleton line"></div><div class="skeleton line short"></div></div>
@@ -95,7 +110,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         <button type="button" class="btn" data-act="prev">${icon('chevronL', { size: 18 })} Previous</button>
         <button type="button" class="btn" data-act="next">Next ${icon('chevronR', { size: 18 })}</button>
       </nav>
-      <p class="credits small faint">${idx.translations.kjv.license} WEB: ${idx.translations.web.license} ${idx.credits.join(' ')}</p>
+      <p class="credits small faint" id="bible-credits">${idx.translations.kjv.license} WEB: ${idx.translations.web.license} ${idx.credits.join(' ')}</p>
     </div>
     <div class="verse-bar" id="verse-bar" role="toolbar" aria-label="Selected verses" hidden></div>
     <section class="listen-bar" id="listen-bar" aria-label="Listening" hidden></section>`);
@@ -104,7 +119,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   const bar = root.querySelector('#verse-bar');
   const listenBar = root.querySelector('#listen-bar');
   let annotations = [];
-  let kjv, web;
+  let chap1 = null, chap2 = null; // { verses, raw, headings, notes, subtitle }
   let selected = new Set();
   let narrator = null;
   let carUI = null;
@@ -112,31 +127,40 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   // ---------- render verses ----------
   async function paint() {
     try {
-      [kjv, web] = await Promise.all([
-        tr !== 'web' ? B.loadBook('kjv', ref.book) : null,
-        tr !== 'kjv' ? B.loadBook('web', ref.book) : null,
+      [chap1, chap2] = await Promise.all([
+        B.loadChapter(tr, ref.book, ref.chapter),
+        tr2 ? B.loadChapter(tr2, ref.book, ref.chapter).catch(() => null) : null,
       ]);
     } catch (err) {
-      versesEl.innerHTML = String(stateBlock({ tone: 'error', title: 'This chapter couldn’t load', text: err.message, actions: html`<button class="btn btn-sm" type="button" data-retry>Try again</button>` }));
+      versesEl.innerHTML = String(stateBlock({ tone: 'error', title: 'This chapter couldn’t load', text: err.message, actions: html`<button class="btn btn-sm" type="button" data-retry>Try again</button>${tr !== 'kjv' ? html`<button class="btn btn-sm" type="button" data-fallback>Show the KJV instead</button>` : ''}` }));
       versesEl.querySelector('[data-retry]').onclick = paint;
+      const fb = versesEl.querySelector('[data-fallback]');
+      if (fb) fb.onclick = () => { tr = 'kjv'; root.querySelector('#tr-pick').value = 'kjv'; paint(); };
       return;
     }
     if (!token()) return;
     annotations = await store.listAnnotations(KEY).catch(() => []);
     const marks = chapterMarks();
-    const kv = kjv?.chapters[ref.chapter - 1] || [];
-    const wv = web?.chapters[ref.chapter - 1] || [];
-    const n = Math.max(kv.length, wv.length);
+    const v1 = chap1.verses;
+    const v2 = chap2?.verses || [];
+    const n = Math.max(v1.length, v2.length, book.verses[ref.chapter - 1] || 0);
+    const label1 = B.trInfo(tr).short, label2 = tr2 ? B.trInfo(tr2).short : '';
+    const text1 = (v) => (tr === 'kjv' && strongsOn && chap1.raw?.[v - 1] != null ? strongsHtml(chap1.raw[v - 1]) : esc(v1[v - 1] || ''));
     const out = [];
+    if (chap1.subtitle) out.push(`<p class="ps-title">${esc(chap1.subtitle)}</p>`);
     for (let v = 1; v <= n; v++) {
+      for (const h of chap1.headings?.[v] || []) out.push(`<h2 class="v-heading">${esc(h)}</h2>`);
       const m = marks.get(v) || {};
       const cls = ['v', m.color ? `hl hl-${m.color}` : '', selected.has(v) ? 'sel' : '', v >= (focusVerse || 0) && v <= (focusEnd || 0) ? 'focus' : ''].filter(Boolean).join(' ');
-      const kText = kv[v - 1] != null ? (strongsOn ? strongsHtml(kv[v - 1]) : esc(B.plain(kv[v - 1]))) : '';
-      const wText = wv[v - 1] != null ? esc(wv[v - 1]) : '';
-      out.push(`<p class="${cls}" id="v${v}" data-v="${v}" tabindex="0" ${m.color ? `style="--hl:${HL[m.color]}"` : ''}><sup class="vn" aria-hidden="true">${v}</sup><span class="visually-hidden">Verse ${v}. </span>${
-        tr === 'both' ? `<span class="pair"><span class="tr-k"><b class="trl">KJV</b> ${kText}</span><span class="tr-w"><b class="trl">WEB</b> ${wText}</span></span>` : (tr === 'web' ? wText : kText)
-      }${m.quote ? `<span class="v-ico" title="Saved quote">${icon('starFill', { size: 14 })}</span>` : ''}${m.note ? `<button type="button" class="v-ico v-note" data-note="${m.note.uid}" aria-label="Note on verse ${v}">${icon('note', { size: 14 })}</button>` : ''}</p>`);
+      const notes = chap1.notes?.[v]?.length ? `<button type="button" class="v-ico v-fn" data-fn="${v}" aria-label="Translator’s note on verse ${v}">${icon('info', { size: 14 })}</button>` : '';
+      const body = tr2
+        ? `<span class="pair"><span class="tr-k"><b class="trl">${esc(label1)}</b> ${text1(v)}</span><span class="tr-w"><b class="trl">${esc(label2)}</b> ${esc(v2[v - 1] || '')}</span></span>`
+        : text1(v);
+      out.push(`<p class="${cls}" id="v${v}" data-v="${v}" tabindex="0" ${m.color ? `style="--hl:${HL[m.color]}"` : ''}><sup class="vn" aria-hidden="true">${v}</sup><span class="visually-hidden">Verse ${v}. </span>${body}${notes}${m.quote ? `<span class="v-ico" title="Saved quote">${icon('starFill', { size: 14 })}</span>` : ''}${m.note ? `<button type="button" class="v-ico v-note" data-note="${m.note.uid}" aria-label="Note on verse ${v}">${icon('note', { size: 14 })}</button>` : ''}</p>`);
     }
+    const credits = root.querySelector('#bible-credits');
+    const extra = [B.trInfo(tr), tr2 ? B.trInfo(tr2) : null].filter((t) => t && !t.local).map((t) => t.note);
+    if (credits) credits.textContent = `${idx.translations.kjv.license} WEB: ${idx.translations.web.license} ${idx.credits.join(' ')}${extra.length ? ` ${extra.join(' ')} ${B.EXTRA_CREDITS}` : ''}`;
     versesEl.innerHTML = out.join('');
     if (focusVerse) {
       const el = versesEl.querySelector(`#v${focusVerse}`);
@@ -170,18 +194,13 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     return map;
   }
 
-  const verseText = (v, t = tr === 'web' ? 'web' : 'kjv') => {
-    const src = t === 'web' ? web || null : kjv;
-    if (!src) return '';
-    const raw = src.chapters[ref.chapter - 1]?.[v - 1] || '';
-    return t === 'kjv' ? B.plain(raw) : raw;
-  };
+  const verseText = (v) => chap1?.verses[v - 1] || '';
   const selRange = () => {
     const vs = [...selected].sort((a, b) => a - b);
     return { book: ref.book, chapter: ref.chapter, verse: vs[0], verseEnd: vs[vs.length - 1] };
   };
   const selText = () => [...selected].sort((a, b) => a - b).map((v) => verseText(v)).join(' ');
-  const trShort = () => (tr === 'web' ? 'WEB' : 'KJV');
+  const trShort = () => B.trInfo(tr).short;
   const citation = (r) => `${B.labelSync(idx, r)} (${trShort()})`;
 
   // ---------- selection bar ----------
@@ -203,6 +222,9 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         <button type="button" class="vb-btn" data-vb="share">${icon('share', { size: 20 })}<span>Share</span></button>
         ${single ? html`<button type="button" class="vb-btn" data-vb="xref">${icon('link', { size: 20 })}<span>Cross-refs</span></button>` : ''}
         <button type="button" class="vb-btn" data-vb="compare">${icon('compare', { size: 20 })}<span>Compare</span></button>
+        <button type="button" class="vb-btn" data-vb="original">${icon('dict', { size: 20 })}<span>Original</span></button>
+        <button type="button" class="vb-btn" data-vb="commentary">${icon('note', { size: 20 })}<span>Commentary</span></button>
+        ${single ? html`<button type="button" class="vb-btn" data-vb="topics">${icon('library', { size: 20 })}<span>Topics</span></button>` : ''}
         <button type="button" class="vb-btn" data-vb="listen">${icon('headphones', { size: 20 })}<span>Listen</span></button>
         <button type="button" class="vb-btn" data-vb="present">${icon('present', { size: 20 })}<span>Display</span></button>
         <button type="button" class="vb-btn" data-vb="ask">${icon('spark', { size: 20 })}<span>Ask</span></button>
@@ -275,7 +297,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       for (const o of list) {
         const r = B.parseOsis(o);
         if (!r) continue;
-        const passage = await B.passageText(tr === 'web' ? 'web' : 'kjv', r.toChapter ? { ...r, verseEnd: null } : r).catch(() => []);
+        const passage = await B.passageText(B.trInfo(tr).local ? tr : 'kjv', r.toChapter ? { ...r, verseEnd: null } : r).catch(() => []);
         items.push({ r, text: passage.map((p) => p.text).join(' ').slice(0, 320) });
       }
       d.body.innerHTML = String(html`<p class="hint">Ranked by OpenBible.info readers.</p>${items.map(({ r, text }) => html`
@@ -286,14 +308,131 @@ async function renderChapter(root, route, { idx, navigate, token }) {
 
   async function compare() {
     const r = selRange();
-    const [k, w] = await Promise.all([B.passageText('kjv', r), B.passageText('web', r)]);
-    openDialog({
-      title: `Compare · ${B.labelSync(idx, r)}`, variant: 'sheet',
-      body: html`<div class="compare">
-        <section><h3>King James Version</h3>${k.map((p) => html`<p><sup>${p.v}</sup> ${p.text}</p>`)}</section>
-        <section><h3>World English Bible</h3>${w.map((p) => html`<p><sup>${p.v}</sup> ${p.text}</p>`)}</section></div>`,
+    const ids = [...new Set(['kjv', 'web', 'BSB', tr, tr2].filter(Boolean))];
+    const d = openDialog({ title: `Compare · ${B.labelSync(idx, r)}`, variant: 'sheet', body: html`<p class="muted">Loading…</p>` });
+    const all = await Promise.all(ids.map((id) => B.passageText(id, r).then((v) => ({ id, v })).catch((err) => ({ id, err }))));
+    d.body.innerHTML = String(html`<div class="compare">${all.map(({ id, v, err }) => html`<section><h3>${B.trInfo(id).name}</h3>${
+      err ? html`<p class="muted small">${err.message}</p>` : v.map((p) => html`<p><sup>${p.v}</sup> ${p.text}</p>`)}</section>`)}</div>
+      <p class="hint">More translations are in the translation menu above the chapter.</p>`);
+  }
+
+  // ---------- study tools: original language, commentary, topics ----------
+  async function showInterlinear() {
+    const vs = [...selected].sort((a, b) => a - b).slice(0, 6);
+    const r = selRange();
+    const d = openDialog({ title: `Original language · ${B.labelSync(idx, { ...r, verseEnd: vs[vs.length - 1] })}`, variant: 'sheet', className: 'il-dialog', body: html`<p class="muted">Loading…</p>` });
+    try {
+      const [data, morph] = await Promise.all([B.loadInterlinear(ref.book, ref.chapter), import('../lib/morph.js')]);
+      const heb = data.lang === 'hbo';
+      if (heb) await B.loadLexicon('H');
+      const cards = [];
+      for (const v of vs) {
+        const words = data.verses[v - 1] || [];
+        const items = [];
+        for (const w of words) {
+          let orig, translit, gloss, strongs, code;
+          if (heb) {
+            [orig, strongs, code] = w;
+            const e = strongs ? await B.strongsEntry(strongs.split(',').pop()) : null;
+            translit = e?.translit || ''; gloss = e?.gloss || '';
+          } else [orig, translit, gloss, strongs, code] = w;
+          items.push(html`<li class="il-w">
+            <span class="il-orig" lang="${heb ? 'he' : 'grc'}" dir="${heb ? 'rtl' : 'ltr'}">${orig.replace(/[\/]/g, '')}</span>
+            <span class="il-tr">${translit}</span>
+            <span class="il-gloss">${gloss || '—'}</span>
+            ${strongs ? html`<button type="button" class="il-s" data-s="${strongs}">${strongs.split(',').join(' ')}</button>` : html`<span class="il-s faint">·</span>`}
+            <span class="il-m">${morph.describe(code, data.lang)}</span></li>`);
+        }
+        cards.push(html`<section class="il-verse"><h3>${book.name} ${ref.chapter}:${v}</h3>
+          ${v === 1 && data.title ? html`<p class="small faint">The Hebrew also has a title line here that English Bibles print as a heading.</p>` : ''}
+          <ol class="il-words ${heb ? 'rtl' : ''}" dir="${heb ? 'rtl' : 'ltr'}">${items}</ol></section>`);
+      }
+      d.body.innerHTML = String(html`${cards}
+        <p class="hint">${heb ? 'Hebrew: Open Scriptures Hebrew Bible (Westminster Leningrad Codex). Glosses and transliterations: STEPBible lexicon.' : 'Greek: STEPBible TAGNT, with word-by-word English.'} CC BY 4.0. Verse numbers follow English Bibles (STEPBible TVTMS). Tap a Strong’s number for the full entry.</p>`);
+      d.body.addEventListener('click', (e) => { const b = e.target.closest('.il-s[data-s]'); if (b) showStrongs(b.dataset.s); });
+    } catch (err) { d.body.innerHTML = String(html`<p class="muted">${err.message}</p>`); }
+  }
+
+  async function showCommentary(verse = null, which = store.getSetting('bibleCommentary', 'matthew-henry')) {
+    const list = B.COMMENTARIES.filter((c) => !c.ot || book.testament === 'OT');
+    if (!list.some((c) => c.id === which)) which = list[0].id;
+    const d = openDialog({
+      title: `Commentary · ${chLabel}`, variant: 'side', className: 'cm-dialog',
+      body: html`<div class="field"><label for="cm-pick">Commentary</label><select class="select" id="cm-pick">${list.map((c) => html`<option value="${c.id}" ${c.id === which ? 'selected' : ''}>${c.name}</option>`)}</select></div><div id="cm-body"><p class="muted">Loading…</p></div>`,
+    });
+    const bodyEl = d.body.querySelector('#cm-body');
+    async function load(id) {
+      bodyEl.innerHTML = String(html`<p class="muted">Loading…</p>`);
+      try {
+        const c = await B.loadCommentary(id, ref.book, ref.chapter);
+        const secs = c.sections || [];
+        if (!secs.length && !c.intro) { bodyEl.innerHTML = String(html`<p class="muted">${c.name || 'This commentary'} has nothing on ${chLabel}.</p>`); return; }
+        const covering = verse ? secs.reduce((best, sct, i) => (sct.v <= verse ? i : best), 0) : -1;
+        bodyEl.innerHTML = String(html`
+          ${c.intro ? html`<details class="cm-sec"><summary>Introduction</summary>${c.intro.split(/\n\n+/).map((p) => html`<p>${p}</p>`)}</details>` : ''}
+          ${secs.map((sct, i) => {
+            const end = (secs[i + 1]?.v || (book.verses[ref.chapter - 1] + 1)) - 1;
+            return html`<details class="cm-sec" ${i === covering || secs.length === 1 ? 'open' : ''}><summary>${book.name} ${ref.chapter}:${sct.v}${end > sct.v ? `–${end}` : ''}</summary>
+              ${sct.text.split(/\n\n+/).map((p) => html`<p>${p}</p>`)}
+              <button type="button" class="btn btn-sm" data-cm-ask="${i}">${icon('spark', { size: 16 })} Summarize with Ask Mavis</button></details>`;
+          })}
+          <p class="hint">${c.name}${c.note ? ` · ${c.note}` : ''} Via the HelloAO Free Use Bible API. Saved on this device after you open it.</p>`);
+        bodyEl.querySelector('details[open]')?.scrollIntoView({ block: 'nearest' });
+        bodyEl.onclick = (e) => {
+          const i = e.target.closest('[data-cm-ask]')?.dataset.cmAsk;
+          if (i == null) return;
+          const sct = secs[Number(i)];
+          d.close();
+          openAssistant({
+            getContext: () => ({ title: `Holy Bible (${trShort()})`, chapter: chLabel, bible: true, selection: `${c.name} on ${book.name} ${ref.chapter}:${sct.v}: ${sct.text.slice(0, 12000)}`, text: verseLines() }),
+            initialQuestion: `Summarize what ${c.name} says about this passage in a few sentences, then give the main takeaway.`,
+          });
+        };
+      } catch (err) { bodyEl.innerHTML = String(html`<p class="muted">${err.message}</p>`); }
+    }
+    d.body.querySelector('#cm-pick').addEventListener('change', (e) => { store.setSetting('bibleCommentary', e.target.value); load(e.target.value); });
+    load(which);
+  }
+
+  async function showTopics(v) {
+    const d = openDialog({ title: `Topics · ${book.name} ${ref.chapter}:${v}`, variant: 'side', body: html`<p class="muted">Loading…</p>` });
+    try {
+      const list = await B.navesForVerse(ref.book, ref.chapter, v);
+      d.body.innerHTML = String(list.length ? html`<p class="hint">Subjects in Nave’s Topical Bible that cite this verse.</p>
+        <ul class="topic-list">${list.map((t) => html`<li><a href="#/bible/topic/${t.id}"><span>${B.titleCase(t.subject)}</span><span class="small faint num">${t.count} passages</span></a></li>`)}</ul>`
+        : html`<p class="muted">Nave’s Topical Bible doesn’t list this verse under a topic.</p><a class="btn btn-sm" href="#/bible/topics">Browse all topics</a>`);
+      d.body.addEventListener('click', (e) => { if (e.target.closest('a')) d.close(); });
+    } catch (err) { d.body.innerHTML = String(html`<p class="muted">${err.message}</p>`); }
+  }
+
+  function showFootnotes(v) {
+    openDialog({ title: `Note · ${book.name} ${ref.chapter}:${v} (${trShort()})`, variant: 'sheet', body: html`${(chap1.notes?.[v] || []).map((n) => html`<p>${n}</p>`)}<p class="hint">Translators’ notes from the ${B.trInfo(tr).name}.</p>` });
+  }
+
+  function openStudy() {
+    const d = openDialog({
+      title: 'Study tools', variant: 'sheet',
+      body: html`<div class="study-grid">
+        <button type="button" class="study-btn" data-st="commentary">${icon('note', { size: 22 })}<span><strong>Commentary</strong><small>Matthew Henry and six more on ${chLabel}</small></span></button>
+        <button type="button" class="study-btn" data-st="original">${icon('dict', { size: 22 })}<span><strong>Original language</strong><small>${book.testament === 'OT' ? 'Hebrew' : 'Greek'} word by word for this chapter</small></span></button>
+        <a class="study-btn" href="#/bible/topics">${icon('library', { size: 22 })}<span><strong>Topics</strong><small>Nave’s Topical Bible: 5,000+ subjects</small></span></a>
+        <a class="study-btn" href="#/bible/plans">${icon('timer', { size: 22 })}<span><strong>Reading plans</strong><small>A little each day, with a streak</small></span></a>
+        <a class="study-btn" href="#/bible/search">${icon('search', { size: 22 })}<span><strong>Concordance</strong><small>Every verse with a word or Strong’s number</small></span></a>
+      </div>`,
+    });
+    d.body.addEventListener('click', (e) => {
+      const st = e.target.closest('[data-st]')?.dataset.st;
+      if (e.target.closest('a')) d.close();
+      if (st === 'commentary') { d.close(); showCommentary(); }
+      if (st === 'original') {
+        d.close();
+        selected = new Set(Array.from({ length: Math.min(chap1.verses.length, 6) }, (_, i) => i + 1));
+        showInterlinear().finally(() => { selected.clear(); });
+      }
     });
   }
+
+  const verseLines = () => (chap1?.verses || []).map((t, i) => `${i + 1} ${t}`).join('\n');
 
   async function showStrongs(nums) {
     // Show the content word before the Greek article (G3588) when both are tagged.
@@ -330,7 +469,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         <div class="present-body"><p class="present-text">${verseText(v)}</p><p class="present-ref">${book.name} ${ref.chapter}:${v} · ${trShort()}</p></div>
         <div class="present-nav"><button type="button" data-p="-1" aria-label="Previous verse" ${i === 0 && vs[0] <= 1 ? 'disabled' : ''}>${icon('chevronL', { size: 30 })}</button><button type="button" data-p="1" aria-label="Next verse">${icon('chevronR', { size: 30 })}</button></div>`);
     };
-    const n = (kjv || web).chapters[ref.chapter - 1].length;
+    const n = chap1.verses.length;
     const step = (d) => {
       if (i + d >= 0 && i + d < vs.length) i += d;
       else { const nv = vs[i] + d; if (nv >= 1 && nv <= n) { vs.splice(0, vs.length, nv); i = 0; } }
@@ -370,8 +509,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       label: () => `${idx.byId.get(cur.book).name} ${cur.chapter}`,
       async next() {
         const bk = idx.byId.get(cur.book);
-        let data = await B.loadBook(tr === 'web' ? 'web' : 'kjv', cur.book);
-        let ch = data.chapters[cur.chapter - 1];
+        let ch = (await B.loadChapter(tr, cur.book, cur.chapter)).verses;
         if (!firstBatch && nextVerse > ch.length) {
           // Move on to the next chapter (and book).
           if (cur.chapter < bk.verses.length) cur = { book: cur.book, chapter: cur.chapter + 1 };
@@ -381,8 +519,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
             cur = { book: nb.id, chapter: 1 };
           }
           nextVerse = 1;
-          data = await B.loadBook(tr === 'web' ? 'web' : 'kjv', cur.book);
-          ch = data.chapters[cur.chapter - 1];
+          ch = (await B.loadChapter(tr, cur.book, cur.chapter)).verses;
           if (document.visibilityState === 'visible' && !document.querySelector('.carmode')) go(cur.book, cur.chapter, '?listen=1');
           store.setProgress(KEY, { cfi: `${cur.book}.${cur.chapter}`, percent: progressOf(cur), chapter: `${idx.byId.get(cur.book).name} ${cur.chapter}` }).catch(() => {});
         }
@@ -391,7 +528,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         const items = [];
         const heading = nextVerse === 1 ? [{ text: `${idx.byId.get(here.book).name}, chapter ${here.chapter}.` }] : [];
         for (let v = nextVerse; v <= ch.length; v++) {
-          const text = tr === 'web' ? ch[v - 1] : B.plain(ch[v - 1]);
+          const text = ch[v - 1] || '';
           items.push({
             text,
             onStart: () => {
@@ -470,14 +607,10 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     if (w) { e.stopPropagation(); showStrongs(w.dataset.s); return; }
     const note = e.target.closest('[data-note]');
     if (note) { const a = annotations.find((x) => x.uid === note.dataset.note); if (a) editNote(a); return; }
+    const fn = e.target.closest('[data-fn]');
+    if (fn) { e.stopPropagation(); showFootnotes(Number(fn.dataset.fn)); return; }
     const vEl = e.target.closest('.v');
     if (vEl && !e.target.closest('a')) { toggleVerse(Number(vEl.dataset.v), e.shiftKey || e.metaKey || e.ctrlKey); return; }
-    const trb = e.target.closest('[data-tr]');
-    if (trb) {
-      tr = trb.dataset.tr; store.setSetting('bibleTr', tr);
-      root.querySelectorAll('[data-tr]').forEach((b) => b.setAttribute('aria-pressed', String(b === trb)));
-      await paint(); return;
-    }
     const hl = e.target.closest('[data-hl]');
     if (hl) { setHighlight(hl.dataset.hl); return; }
     const vb = e.target.closest('[data-vb]')?.dataset.vb;
@@ -491,6 +624,9 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       if (vb === 'share') shareQuote(selText(), citation(r));
       if (vb === 'xref') showXrefs(r.verse);
       if (vb === 'compare') compare();
+      if (vb === 'original') showInterlinear();
+      if (vb === 'commentary') showCommentary(r.verse);
+      if (vb === 'topics') showTopics(r.verse);
       if (vb === 'listen') { const v = r.verse; selected.clear(); paintBar(); paint(); startListening(v); }
       if (vb === 'present') present();
       if (vb === 'ask') ask();
@@ -503,11 +639,12 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       strongsOn = !strongsOn; store.setSetting('bibleStrongs', strongsOn);
       e.target.closest('[data-act]').setAttribute('aria-pressed', String(strongsOn));
       versesEl.classList.toggle('strongs-on', strongsOn);
-      if (strongsOn && tr === 'web') toast('Strong’s numbers are on the KJV text. Switch to KJV to tap words.');
+      if (strongsOn && tr !== 'kjv') toast('Strong’s numbers are on the KJV text. Switch to KJV to tap words, or use “Original” on a verse.');
       await paint();
     }
     if (act === 'listen') startListening(1);
     if (act === 'ask') ask();
+    if (act === 'study') openStudy();
     if (act === 'mic') {
       const said = await listen({ purpose: 'Say a verse or words' });
       if (said) { root.querySelector('#lookup-q').value = said; lookup(said); }
@@ -518,6 +655,32 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.v')) { e.preventDefault(); toggleVerse(Number(e.target.dataset.v), true); }
   });
   root.querySelector('#lookup').addEventListener('submit', (e) => { e.preventDefault(); lookup(root.querySelector('#lookup-q').value); });
+  root.querySelector('#tr-pick').addEventListener('change', async (e) => {
+    tr = e.target.value; store.setSetting('bibleTr', tr);
+    if (tr2 === tr) { tr2 = ''; root.querySelector('#tr2-pick').value = ''; store.setSetting('bibleTr2', ''); }
+    await paint();
+  });
+  root.querySelector('#tr2-pick').addEventListener('change', async (e) => {
+    tr2 = e.target.value === tr ? '' : e.target.value;
+    e.target.value = tr2; store.setSetting('bibleTr2', tr2);
+    await paint();
+  });
+
+  // ---------- reading plan banner ----------
+  async function paintPlanBanner() {
+    const el = root.querySelector('#plan-banner');
+    if (!el) return;
+    const hit = await planDayFor(idx, ref.book, ref.chapter).catch(() => null);
+    if (!hit) { el.innerHTML = ''; return; }
+    el.innerHTML = String(html`<div class="plan-banner" role="note">${icon('timer', { size: 18 })}
+      <span><strong>${hit.plan.name}</strong> · Day ${hit.day + 1}: ${describeDay(idx, hit.readings)}</span>
+      <button type="button" class="btn btn-sm" data-plan-done>${icon('check', { size: 16 })} Mark as read</button></div>`);
+    el.querySelector('[data-plan-done]').onclick = async () => {
+      await setDayDone(hit.row.planId, hit.day, true);
+      toast('Today’s reading is marked. Keep it up!', { action: { label: 'Plans', run: () => navigate('/bible/plans') } });
+      paintPlanBanner();
+    };
+  }
 
   // Swipe between chapters on touch screens.
   let sx = 0, sy = 0;
@@ -583,7 +746,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       getContext: () => ({
         title: `Holy Bible (${trShort()})`, chapter: chLabel, bible: true,
         selection: vs.length ? `${B.labelSync(idx, selRange())}: ${selText()}` : '',
-        text: ((tr === 'web' ? web : kjv)?.chapters[ref.chapter - 1] || []).map((raw, i) => `${i + 1} ${tr === 'web' ? raw : B.plain(raw)}`).join('\n'),
+        text: verseLines(),
       }),
       actions: {
         read_aloud: ({ from }) => startListening(from === 'here' && vs[0] ? vs[0] : 1),
@@ -596,6 +759,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   }
 
   await paint();
+  paintPlanBanner();
   store.setProgress(KEY, { cfi: `${ref.book}.${ref.chapter}`, percent: progressOf(ref), chapter: chLabel }).catch(() => {});
   if (route.params.get('listen') === '1' && window.__mavisNarrator && window.__mavisNarrator.state !== 'idle') {
     // Reading continued into this chapter; keep the player attached.

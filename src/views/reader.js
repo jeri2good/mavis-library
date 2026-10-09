@@ -1,0 +1,867 @@
+// The reader: EPUB rendering (epub.js), navigation, typography, annotations,
+// dictionary, read-aloud, immersive mode, and a clearly labeled PDF viewer.
+
+import { html, icon, toast, openDialog, confirmDialog, debounce, prefersReducedMotion, esc, $ } from '../lib/ui.js';
+import * as store from '../lib/store.js';
+import { recallBook } from '../lib/catalog.js';
+import { fontFaceCSS, READER_FONTS } from '../lib/fonts.js';
+import { define } from '../lib/dictionary.js';
+import { listen } from '../lib/voice-input.js';
+import { ReadAloud, ttsSupported, whenVoicesReady } from '../lib/tts.js';
+import { stateBlock } from '../components.js';
+
+export const title = () => 'Reading';
+
+const HL = { sun: '#e9c46a', mint: '#86c7a1', sky: '#8fb8e6', rose: '#e7a1a8' };
+const THEMES = {
+  light: { label: 'Paper', bg: '#fbf8f1', fg: '#1e1d1a', link: '#24583f' },
+  sepia: { label: 'Sepia', bg: '#f3e7cf', fg: '#3b2f20', link: '#6b4a1c' },
+  dark: { label: 'Night', bg: '#151916', fg: '#d9d3c4', link: '#9fd0b1' },
+};
+const DEFAULTS = { theme: 'light', font: 'literata', size: 100, lineHeight: 1.6, margin: 'normal', justify: false, motion: 'slide', spread: 'auto' };
+const MARGINS = { narrow: '2%', normal: '7%', wide: '14%' };
+
+function readerPrefs() { return { ...DEFAULTS, ...(store.getSetting('reader', {}) || {}) }; }
+function saveReaderPrefs(p) { store.setSetting('reader', p); }
+
+export async function render(root, route, { navigate }) {
+  const key = route.segs[0] || '';
+  let item = await store.getShelfItem(key).catch(() => null);
+  const file = await store.getFile(key).catch(() => null);
+  const meta = item || recallBook(key) || { key, title: 'Book', authors: [] };
+
+  const close = () => ((window.__mavisNavDepth || 0) > 0 ? history.back() : navigate('/shelf'));
+
+  if (!file) {
+    root.innerHTML = String(html`<div class="reader" data-rtheme="${readerPrefs().theme}" role="dialog" aria-modal="true" aria-label="Reader">
+      <header class="reader-bar top"><button class="icon-btn" type="button" data-close aria-label="Close book">${icon('back')}</button><div class="reader-title"><div class="bt">${meta.title}</div></div></header>
+      <div class="reader-stage"><div class="reader-loading">${stateBlock({
+        title: 'This book isn’t on this device',
+        text: meta.source === 'import'
+          ? 'Imported files stay on the device they were imported on. Import the file here to read it; your progress and notes will carry over.'
+          : 'Download it to read here. Downloads are saved on this device for offline reading.',
+        actions: meta.source === 'import'
+          ? html`<a class="btn btn-primary btn-sm" href="#/shelf?import=1">Import the file</a>`
+          : html`<a class="btn btn-primary btn-sm" href="#/book/${encodeURIComponent(key)}">Go to download</a>`,
+      })}</div></div></div>`);
+    root.querySelector('[data-close]').addEventListener('click', close);
+    return;
+  }
+  if (!item) {
+    // A downloaded file without a shelf record (shouldn't happen) — restore it.
+    item = await store.saveToShelf({ ...meta, key }, { status: 'reading' });
+  }
+  if (file.mime === 'application/pdf' || item.format === 'pdf') return renderPdf(root, item, file, close);
+  return renderEpub(root, item, file, close);
+}
+
+// ---------------------------------------------------------------- PDF ----
+
+function renderPdf(root, item, file, close) {
+  const url = URL.createObjectURL(file.blob);
+  root.innerHTML = String(html`<div class="reader" data-rtheme="light" role="dialog" aria-modal="true" aria-label="PDF viewer">
+    <header class="reader-bar top">
+      <button class="icon-btn" type="button" data-close aria-label="Close PDF">${icon('back')}</button>
+      <div class="reader-title"><div class="bt">${item.title}</div><div class="ch">PDF · shown with your browser’s built-in viewer</div></div>
+      <a class="btn btn-sm" href="${url}" target="_blank" rel="noopener">${icon('external', { size: 16 })} Open in new tab</a>
+    </header>
+    <div class="reader-stage"><iframe class="pdf-frame" src="${url}#view=FitH" title="${item.title} (PDF)"></iframe></div>
+    <footer class="reader-bar bottom"><p class="small" style="color:var(--r-faint);flex:1">Bookmarks, highlights, read-aloud, and reading progress work with EPUB and text books. For PDFs they’re turned off here rather than imitated. If the PDF doesn’t appear (some phones can’t show PDFs inside a page), use Open in new tab.</p></footer>
+  </div>`);
+  root.querySelector('[data-close]').addEventListener('click', close);
+  store.updateShelf(item.key, { lastOpenedAt: Date.now(), status: item.status === 'want' ? 'reading' : item.status }).catch(() => {});
+  return () => setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// --------------------------------------------------------------- EPUB ----
+
+async function renderEpub(root, item, file, close) {
+  let prefs = readerPrefs();
+  const key = item.key;
+  root.innerHTML = String(html`
+  <div class="reader" data-rtheme="${prefs.theme}" role="dialog" aria-modal="true" aria-label="Reading ${item.title}" style="grid-template-rows:auto 1fr auto auto">
+    <header class="reader-bar top">
+      <button class="icon-btn" type="button" data-act="close" aria-label="Close book">${icon('back')}</button>
+      <div class="reader-title"><div class="bt">${item.title}</div><div class="ch" id="r-chapter">&nbsp;</div></div>
+      <button class="icon-btn" type="button" data-act="toc" aria-label="Contents, bookmarks, and notes">${icon('toc')}</button>
+      <button class="icon-btn" type="button" data-act="bookmark" aria-label="Bookmark this page" aria-pressed="false">${icon('bookmark')}</button>
+      <button class="icon-btn" type="button" data-act="display" aria-label="Display settings">${icon('type')}</button>
+      <button class="icon-btn" type="button" data-act="tts" aria-label="Read aloud" aria-pressed="false">${icon('headphones')}</button>
+      <button class="icon-btn" type="button" data-act="lookup" aria-label="Look up a word">${icon('dict')}</button>
+      <button class="icon-btn" type="button" data-act="immersive" aria-label="Focus mode (hide controls)">${icon('expand')}</button>
+    </header>
+    <div class="reader-stage" id="stage">
+      <div class="reader-view" id="viewer"></div>
+      <button class="page-zone prev" type="button" data-act="prev" aria-label="Previous page">${icon('chevronL', { size: 30 })}</button>
+      <button class="page-zone next" type="button" data-act="next" aria-label="Next page">${icon('chevronR', { size: 30 })}</button>
+      <div class="reader-loading" id="r-loading" role="status"><div style="display:grid;gap:10px;justify-items:center"><div class="skeleton" style="width:120px;height:4px"></div><span>Opening “${item.title}”…</span></div></div>
+      <div class="sel-toolbar" id="sel" role="toolbar" aria-label="Selected text" hidden></div>
+      <button class="exit-immersive" type="button" data-act="immersive" hidden>${icon('collapse', { size: 18 })} Exit focus mode</button>
+    </div>
+    <footer class="reader-bar bottom">
+      <button class="icon-btn" type="button" data-act="prev" aria-label="Previous page">${icon('chevronL')}</button>
+      <div class="progress-wrap">
+        <label class="visually-hidden" for="r-progress">Position in book</label>
+        <input type="range" id="r-progress" min="0" max="1000" value="0" disabled aria-valuetext="Calculating position" />
+        <div class="progress-meta"><span id="r-page">&nbsp;</span><span id="r-pct" class="num">…</span></div>
+      </div>
+      <button class="icon-btn" type="button" data-act="next" aria-label="Next page">${icon('chevronR')}</button>
+    </footer>
+    <section class="tts-bar" id="tts" aria-label="Read aloud" hidden></section>
+  </div>`);
+
+  const readerEl = root.querySelector('.reader');
+  const stage = root.querySelector('#stage');
+  const viewer = root.querySelector('#viewer');
+  const loading = root.querySelector('#r-loading');
+  const sel = root.querySelector('#sel');
+  const chapterEl = root.querySelector('#r-chapter');
+  const pageEl = root.querySelector('#r-page');
+  const pctEl = root.querySelector('#r-pct');
+  const slider = root.querySelector('#r-progress');
+  const bmBtn = root.querySelector('[data-act="bookmark"]');
+  const ttsBar = root.querySelector('#tts');
+
+  let destroyed = false;
+  let book, rendition, tts = null, EpubCFI = null, saveProgress = null;
+  let toc = [];
+  let annotations = [];
+  let lastLoc = null;
+  let locationsReady = false;
+  let immersive = false;
+  const cleanups = [];
+
+  function fail(title, text) {
+    loading.hidden = false;
+    loading.innerHTML = String(stateBlock({
+      tone: 'error', title, text,
+      actions: html`<button class="btn btn-sm" type="button" data-act="close">Back</button><a class="btn btn-sm btn-quiet" href="#/book/${encodeURIComponent(key)}">Book details</a>`,
+    }));
+  }
+
+  // ---------- Open the book ----------
+  try {
+    const mod = await import('epubjs');
+    const ePub = mod.default;
+    EpubCFI = mod.EpubCFI;
+    const buf = await file.blob.arrayBuffer();
+    book = ePub();
+    const opened = book.open(buf, 'binary');
+    await Promise.race([opened, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 25000))]);
+    await book.ready;
+  } catch (err) {
+    console.error(err);
+    if (!destroyed) fail('This book couldn’t be opened', err.message === 'timeout'
+      ? 'The file took too long to open. It may be very large or damaged.'
+      : 'The EPUB file looks damaged or uses a format Mavis can’t read. Try downloading or importing it again.');
+    wireBasicControls();
+    return () => { destroyed = true; try { book?.destroy(); } catch { /* ignore */ } };
+  }
+  if (destroyed) return;
+
+  const lang = (book.packaging?.metadata?.language || item.languages?.[0] || 'en').slice(0, 5);
+
+  rendition = book.renderTo(viewer, {
+    width: '100%', height: '100%', flow: 'paginated', spread: prefs.spread === 'none' ? 'none' : 'auto', minSpreadWidth: 900,
+    allowScriptedContent: false, allowPopups: false,
+  });
+
+  try {
+    const nav = await book.loaded.navigation;
+    toc = flattenToc(nav?.toc || []);
+  } catch { toc = []; }
+
+  // ---------- Content hooks: fonts, safety, input ----------
+  rendition.hooks.content.register((contents) => {
+    const doc = contents.document;
+    const style = doc.createElement('style');
+    style.setAttribute('data-mavis', 'fonts');
+    style.textContent = `${fontFaceCSS()}\n::selection{background:rgba(217,164,65,.38)}\nimg,svg{max-width:100%;height:auto}`;
+    doc.head.appendChild(style);
+    // Defense in depth: content scripts can't run (sandboxed, CSP), but strip
+    // them and inline handlers anyway.
+    for (const s of doc.querySelectorAll('script, iframe, object, embed, form')) s.remove();
+    for (const el of doc.querySelectorAll('*')) {
+      for (const a of [...el.attributes]) if (/^on/i.test(a.name)) el.removeAttribute(a.name);
+    }
+    doc.addEventListener('click', (e) => {
+      const a = e.target.closest?.('a[href]');
+      if (!a) { onContentTap(e, contents); return; }
+      const href = a.getAttribute('href') || '';
+      if (/^(https?:|mailto:)/i.test(href) || href.includes('://')) {
+        e.preventDefault(); e.stopPropagation();
+        confirmExternal(href);
+      }
+    }, true);
+    doc.addEventListener('keydown', onKey);
+    let sx = 0, sy = 0, st = 0;
+    doc.addEventListener('touchstart', (e) => { const t = e.changedTouches[0]; sx = t.screenX; sy = t.screenY; st = Date.now(); }, { passive: true });
+    doc.addEventListener('touchend', (e) => {
+      const t = e.changedTouches[0];
+      const dx = t.screenX - sx, dy = t.screenY - sy;
+      const selected = contents.window.getSelection()?.toString();
+      if (selected) return;
+      if (Math.abs(dx) > 50 && Math.abs(dy) < 60 && Date.now() - st < 700) turn(dx < 0 ? 'next' : 'prev');
+    }, { passive: true });
+  });
+
+  applyStyles();
+
+  // epub.js sometimes lands one page early when asked to show a CFI that sits
+  // exactly at a page boundary; nudge forward until the CFI is on screen.
+  async function displayCfi(target) {
+    await rendition.display(target);
+    if (!target || !String(target).startsWith('epubcfi(')) return;
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 40)));
+      const loc = rendition.location;
+      if (!loc?.end?.cfi) return;
+      const cmp = new EpubCFI();
+      try {
+        if (cmp.compare(target, loc.end.cfi) > 0 && !loc.atEnd) await rendition.next();
+        else if (cmp.compare(target, loc.start.cfi) < 0 && !loc.atStart) await rendition.prev();
+        else return;
+      } catch { return; }
+    }
+  }
+
+  // ---------- Restore position ----------
+  const saved = await store.getProgress(key).catch(() => null);
+  try {
+    await displayCfi(saved?.cfi || undefined);
+  } catch {
+    try { await rendition.display(); } catch (err) { fail('This book couldn’t be displayed', err.message); return; }
+  }
+  if (destroyed) return;
+  loading.hidden = true;
+  await store.updateShelf(key, { lastOpenedAt: Date.now(), status: item.status === 'want' ? 'reading' : item.status }).catch(() => {});
+
+  // ---------- Annotations ----------
+  annotations = await store.listAnnotations(key).catch(() => []);
+  for (const a of annotations) drawAnnotation(a);
+  rendition.on('markClicked', (cfiRange, data) => {
+    const a = annotations.find((x) => x.uid === data?.uid);
+    if (a) editAnnotation(a);
+  });
+
+  // ---------- Locations (for percentages) ----------
+  (async () => {
+    const cacheId = `locations|${store.getOwner()}|${key}`;
+    try {
+      const cached = await store.getCache(cacheId);
+      if (cached) book.locations.load(cached);
+      else {
+        await book.locations.generate(1200);
+        if (destroyed) return;
+        store.setCache(cacheId, book.locations.save());
+      }
+      locationsReady = true;
+      slider.disabled = false;
+      if (rendition.location) onRelocated(rendition.location);
+    } catch (err) { console.warn('Locations unavailable', err); }
+  })();
+
+  // ---------- Relocation → UI + progress ----------
+  saveProgress = debounce((loc) => {
+    const percent = locationsReady ? book.locations.percentageFromCfi(loc.start.cfi) : null;
+    store.setProgress(key, { cfi: loc.start.cfi, percent, chapter: chapterLabel(loc) }).catch((err) => toast(`Couldn't save your place: ${err.message}`, { tone: 'error' }));
+  }, 800);
+
+  function onRelocated(loc) {
+    if (!loc?.start) return;
+    lastLoc = loc;
+    hideSelection();
+    const ch = chapterLabel(loc);
+    chapterEl.textContent = ch || ' ';
+    const d = loc.start.displayed;
+    const endPage = loc.end?.displayed?.page;
+    const pages = endPage && endPage > d?.page && loc.end.index === loc.start.index ? `pages ${d.page}–${endPage}` : `page ${d?.page}`;
+    pageEl.textContent = d?.total ? `${ch ? `${ch} · ` : ''}${pages} of ${d.total}` : (ch || '');
+    if (locationsReady) {
+      const pct = book.locations.percentageFromCfi(loc.start.cfi);
+      pctEl.textContent = `${Math.round(pct * 100)}%`;
+      slider.value = String(Math.round(pct * 1000));
+      slider.setAttribute('aria-valuetext', `${Math.round(pct * 100)} percent${ch ? `, ${ch}` : ''}`);
+    } else {
+      pctEl.textContent = '…';
+    }
+    updateBookmarkButton();
+    saveProgress(loc);
+  }
+  rendition.on('relocated', onRelocated);
+  if (rendition.location) onRelocated(rendition.location);
+
+  slider.addEventListener('change', async () => {
+    if (!locationsReady) return;
+    const cfi = book.locations.cfiFromPercentage(Number(slider.value) / 1000);
+    await displayCfi(cfi);
+  });
+  slider.addEventListener('input', () => { pctEl.textContent = `${Math.round(Number(slider.value) / 10)}%`; });
+
+  // ---------- Selection toolbar ----------
+  let pendingSel = null;
+  rendition.on('selected', (cfiRange, contents) => {
+    const text = contents.window.getSelection()?.toString().trim();
+    if (!text) return;
+    pendingSel = { cfiRange, contents, text: text.slice(0, 2000) };
+    showSelection();
+  });
+
+  function showSelection() {
+    const { cfiRange, contents } = pendingSel;
+    let rect;
+    try {
+      const range = contents.range(cfiRange);
+      const r = range.getBoundingClientRect();
+      const frame = contents.document.defaultView.frameElement.getBoundingClientRect();
+      const st = stage.getBoundingClientRect();
+      rect = { left: r.left + frame.left - st.left, top: r.top + frame.top - st.top, width: r.width, bottom: r.bottom + frame.top - st.top };
+    } catch { rect = { left: stage.clientWidth / 2, top: 60, width: 0, bottom: 80 }; }
+    sel.innerHTML = String(html`
+      ${Object.keys(HL).map((c) => html`<button type="button" class="icon-btn" data-hl="${c}" aria-label="Highlight ${c}"><span class="dot" style="background:${HL[c]}"></span></button>`)}
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" class="icon-btn" data-sel="note" aria-label="Add a note">${icon('note', { size: 20 })}</button>
+      <button type="button" class="icon-btn" data-sel="define" aria-label="Look up in dictionary">${icon('dict', { size: 20 })}</button>
+      <button type="button" class="icon-btn" data-sel="copy" aria-label="Copy text">${icon('copy', { size: 20 })}</button>
+      <button type="button" class="icon-btn" data-sel="close" aria-label="Close">${icon('close', { size: 18 })}</button>`);
+    sel.hidden = false;
+    const w = sel.offsetWidth, h = sel.offsetHeight;
+    let left = rect.left + rect.width / 2 - w / 2;
+    left = Math.max(8, Math.min(stage.clientWidth - w - 8, left));
+    let top = rect.top - h - 10;
+    if (top < 8) top = Math.min(stage.clientHeight - h - 8, rect.bottom + 10);
+    sel.style.left = `${left}px`;
+    sel.style.top = `${top}px`;
+  }
+  function hideSelection(clear = false) {
+    sel.hidden = true;
+    if (clear && pendingSel) { try { pendingSel.contents.window.getSelection().removeAllRanges(); } catch { /* ignore */ } }
+    if (clear) pendingSel = null;
+  }
+  sel.addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b || !pendingSel) return;
+    const { cfiRange, text } = pendingSel;
+    if (b.dataset.hl) {
+      const a = await store.addAnnotation(key, { kind: 'highlight', cfi: cfiRange, text, color: b.dataset.hl, chapter: chapterLabel(lastLoc), percent: pct() });
+      annotations.push(a); drawAnnotation(a);
+      hideSelection(true);
+      toast('Highlighted.', { action: { label: 'Add note', run: () => editAnnotation(a) } });
+    } else if (b.dataset.sel === 'note') {
+      hideSelection(true);
+      const a = await store.addAnnotation(key, { kind: 'note', cfi: cfiRange, text, color: 'sky', chapter: chapterLabel(lastLoc), percent: pct() });
+      annotations.push(a); drawAnnotation(a);
+      editAnnotation(a, { isNew: true });
+    } else if (b.dataset.sel === 'define') {
+      hideSelection(true);
+      openDictionary(text);
+    } else if (b.dataset.sel === 'copy') {
+      try { await navigator.clipboard.writeText(text); toast('Copied.'); }
+      catch { toast('Copying isn’t allowed here. Use your device’s copy option instead.'); }
+      hideSelection(true);
+    } else hideSelection(true);
+  });
+
+  function drawAnnotation(a) {
+    if (a.kind === 'bookmark' || a.deleted) return;
+    const dark = prefs.theme === 'dark';
+    try {
+      rendition.annotations.remove(a.cfi, 'highlight');
+      rendition.annotations.highlight(a.cfi, { uid: a.uid }, null, `hl-${a.color || 'sun'}`, {
+        fill: HL[a.color] || HL.sun, 'fill-opacity': dark ? '0.28' : '0.42', 'mix-blend-mode': dark ? 'normal' : 'multiply',
+      });
+    } catch (err) { console.warn('Could not draw annotation', err); }
+  }
+
+  function editAnnotation(a, { isNew = false } = {}) {
+    const d = openDialog({
+      title: a.kind === 'note' || a.note ? 'Note' : 'Highlight',
+      variant: 'sheet', container: readerEl,
+      body: html`<blockquote class="ann-text" style="margin:0;font-family:var(--font-read);border-left:3px solid ${HL[a.color] || HL.sun};padding-left:12px">${a.text}</blockquote>
+        <div class="field"><label for="note-text">Your note</label><textarea id="note-text" class="input" rows="4" style="padding:10px 12px;min-height:110px" maxlength="5000" ${isNew ? 'autofocus' : ''}>${a.note || ''}</textarea></div>
+        <div class="opt-group"><span class="label">Color</span><div class="swatches">${Object.keys(HL).map((c) => html`<button type="button" class="swatch" style="width:48px;min-height:40px;background:${HL[c]}" data-color="${c}" aria-label="${c}" aria-pressed="${a.color === c}"></button>`)}</div></div>
+        <div class="dialog-actions"><button type="button" class="btn btn-quiet" data-del>${icon('trash', { size: 18 })} Delete</button><button type="button" class="btn btn-primary" data-save>Save</button></div>`,
+    });
+    let color = a.color;
+    d.body.addEventListener('click', async (e) => {
+      const c = e.target.closest('[data-color]');
+      if (c) { color = c.dataset.color; d.body.querySelectorAll('[data-color]').forEach((x) => x.setAttribute('aria-pressed', String(x === c))); }
+      if (e.target.closest('[data-save]')) {
+        const note = d.body.querySelector('#note-text').value.trim();
+        const next = await store.updateAnnotation(a.uid, { note, color, kind: note ? 'note' : 'highlight' });
+        Object.assign(a, next); drawAnnotation(a);
+        d.close(); toast(note ? 'Note saved.' : 'Highlight saved.');
+      }
+      if (e.target.closest('[data-del]')) {
+        await store.deleteAnnotation(a.uid);
+        try { rendition.annotations.remove(a.cfi, 'highlight'); } catch { /* ignore */ }
+        annotations = annotations.filter((x) => x.uid !== a.uid);
+        d.close(); toast('Deleted.');
+      }
+    });
+  }
+
+  // ---------- Bookmarks ----------
+  function bookmarksOnPage() {
+    if (!lastLoc?.start) return [];
+    const { start, end } = lastLoc;
+    return annotations.filter((a) => a.kind === 'bookmark' && !a.deleted && inRange(a.cfi, start.cfi, end?.cfi));
+  }
+  function inRange(cfi, a, b) {
+    try {
+      const cmp = new EpubCFI();
+      return cmp.compare(cfi, a) >= 0 && (!b || cmp.compare(cfi, b) <= 0);
+    } catch { return cfi === a; }
+  }
+  function updateBookmarkButton() {
+    const on = bookmarksOnPage().length > 0;
+    bmBtn.setAttribute('aria-pressed', String(on));
+    bmBtn.setAttribute('aria-label', on ? 'Remove bookmark from this page' : 'Bookmark this page');
+    bmBtn.innerHTML = String(icon(on ? 'bookmarkFill' : 'bookmark'));
+  }
+  async function toggleBookmark() {
+    const here = bookmarksOnPage();
+    if (here.length) {
+      for (const b of here) await store.deleteAnnotation(b.uid);
+      annotations = annotations.filter((a) => !here.includes(a));
+      toast('Bookmark removed.');
+    } else if (lastLoc) {
+      const excerpt = await pageExcerpt();
+      const a = await store.addAnnotation(key, { kind: 'bookmark', cfi: lastLoc.start.cfi, text: excerpt, chapter: chapterLabel(lastLoc), percent: pct() });
+      annotations.push(a);
+      toast('Page bookmarked.');
+    }
+    updateBookmarkButton();
+  }
+  async function pageExcerpt() {
+    try {
+      const r = await book.getRange(lastLoc.start.cfi);
+      return (r?.startContainer?.textContent || '').trim().slice(0, 160);
+    } catch { return ''; }
+  }
+  const pct = () => (locationsReady && lastLoc ? book.locations.percentageFromCfi(lastLoc.start.cfi) : null);
+
+  // ---------- Page turning with motion ----------
+  let turning = false;
+  async function turn(dir) {
+    if (turning || !rendition) return;
+    turning = true;
+    hideSelection(true);
+    const mode = motionMode();
+    const outCls = mode === 'slide' ? `anim-out-${dir}` : 'fade-out';
+    const inCls = mode === 'slide' ? `anim-in-${dir}` : 'fade-in';
+    try {
+      if (mode !== 'none') {
+        viewer.classList.add(outCls);
+        await wait(150);
+        // epub.js measures the page geometry right after turning; keep the
+        // view untransformed (just invisible) while it does.
+        viewer.style.opacity = '0';
+        viewer.classList.remove(outCls);
+      }
+      await (dir === 'next' ? rendition.next() : rendition.prev());
+      await frames(3);
+    } catch (err) { console.warn(err); }
+    viewer.classList.remove(outCls);
+    viewer.style.opacity = '';
+    if (mode !== 'none') { viewer.classList.add(inCls); setTimeout(() => viewer.classList.remove(inCls), 260); }
+    turning = false;
+  }
+  function motionMode() {
+    const app = store.getSetting('motion', 'system');
+    if (app === 'off' || prefersReducedMotion() && app !== 'on') return 'none';
+    return prefs.motion;
+  }
+
+  // ---------- Taps, keys, chrome ----------
+  function onContentTap(e, contents) {
+    if (contents.window.getSelection()?.toString()) return;
+    if (!sel.hidden) { hideSelection(true); return; }
+    const frame = contents.document.defaultView.frameElement.getBoundingClientRect();
+    handleTapAt(e.clientX + frame.left);
+  }
+  // Taps on the page margins (outside the book frame) count too.
+  viewer.addEventListener('click', (e) => {
+    if (e.target.tagName === 'IFRAME' || !rendition) return;
+    if (!sel.hidden) { hideSelection(true); return; }
+    handleTapAt(e.clientX);
+  });
+  function handleTapAt(x) {
+    const w = stage.getBoundingClientRect();
+    const rel = (x - w.left) / w.width;
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    if (coarse && rel < 0.25) turn('prev');
+    else if (coarse && rel > 0.75) turn('next');
+    else if (immersive) peekChrome();
+  }
+
+  function onKey(e) {
+    if (document.querySelector('.overlay.open')) return;
+    if (e.target.closest?.('input, textarea, select')) return;
+    if (e.key === ' ' && e.target.closest?.('button, a')) return;
+    if (['ArrowRight', 'PageDown'].includes(e.key) || (e.key === ' ' && !e.shiftKey)) { e.preventDefault(); turn('next'); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key) || (e.key === ' ' && e.shiftKey)) { e.preventDefault(); turn('prev'); }
+    else if (e.key === 'Escape' && immersive) { e.preventDefault(); setImmersive(false); }
+  }
+  document.addEventListener('keydown', onKey);
+  cleanups.push(() => document.removeEventListener('keydown', onKey));
+
+  let peekTimer;
+  function peekChrome() {
+    root.querySelectorAll('.reader-bar').forEach((b) => b.classList.add('peek'));
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => root.querySelectorAll('.reader-bar').forEach((b) => b.classList.remove('peek')), 3500);
+  }
+
+  async function setImmersive(on) {
+    immersive = on;
+    readerEl.classList.toggle('immersive', on);
+    root.querySelector('.exit-immersive').hidden = !on;
+    const btn = root.querySelector('.reader-bar [data-act="immersive"]');
+    btn.setAttribute('aria-label', on ? 'Exit focus mode' : 'Focus mode (hide controls)');
+    btn.innerHTML = String(icon(on ? 'collapse' : 'expand'));
+    if (on) {
+      try { if (document.fullscreenEnabled && !document.fullscreenElement) await readerEl.requestFullscreen({ navigationUI: 'hide' }); } catch { /* optional */ }
+      root.querySelector('.exit-immersive').focus({ preventScroll: true });
+    } else {
+      try { if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* ignore */ }
+      btn.focus({ preventScroll: true });
+    }
+    setTimeout(() => rendition?.resize(), 320);
+  }
+  const onFs = () => { if (!document.fullscreenElement && immersive) setImmersive(false); };
+  document.addEventListener('fullscreenchange', onFs);
+  cleanups.push(() => document.removeEventListener('fullscreenchange', onFs));
+
+  function wireBasicControls() {
+    root.addEventListener('click', (e) => { if (e.target.closest('[data-act="close"]')) close(); });
+  }
+
+  root.addEventListener('click', (e) => {
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (!act) return;
+    if (act === 'close') close();
+    if (act === 'next') turn('next');
+    if (act === 'prev') turn('prev');
+    if (act === 'toc') openContents();
+    if (act === 'bookmark') toggleBookmark();
+    if (act === 'display') openDisplay();
+    if (act === 'tts') toggleTts();
+    if (act === 'lookup') openDictionary('');
+    if (act === 'immersive') setImmersive(!immersive);
+  });
+
+  // ---------- Styles ----------
+  function applyStyles() {
+    readerEl.dataset.rtheme = prefs.theme;
+    const t = THEMES[prefs.theme] || THEMES.light;
+    viewer.style.paddingInline = MARGINS[prefs.margin] || MARGINS.normal;
+    const rules = {
+      // Matching color-scheme keeps the book frame transparent over the reader.
+      html: { 'color-scheme': prefs.theme === 'dark' ? 'dark' : 'light' },
+      'html, body': { background: 'transparent !important', color: `${t.fg} !important` },
+      body: { 'font-size': `${prefs.size}% !important` },
+      'p, li, blockquote, dd, dt, div, span': { 'line-height': `${prefs.lineHeight} !important`, color: 'inherit !important' },
+      'h1, h2, h3, h4, h5, h6': { color: 'inherit !important' },
+      'a, a:visited': { color: `${t.link} !important` },
+    };
+    const stack = READER_FONTS[prefs.font]?.stack;
+    if (stack) rules['body, p, div, span, li, blockquote, dd, dt, td, h1, h2, h3, h4, h5, h6'] = { 'font-family': `${stack} !important` };
+    if (prefs.justify) rules.p = { 'text-align': 'justify !important', '-webkit-hyphens': 'auto', hyphens: 'auto' };
+    if (prefs.theme === 'dark') rules['img'] = { filter: 'brightness(.9)' };
+    rendition.themes.register('mavis', rules);
+    rendition.themes.select('mavis');
+    for (const a of annotations) drawAnnotation(a);
+  }
+  function updatePrefs(patch) {
+    prefs = { ...prefs, ...patch };
+    saveReaderPrefs(prefs);
+    const cfi = lastLoc?.start?.cfi;
+    applyStyles();
+    if ('margin' in patch || 'spread' in patch) {
+      if ('spread' in patch) rendition.spread(prefs.spread === 'none' ? 'none' : 'auto', 900);
+      rendition.resize();
+    }
+    // Keep the reader on the same passage after reflow.
+    if (cfi && ('size' in patch || 'font' in patch || 'lineHeight' in patch || 'margin' in patch || 'spread' in patch)) {
+      setTimeout(() => displayCfi(cfi), 60);
+    }
+  }
+
+  // ---------- Panels ----------
+  function openContents() {
+    const marks = annotations.filter((a) => a.kind === 'bookmark' && !a.deleted).sort(byPos);
+    const notes = annotations.filter((a) => a.kind !== 'bookmark' && !a.deleted).sort(byPos);
+    const currentHref = lastLoc?.start?.href?.split('#')[0];
+    const d = openDialog({
+      title: 'Contents', variant: 'side', container: readerEl,
+      body: html`
+        <div class="seg" role="tablist" aria-label="Panel">
+          <button type="button" role="tab" aria-pressed="true" data-tab="toc">Chapters</button>
+          <button type="button" role="tab" aria-pressed="false" data-tab="marks">Bookmarks <span class="num">${marks.length}</span></button>
+          <button type="button" role="tab" aria-pressed="false" data-tab="notes">Notes <span class="num">${notes.length}</span></button>
+        </div>
+        <div data-pane="toc">${toc.length
+          ? html`<ol class="toc-list">${toc.map((t) => html`<li><button type="button" class="lvl${Math.min(t.depth, 2)}" data-href="${t.href}" ${t.href.split('#')[0] === currentHref ? html`aria-current="true"` : ''}>${t.label}</button></li>`)}</ol>`
+          : html`<p class="muted">This book doesn’t include a table of contents.</p>`}</div>
+        <div data-pane="marks" hidden>${marks.length ? marks.map((a) => annItem(a)) : html`<p class="muted">No bookmarks yet. Tap the ribbon at the top to bookmark a page.</p>`}</div>
+        <div data-pane="notes" hidden>${notes.length ? notes.map((a) => annItem(a)) : html`<p class="muted">No highlights or notes yet. Select text in the book to highlight it, add a note, or look up a word.</p>`}</div>`,
+    });
+    d.body.addEventListener('click', async (e) => {
+      const tab = e.target.closest('[data-tab]');
+      if (tab) {
+        d.body.querySelectorAll('[data-tab]').forEach((t) => t.setAttribute('aria-pressed', String(t === tab)));
+        d.body.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== tab.dataset.tab; });
+        return;
+      }
+      const go = e.target.closest('[data-href], [data-go]');
+      if (go) {
+        d.close();
+        try { if (go.dataset.go) await displayCfi(go.dataset.go); else await rendition.display(go.dataset.href); } catch { toast('That part of the book couldn’t be opened.', { tone: 'error' }); }
+        return;
+      }
+      const del = e.target.closest('[data-del]');
+      if (del) {
+        const a = annotations.find((x) => x.uid === del.dataset.del);
+        if (!a) return;
+        const ok = await confirmDialog({ title: `Delete this ${a.kind}?`, message: a.text ? `“${a.text.slice(0, 120)}${a.text.length > 120 ? '…' : ''}”` : 'This can’t be undone.', confirmLabel: 'Delete' });
+        if (!ok) return;
+        await store.deleteAnnotation(a.uid);
+        if (a.kind !== 'bookmark') { try { rendition.annotations.remove(a.cfi, 'highlight'); } catch { /* ignore */ } }
+        annotations = annotations.filter((x) => x !== a);
+        del.closest('.ann-item').remove();
+        updateBookmarkButton();
+        toast('Deleted.');
+      }
+      const ed = e.target.closest('[data-edit]');
+      if (ed) { const a = annotations.find((x) => x.uid === ed.dataset.edit); d.close(); if (a) editAnnotation(a); }
+    });
+  }
+  function annItem(a) {
+    return html`<div class="ann-item">
+      ${a.text ? html`<div class="ann-text" style="--sw:${a.kind === 'bookmark' ? 'var(--accent)' : HL[a.color] || HL.sun}">${a.text}</div>` : ''}
+      ${a.note ? html`<div class="ann-note">${a.note}</div>` : ''}
+      <div class="ann-meta"><span>${a.chapter || ''}${a.percent != null ? ` · ${Math.round(a.percent * 100)}%` : ''}</span>
+        <span class="ann-actions">
+          <button type="button" class="btn btn-sm btn-quiet" data-go="${a.cfi}">Go</button>
+          ${a.kind !== 'bookmark' ? html`<button type="button" class="icon-btn" data-edit="${a.uid}" aria-label="Edit">${icon('note', { size: 18 })}</button>` : ''}
+          <button type="button" class="icon-btn" data-del="${a.uid}" aria-label="Delete">${icon('trash', { size: 18 })}</button>
+        </span></div>
+    </div>`;
+  }
+  function byPos(a, b) { return (a.percent ?? 0) - (b.percent ?? 0) || (a.createdAt || 0) - (b.createdAt || 0); }
+
+  function openDisplay() {
+    const reduced = prefersReducedMotion();
+    const d = openDialog({
+      title: 'Display', variant: 'side', container: readerEl,
+      body: html`
+        <div class="opt-group"><span class="label">Theme</span><div class="swatches">
+          ${Object.entries(THEMES).map(([k, t]) => html`<button type="button" class="swatch" data-theme="${k}" aria-pressed="${prefs.theme === k}" style="background:${t.bg};color:${t.fg}">Aa<span class="visually-hidden"> ${t.label}</span></button>`)}
+        </div></div>
+        <div class="opt-group"><label class="label" for="r-font">Typeface</label>
+          <select id="r-font" class="select">${Object.entries(READER_FONTS).map(([k, f]) => html`<option value="${k}" ${prefs.font === k ? 'selected' : ''}>${f.label}</option>`)}</select></div>
+        <div class="opt-group"><span class="label" id="size-l">Text size</span>
+          <div class="stepper" role="group" aria-labelledby="size-l"><button type="button" class="btn" data-size="-10" aria-label="Smaller text">A−</button><output id="size-o" class="num">${prefs.size}%</output><button type="button" class="btn" data-size="10" aria-label="Larger text">A+</button></div></div>
+        <div class="opt-group"><span class="label">Line spacing</span><div class="seg" role="group" aria-label="Line spacing">
+          ${[[1.35, 'Tight'], [1.6, 'Normal'], [1.85, 'Relaxed'], [2.1, 'Loose']].map(([v, l]) => html`<button type="button" data-lh="${v}" aria-pressed="${prefs.lineHeight === v}">${l}</button>`)}</div></div>
+        <div class="opt-group"><span class="label">Margins</span><div class="seg" role="group" aria-label="Margins">
+          ${Object.keys(MARGINS).map((m) => html`<button type="button" data-margin="${m}" aria-pressed="${prefs.margin === m}">${m[0].toUpperCase() + m.slice(1)}</button>`)}</div></div>
+        <div class="opt-group"><span class="label">Alignment</span><div class="seg" role="group" aria-label="Alignment">
+          <button type="button" data-justify="0" aria-pressed="${!prefs.justify}">Left</button><button type="button" data-justify="1" aria-pressed="${prefs.justify}">Justified</button></div></div>
+        <div class="opt-group"><span class="label">Pages on wide screens</span><div class="seg" role="group" aria-label="Pages on wide screens">
+          <button type="button" data-spread="auto" aria-pressed="${prefs.spread !== 'none'}">Two pages</button><button type="button" data-spread="none" aria-pressed="${prefs.spread === 'none'}">One page</button></div></div>
+        <div class="opt-group"><span class="label">Page turn</span><div class="seg" role="group" aria-label="Page turn animation">
+          ${[['slide', 'Slide'], ['fade', 'Fade'], ['none', 'None']].map(([v, l]) => html`<button type="button" data-motion="${v}" aria-pressed="${prefs.motion === v}">${l}</button>`)}</div>
+          ${reduced ? html`<p class="hint">Your device asks for reduced motion, so pages turn without animation.</p>` : ''}</div>
+        <p class="hint">These settings are saved on this device.</p>`,
+    });
+    d.body.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      const press = (attr) => d.body.querySelectorAll(`[${attr}]`).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      if (b.dataset.theme) { press('data-theme'); updatePrefs({ theme: b.dataset.theme }); }
+      if (b.dataset.size) {
+        const size = Math.max(70, Math.min(220, prefs.size + Number(b.dataset.size)));
+        d.body.querySelector('#size-o').textContent = `${size}%`;
+        updatePrefs({ size });
+      }
+      if (b.dataset.lh) { press('data-lh'); updatePrefs({ lineHeight: Number(b.dataset.lh) }); }
+      if (b.dataset.margin) { press('data-margin'); updatePrefs({ margin: b.dataset.margin }); }
+      if (b.dataset.justify) { press('data-justify'); updatePrefs({ justify: b.dataset.justify === '1' }); }
+      if (b.dataset.spread) { press('data-spread'); updatePrefs({ spread: b.dataset.spread }); }
+      if (b.dataset.motion) { press('data-motion'); updatePrefs({ motion: b.dataset.motion }); }
+    });
+    d.body.querySelector('#r-font').addEventListener('change', (e) => updatePrefs({ font: e.target.value }));
+  }
+
+  // ---------- Dictionary (with voice lookup) ----------
+  function openDictionary(term) {
+    const d = openDialog({
+      title: 'Dictionary', variant: 'sheet', container: readerEl,
+      body: html`<form class="searchbar" style="box-shadow:none" id="dict-form" role="search">
+          <label class="visually-hidden" for="dict-q">Word to look up</label>
+          <input id="dict-q" type="search" value="${term.split(/\s+/).slice(0, 3).join(' ')}" placeholder="Type a word" autocomplete="off" ${term ? '' : 'autofocus'} />
+          <button type="button" class="icon-btn" data-mic aria-label="Say a word">${icon('mic')}</button>
+          <button type="submit" class="icon-btn go" aria-label="Look up">${icon('search')}</button>
+        </form>
+        <div id="dict-out" aria-live="polite"></div>
+        <p class="hint">English definitions from the Free Dictionary API (Wiktionary data). Only the word you look up is sent.</p>`,
+    });
+    const out = d.body.querySelector('#dict-out');
+    const input = d.body.querySelector('#dict-q');
+    let ctl = null;
+    async function look(word) {
+      ctl?.abort(); ctl = new AbortController();
+      out.innerHTML = String(html`<p class="muted">Looking up “${word}”…</p>`);
+      try {
+        const r = await define(word, { signal: ctl.signal });
+        if (r.error) {
+          out.innerHTML = String(html`<p class="muted">${r.error}</p>${r.retry ? html`<button class="btn btn-sm" type="button" data-retry>Try again</button>` : ''}`);
+          out.querySelector('[data-retry]')?.addEventListener('click', () => look(word));
+          return;
+        }
+        out.innerHTML = String(html`${r.entries.map((en) => html`<div class="dict-entry">
+          <div><span class="dict-word">${en.word}</span> <span class="faint">${en.phonetic}</span></div>
+          ${en.meanings.map((m) => html`<div><div class="dict-pos">${m.partOfSpeech}</div><ol class="dict-def">${m.definitions.map((df) => html`<li>${df.definition}${df.example ? html`<span class="ex">“${df.example}”</span>` : ''}</li>`)}</ol>
+            ${m.synonyms.length ? html`<p class="small faint" style="margin-top:4px">Similar: ${m.synonyms.join(', ')}</p>` : ''}</div>`)}
+        </div>`)}`);
+      } catch (err) { if (err.name !== 'AbortError') out.innerHTML = String(html`<p class="muted">The dictionary couldn’t be reached.</p>`); }
+    }
+    d.body.querySelector('#dict-form').addEventListener('submit', (e) => { e.preventDefault(); if (input.value.trim()) look(input.value.trim()); });
+    d.body.querySelector('[data-mic]').addEventListener('click', async () => {
+      const said = await listen({ purpose: 'Say a word to look up', lang: lang.length === 2 ? undefined : lang });
+      if (said) { input.value = said; look(said); } else input.focus();
+    });
+    if (term) look(term);
+  }
+
+  // ---------- Read aloud ----------
+  let voices = [];
+  function toggleTts() {
+    const show = ttsBar.hidden;
+    ttsBar.hidden = !show;
+    root.querySelector('[data-act="tts"]').setAttribute('aria-pressed', String(show));
+    if (show) { paintTtsBar(); setTimeout(() => rendition.resize(), 50); }
+    else { tts?.stop(); setTimeout(() => rendition.resize(), 50); }
+  }
+  async function paintTtsBar() {
+    if (!ttsSupported) {
+      ttsBar.innerHTML = String(html`<p class="small" style="text-align:center">This browser can’t read aloud. Chrome, Edge, Safari, and Firefox on most devices can.</p>`);
+      return;
+    }
+    ttsBar.innerHTML = String(html`<p class="tts-sentence" id="tts-line">Loading voices…</p>`);
+    voices = await whenVoicesReady();
+    const base = lang.slice(0, 2).toLowerCase();
+    const matching = voices.filter((v) => v.lang?.toLowerCase().startsWith(base));
+    const list = matching.length ? matching : voices;
+    const saved = store.getSetting('ttsVoice', null);
+    const chosen = list.find((v) => v.voiceURI === saved) || list.find((v) => v.default && v.localService) || list.find((v) => v.localService) || list[0];
+    const rate = store.getSetting('ttsRate', 1);
+    const online = list.some((v) => !v.localService);
+    ttsBar.innerHTML = String(html`
+      <p class="tts-sentence" id="tts-line" aria-live="off">${voices.length ? 'Reads from the top of this page and turns pages for you.' : 'No voices are installed on this device. Add a text-to-speech voice in your device settings.'}</p>
+      <div class="tts-main">
+        <button type="button" class="icon-btn" data-tts="back" aria-label="Previous sentence">${icon('skipB')}</button>
+        <button type="button" class="icon-btn play" data-tts="play" aria-label="Start reading aloud" ${voices.length ? '' : 'disabled'}>${icon('play', { size: 26 })}</button>
+        <button type="button" class="icon-btn" data-tts="fwd" aria-label="Next sentence">${icon('skipF')}</button>
+        <button type="button" class="icon-btn" data-tts="stop" aria-label="Stop reading aloud">${icon('stop')}</button>
+      </div>
+      <div class="tts-opts">
+        <label>Voice <select id="tts-voice">${list.map((v) => html`<option value="${v.voiceURI}" ${v === chosen ? 'selected' : ''}>${v.name}${v.localService ? '' : ' (online)'}</option>`)}</select></label>
+        <label>Speed <select id="tts-rate">${[0.75, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2].map((r) => html`<option value="${r}" ${Number(rate) === r ? 'selected' : ''}>${r}×</option>`)}</select></label>
+        <label>${icon('timer', { size: 18 })}<span class="visually-hidden">Sleep timer</span> <select id="tts-sleep" aria-label="Sleep timer"><option value="0">No timer</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="chapter">End of chapter</option></select></label>
+      </div>
+      <p class="small" id="tts-status" role="status" style="text-align:center;color:var(--r-faint)">${online ? 'Voices marked “online” send the text being read to the voice provider.' : ''}</p>`);
+    const voiceSel = ttsBar.querySelector('#tts-voice');
+    const rateSel = ttsBar.querySelector('#tts-rate');
+    const voiceFn = () => voices.find((v) => v.voiceURI === voiceSel.value) || null;
+    const rateFn = () => Number(rateSel.value) || 1;
+    if (!tts) {
+      tts = new ReadAloud({ rendition, voice: voiceFn, rate: rateFn, lang, title: item.title, onState: onTtsState });
+    } else { tts.voice = voiceFn; tts.rate = rateFn; }
+    voiceSel.addEventListener('change', () => { store.setSetting('ttsVoice', voiceSel.value); tts.restartSentence(); });
+    rateSel.addEventListener('change', () => { store.setSetting('ttsRate', rateFn()); tts.restartSentence(); });
+    ttsBar.querySelector('#tts-sleep').addEventListener('change', (e) => {
+      const v = e.target.value;
+      tts.setSleep(v === 'chapter' ? 'chapter' : Number(v));
+      toast(v === '0' ? 'Sleep timer off.' : v === 'chapter' ? 'Reading will stop at the end of this chapter.' : `Reading will stop in ${v} minutes.`);
+    });
+    ttsBar.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-tts]')?.dataset.tts;
+      if (!a) return;
+      if (a === 'play') {
+        if (tts.state === 'playing' || tts.state === 'loading') tts.pause();
+        else if (tts.state === 'paused') tts.resume();
+        else tts.start().catch((err) => toast(err.message, { tone: 'error' }));
+      }
+      if (a === 'stop') tts.stop();
+      if (a === 'fwd') tts.skip(1);
+      if (a === 'back') tts.skip(-1);
+    });
+  }
+  function onTtsState(s) {
+    const play = ttsBar.querySelector('[data-tts="play"]');
+    const line = ttsBar.querySelector('#tts-line');
+    const status = ttsBar.querySelector('#tts-status');
+    if (!play) return;
+    const playing = s.state === 'playing' || s.state === 'loading';
+    play.innerHTML = String(icon(playing ? 'pause' : 'play', { size: 26 }));
+    play.setAttribute('aria-label', playing ? 'Pause reading aloud' : s.state === 'paused' ? 'Resume reading aloud' : 'Start reading aloud');
+    if (s.sentence && (s.state === 'playing' || s.state === 'paused')) line.textContent = s.sentence;
+    if (s.state === 'idle') line.textContent = s.reason === 'end' ? 'Reached the end of the book.' : s.reason === 'sleep' ? 'Sleep timer finished. Reading stopped.' : 'Stopped. Press play to read from the top of this page.';
+    if (s.error) status.textContent = s.error;
+    else if (s.state === 'paused') status.textContent = 'Paused. Resuming repeats the current sentence.';
+    else if (s.state === 'playing') status.textContent = s.sleepAt ? `Sentence ${s.index + 1} of ${s.total} on this page · stops at ${new Date(s.sleepAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : s.sleepChapter != null ? `Sentence ${s.index + 1} of ${s.total} on this page · stops at chapter end` : `Sentence ${s.index + 1} of ${s.total} on this page`;
+    else if (s.state === 'idle' && s.reason !== 'user') status.textContent = '';
+  }
+
+  // ---------- Helpers ----------
+  function chapterLabel(loc) {
+    if (!loc?.start) return '';
+    const href = (loc.start.href || '').split('#')[0];
+    let best = '';
+    for (const t of toc) if (t.href.split('#')[0] === href) { best = t.label; break; }
+    if (!best) {
+      const idx = loc.start.index;
+      for (const t of toc) {
+        const s = book.spine.get(t.href.split('#')[0]);
+        if (s && s.index <= idx) best = t.label;
+      }
+    }
+    return best.trim().slice(0, 120);
+  }
+  function confirmExternal(href) {
+    let host = href;
+    try { host = new URL(href).host || href; } catch { /* keep raw */ }
+    const d = openDialog({
+      title: 'Leave the book?', container: readerEl,
+      body: html`<p class="dialog-text">This link goes to <strong>${host}</strong>, a website outside Mavis Library. It will open in a new tab.</p>
+        <p class="small faint" style="overflow-wrap:anywhere">${href}</p>
+        <div class="dialog-actions"><button type="button" class="btn btn-quiet" data-close>Stay here</button><a class="btn btn-primary" href="${/^https?:/i.test(href) ? href : '#'}" target="_blank" rel="noopener noreferrer" data-open>Open link</a></div>`,
+    });
+    d.body.querySelector('[data-open]').addEventListener('click', () => d.close());
+  }
+
+  return async () => {
+    destroyed = true;
+    if (lastLoc && saveProgress) saveProgress.flush(lastLoc);
+    cleanups.forEach((f) => f());
+    try { tts?.destroy(); } catch { /* ignore */ }
+    try { if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* ignore */ }
+    try { rendition?.destroy(); } catch { /* ignore */ }
+    try { book?.destroy(); } catch { /* ignore */ }
+  };
+}
+
+function flattenToc(items, depth = 0, out = []) {
+  for (const it of items) {
+    out.push({ label: (it.label || '').trim() || 'Untitled section', href: it.href, depth });
+    if (it.subitems?.length) flattenToc(it.subitems, depth + 1, out);
+  }
+  return out;
+}
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const frames = (n) => new Promise((r) => { const step = () => (n-- <= 0 ? r() : requestAnimationFrame(step)); step(); });
+export { esc, $ };

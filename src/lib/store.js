@@ -12,6 +12,8 @@ const listeners = new Set();
 let owner = 'guest';
 
 export const GUEST = 'guest';
+/** Stores whose rows belong to an owner and sync to their account. */
+export const SYNCED_STORES = ['shelf', 'progress', 'annotations'];
 
 export function onChange(fn) {
   listeners.add(fn);
@@ -258,7 +260,7 @@ export async function setSetting(name, value) {
 
 export async function collectDirty(who) {
   const out = {};
-  for (const store of ['shelf', 'progress', 'annotations']) {
+  for (const store of SYNCED_STORES) {
     out[store] = (await idb.byOwner(store, who)).filter((r) => r.dirty);
   }
   return out;
@@ -291,7 +293,7 @@ export async function applyRemote(store, who, rows) {
 /** Move everything the guest saved on this device into an account. */
 export async function migrateGuest(toOwner) {
   let moved = 0;
-  for (const store of ['shelf', 'progress', 'annotations']) {
+  for (const store of SYNCED_STORES) {
     const rows = await idb.byOwner(store, GUEST);
     const writes = [];
     for (const r of rows) {
@@ -326,11 +328,13 @@ export async function guestItemCount() {
 
 /** Remove one account's data from this device (used on shared devices). */
 export async function clearOwnerData(who) {
-  for (const store of ['shelf', 'progress', 'annotations']) {
+  for (const store of SYNCED_STORES) {
     const rows = await idb.byOwner(store, who);
     for (const r of rows) await idb.del(store, r.id);
   }
   for (const k of await idb.keysWithPrefix('files', `${who}|`)) await idb.del('files', k);
+  // Forget how far this device had synced, so signing in again pulls everything back.
+  await setSetting(`sync-cursors|${who}`, {});
   emit({ type: 'owner' });
 }
 

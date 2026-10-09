@@ -1,7 +1,7 @@
 import './styles/app.css';
 import { installAppFonts } from './lib/fonts.js';
 import * as store from './lib/store.js';
-import { initAuth, onAuth, currentUser, authConfigured } from './lib/auth.js';
+import { initAuth, onAuth, currentUser } from './lib/auth.js';
 import { startSync, stopSync, onSyncState, syncNow } from './lib/sync.js';
 import { html, icon, toast, closeAllDialogs, $, confirmDialog } from './lib/ui.js';
 import { brandMark, installCoverFallback } from './components.js';
@@ -161,11 +161,11 @@ function errorView(title, text) {
 document.addEventListener('click', (e) => { if (e.target.closest('[data-reload]')) location.reload(); });
 
 // ---------- Accounts ----------
-async function onSignedIn(user) {
+async function onSignedIn(user, { quiet = false } = {}) {
   const prev = store.getOwner();
   store.setOwner(user.id);
   startSync(user.id);
-  if (prev === store.GUEST) {
+  if (prev === store.GUEST && !quiet) {
     const n = await store.guestItemCount();
     if (n > 0) {
       const ok = await confirmDialog({
@@ -207,16 +207,16 @@ async function boot() {
     if (err instanceof StorageUnavailableError) toast(err.message, { tone: 'error', timeout: 9000 });
   });
 
-  if (authConfigured) {
-    const user = await initAuth();
-    if (user) await onSignedIn(user);
-    onAuth(async ({ user: u, event, recovery }) => {
-      if (event?.error) { toast(`Sign-in problem: ${event.error}`, { tone: 'error' }); return; }
-      if (event === 'SIGNED_IN' && u && store.getOwner() !== u.id) { await onSignedIn(u); renderRoute(); }
-      if (event === 'SIGNED_OUT') { stopSync(); store.setOwner(store.GUEST); renderRoute(); }
-      if (event === 'PASSWORD_RECOVERY' || recovery) navigate('/account');
-    });
-  }
+  onAuth(async ({ user: u, event }) => {
+    if (event?.error) { toast(event.error, { tone: 'error', timeout: 9000 }); return; }
+    if (event === 'SIGNED_IN' && u && store.getOwner() !== u.id) { await onSignedIn(u); renderRoute(); }
+    if (event === 'SIGNED_OUT') { stopSync(); store.setOwner(store.GUEST); renderRoute(); }
+  });
+  // Restore a saved session right away (works offline), then confirm it with the server.
+  if (currentUser()) await onSignedIn(currentUser(), { quiet: true });
+  initAuth().then((user) => {
+    if (!user && store.getOwner() !== store.GUEST) { stopSync(); store.setOwner(store.GUEST); renderRoute(); }
+  }).catch((err) => console.warn('Accounts unavailable', err));
 
   window.addEventListener('hashchange', () => { window.__mavisNavDepth = (window.__mavisNavDepth || 0) + 1; renderRoute(); });
   await renderRoute();

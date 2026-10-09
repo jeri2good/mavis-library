@@ -5,6 +5,7 @@ import { json, onlyGet, env, requireOwner } from '../lib/shared.mjs';
 import { ttsProvider } from './tts.mjs';
 import { llmConfig } from './assistant.mjs';
 import { jevProvider } from './rank.mjs';
+import { accountsEnabled } from '../lib/accounts.mjs';
 
 export default async (req) => {
   const pre = onlyGet(req);
@@ -19,6 +20,7 @@ export default async (req) => {
     assistant: llm ? { provider: llm.provider, model: llm.model } : null,
     jev: jevProvider()?.name || false,
     googleBooksKey: Boolean(env('GOOGLE_BOOKS_API_KEY')),
+    accounts: accountsEnabled(),
   }, { cache: checking ? 'no-store' : 'public, max-age=60' });
 };
 

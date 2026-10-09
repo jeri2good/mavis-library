@@ -2,7 +2,6 @@
 Mavis Library end-to-end tests (Playwright + Chromium).
 
   npm run build
-  VITE_SUPABASE_URL=http://localhost:4322/sb VITE_SUPABASE_ANON_KEY=test-anon npx vite build --outDir dist-auth
   python3 tests/e2e/run_e2e.py
 
 Writes docs/test-evidence/e2e-report.md and screenshots. External services are
@@ -659,12 +658,20 @@ def manifest_check(browser):
 
 # ======================================================================
 def run_accounts(browser):
-    def sign(page, mode, email, pw='correct-horse-9'):
+    def sign(page, mode, email, pw='correct-horse-9', ack=True):
         page.goto(AUTH + '/#/account')
         if mode == 'up':
             page.get_by_role('button', name='Create account').first.click()
         page.fill('#email', email); page.fill('#password', pw)
         page.locator('#auth-submit').click()
+        if mode == 'up':
+            expect(page.get_by_role('heading', name='Save your recovery code')).to_be_visible(timeout=10000)
+            code = page.locator('#rcode').inner_text().strip()
+            if ack:
+                expect(page.get_by_role('button', name='Continue')).to_be_disabled()
+                page.check('#saved')
+                page.get_by_role('button', name='Continue').click()
+            return code
 
     d1 = new_context(browser)
     p1 = watch(d1.new_page(), 'device1')
@@ -673,7 +680,12 @@ def run_accounts(browser):
         p1.goto(AUTH + '/#/book/gutenberg:84')
         p1.get_by_role('button', name='Want to read').click()
         expect(p1.locator('.toast').filter(has_text='Want to read')).to_be_visible()
-        sign(p1, 'up', 'ada@example.test')
+        code = sign(p1, 'up', 'ada@example.test', ack=False)
+        assert re.fullmatch(r'[2-9A-HJ-NP-Z]{4}(-[2-9A-HJ-NP-Z]{4}){3}', code), code
+        globals()['_ada_code'] = code
+        shot(p1, '19a-recovery-code')
+        p1.check('#saved')
+        p1.get_by_role('button', name='Continue').click()
         dlg = p1.get_by_role('dialog', name='Bring your guest shelf along?')
         expect(dlg).to_be_visible(timeout=10000)
         shot(p1, '19-guest-migration')
@@ -681,8 +693,8 @@ def run_accounts(browser):
         expect(p1.locator('.toast').filter(has_text='Moved 1 book')).to_be_visible()
         expect(p1.locator('.account')).to_contain_text('ada@example.test')
         wait_until(p1, "document.querySelector('#sync-state')?.textContent.includes('Up to date')", timeout=10000)
-        log = p1.evaluate("fetch('/__test/supabase-log').then(r => r.json())")
-        assert any(e['method'] == 'POST' and e['table'] == 'shelf_items' for e in log), log
+        log = p1.evaluate("fetch('/__test/sync-log').then(r => r.json())")
+        assert any(e['method'] == 'POST' and e['bytes'] > 50 for e in log), log
         shot(p1, '20-account-signed-in')
     _(p1)
 
@@ -747,20 +759,38 @@ def run_accounts(browser):
         d3.close()
     _(p1)
 
-    @test('Sign-out (with remove-from-device), wrong password, and email-confirmation flows')
+    @test('Sign-out (with remove-from-device), wrong password, and password reset with the recovery code')
     def _(p1):
         d2, p2 = globals()['_p2']
         p2.goto(AUTH + '/#/account')
         p2.check('#wipe')
-        p2.get_by_role('button', name='Sign out').click()
+        p2.get_by_role('button', name='Sign out', exact=True).click()
         expect(p2.locator('.toast').filter(has_text='removed your data')).to_be_visible()
         p2.goto(AUTH + '/#/shelf')
         expect(p2.locator('#shelf-body')).to_contain_text('ready for its first book')
         sign(p2, 'in', 'ada@example.test', 'wrong-password-1')
         expect(p2.locator('#auth-error')).to_contain_text('don’t match')
-        sign(p2, 'up', 'new+confirm@example.test')
-        expect(p2.get_by_role('heading', name='Check your email')).to_be_visible()
-        shot(p2, '22-check-email')
+        # Forgot password → reset with the recovery code saved at sign-up.
+        p2.get_by_role('button', name='Forgot your password?').click()
+        p2.fill('#remail', 'ada@example.test')
+        p2.fill('#rcodein', 'AAAA-BBBB-CCCC-DDDD'); p2.fill('#rpw', 'brand-new-pass-2')
+        p2.get_by_role('button', name='Reset password').click()
+        expect(p2.locator('#rerr')).to_contain_text('don’t match')
+        p2.fill('#rcodein', globals()['_ada_code'].lower())
+        p2.get_by_role('button', name='Reset password').click()
+        expect(p2.get_by_role('heading', name='Your new recovery code')).to_be_visible(timeout=10000)
+        new_code = p2.locator('#rcode').inner_text().strip()
+        assert new_code != globals()['_ada_code']
+        shot(p2, '22-recovery-reset')
+        p2.check('#saved'); p2.get_by_role('button', name='Continue').click()
+        expect(p2.locator('.account')).to_contain_text('ada@example.test')
+        wait_until(p2, "document.querySelector('#sync-state')?.textContent.includes('Up to date')", timeout=10000)
+        p2.goto(AUTH + '/#/shelf')
+        expect(p2.locator('.shelf-card')).to_have_count(2)
+        # The reset signed out device 1: its next sync is refused and it drops to guest.
+        p1.goto(AUTH + '/#/account'); p1.reload()
+        expect(p1.locator('.toast').filter(has_text='session ended')).to_be_visible(timeout=10000)
+        expect(p1.locator('#auth-form')).to_be_visible()
         d2.close()
     _(p1)
     d1.close()
@@ -1035,7 +1065,7 @@ def main():
     subprocess.run(['node', 'tests/e2e/make-files.mjs', str(FILES)], cwd=ROOT, check=True)
     procs = [
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4321'], cwd=ROOT),
-        subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist-auth', '--port', '4322', '--supabase'], cwd=ROOT),
+        subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4322', '--accounts'], cwd=ROOT),
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4323'], cwd=ROOT,
                          env={**os.environ, 'MAVIS_ACCESS_CODE': 'test-code', 'TTS_PROVIDER': 'fish', 'FISH_AUDIO_API_KEY': 'fixture', 'LLM_API_KEY': 'fixture', 'EDENAI_API_KEY': 'fixture'}),
     ]
@@ -1047,7 +1077,7 @@ def main():
             print('Public build (guest mode):')
             run_public(browser)
             manifest_check(browser)
-            print('Accounts build (Supabase emulator):')
+            print('Accounts (Netlify Blobs, local server):')
             run_accounts(browser)
             print('0.2 features (cloud voice, AI, Jev on fixtures):')
             run_v2(browser)

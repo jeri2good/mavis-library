@@ -1,6 +1,6 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 10:45 EDT · Chromium 141.0.7390.37 (headless, Linux) · 123s
+Run: 2026-10-09 16:26 EDT · Chromium 141.0.7390.37 (headless, Linux) · 123s
 
 **47 of 47 checks passed.**
 
@@ -36,7 +36,7 @@ Run: 2026-10-09 10:45 EDT · Chromium 141.0.7390.37 (headless, Linux) · 123s
 | ✅ pass | Reading progress and notes sync to a second device; book files do not |
 | ✅ pass | Conflict: the most recent change wins on both devices |
 | ✅ pass | Another account cannot see this user's shelf |
-| ✅ pass | Sign-out (with remove-from-device), wrong password, and email-confirmation flows |
+| ✅ pass | Sign-out (with remove-from-device), wrong password, and password reset with the recovery code |
 | ✅ pass | Bible opens at a reference with verse focus, chapter navigation, and offline caching |
 | ✅ pass | Verse lookup parses references like "1 Cor 13:4-7" and "ps 23" |
 | ✅ pass | Bible verses: highlight, save as quote, note, copy with reference — and they persist |

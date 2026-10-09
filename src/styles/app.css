@@ -764,3 +764,16 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 3px; paddi
 @media (prefers-reduced-motion: reduce) {
   .view-enter > .page, .row > *, .grid > *, .quote-card, .msg { animation: none !important; }
 }
+
+/* ---------- Accounts: recovery code, security panels ---------- */
+.account .stack { display: grid; gap: 12px; margin-top: 12px; }
+.account details { border-top: 1px solid var(--line); padding: 10px 0; }
+.account details:first-of-type { border-top: 0; }
+.account summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.recovery { display: grid; gap: 14px; }
+.recovery-code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: clamp(1.25rem, 5.4vw, 1.75rem); letter-spacing: .08em; text-align: center;
+  padding: 18px 12px; border-radius: 14px; border: 2px dashed var(--accent);
+  background: var(--surface-2, var(--surface)); user-select: all; word-break: break-all; margin: 0;
+}

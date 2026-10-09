@@ -6,7 +6,7 @@
  *  - covers:  public cover images — cache first, capped
  *  - bible:   Bible text, lexicon, cross-references — cache first, kept offline
  * Never cached here: /api/epub (book bytes go to IndexedDB instead), account
- * and sync traffic (Supabase is cross-origin and never intercepted), the
+ * and sync traffic (/api/account, /api/sync), other API calls, the
  * dictionary, and any non-GET request.
  */
 const VERSION = __BUILD_VERSION__;
@@ -77,6 +77,7 @@ self.addEventListener('fetch', (event) => {
       })());
       return;
     }
+    if (url.pathname.startsWith('/api/')) return; // accounts, sync, features, paid services: always live
     if (url.pathname.startsWith('/bible/')) {
       // Bible text, lexicon, and cross-references: cache first, kept offline.
       event.respondWith((async () => {

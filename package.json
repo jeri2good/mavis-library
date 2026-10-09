@@ -1,15 +1,14 @@
 {
   "name": "mavis-library",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Mavis Library — a calm, installable reading app for Android tablets, phones, and desktop browsers.",
+  "description": "Mavis Library \u2014 a calm, installable reading app for Android tablets, phones, and desktop browsers.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --port 4173",
-    "test:db": "node tests/db/rls.test.mjs",
-    "test:functions": "node tests/functions/functions.test.mjs",
+    "test:functions": "node tests/functions/functions.test.mjs && node tests/functions/accounts.test.mjs",
     "test:e2e": "python3 tests/e2e/run_e2e.py",
     "build:bible": "node scripts/build-bible.mjs"
   },
@@ -21,12 +20,11 @@
     "@fontsource-variable/fraunces": "5.2.8",
     "@fontsource-variable/literata": "5.2.8",
     "@fontsource-variable/source-serif-4": "5.2.8",
-    "@supabase/supabase-js": "2.117.0",
+    "@netlify/blobs": "11.1.4",
     "epubjs": "0.3.93",
     "jszip": "3.10.2"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.3.15",
     "vite": "8.3.1"
   },
   "overrides": {

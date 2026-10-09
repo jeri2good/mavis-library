@@ -1,20 +1,17 @@
-// Cross-device sync of shelf metadata, reading progress, and annotations.
+// Cross-device sync of shelf metadata, reading progress, annotations (and
+// any other synced stores) through Mavis's own /api/sync endpoint.
 // Book files are NOT synced; other devices show "file on another device".
 //
-// Push: dirty local rows are upserted. Pull: rows changed on the server since
-// our cursor (server updated_at) are applied with last-writer-wins on the
-// client timestamp. The database enforces the same rule, so an older device
-// can never overwrite newer work.
+// One request pushes this device's unsynced rows and pulls everything changed
+// since our last cursor. The newer change wins (by the device clock when it was
+// made); the server applies the same rule, so an older device can never
+// overwrite newer work.
 
-import { getClient } from './auth.js';
+import { sessionToken, sessionExpired } from './auth.js';
 import * as store from './store.js';
 import { debounce } from './ui.js';
 
-const TABLES = {
-  shelf: 'shelf_items',
-  progress: 'reading_progress',
-  annotations: 'annotations',
-};
+export const SYNCED = store.SYNCED_STORES;
 
 let uid = null;
 let timer = null;
@@ -26,81 +23,49 @@ export function onSyncState(fn) { listeners.add(fn); fn(state); return () => lis
 function set(patch) { Object.assign(state, patch); for (const fn of listeners) fn(state); }
 export function syncState() { return state; }
 
-const httpsOrNull = (u) => (typeof u === 'string' && u.startsWith('https://') && u.length <= 500 ? u : null);
-
-const toRemote = {
-  shelf: (r) => ({
-    user_id: uid, book_key: r.key, source: r.source, source_id: String(r.sourceId || ''),
-    title: r.title, authors: r.authors || [], cover_url: httpsOrNull(r.coverUrl),
-    languages: r.languages || [], subjects: r.subjects || [], format: r.format || null,
-    file_name: r.fileName || null, file_size: r.fileSize || null, status: r.status,
-    added_at: r.addedAt || null, last_opened_at: r.lastOpenedAt || null,
-    deleted: !!r.deleted, client_updated_at: r.updatedAt,
-  }),
-  progress: (r) => ({
-    user_id: uid, book_key: r.bookKey, cfi: r.cfi, percent: r.percent, chapter: r.chapter,
-    deleted: !!r.deleted, client_updated_at: r.updatedAt,
-  }),
-  annotations: (r) => ({
-    id: r.uid, user_id: uid, book_key: r.bookKey, kind: r.kind, cfi: r.cfi, text_excerpt: r.text || '',
-    color: r.color || null, note: r.note || '', chapter: r.chapter || '', percent: r.percent ?? null,
-    created_at: r.createdAt || null, deleted: !!r.deleted, client_updated_at: r.updatedAt,
-  }),
+const suffix = (id) => id.slice(uid.length + 1);
+const toRemote = (r) => {
+  const { id, owner, dirty, ...rest } = r; // eslint-disable-line no-unused-vars
+  return { ...rest, k: suffix(id) };
+};
+const toLocal = (x) => {
+  const { k, _rev, ...rest } = x; // eslint-disable-line no-unused-vars
+  return { ...rest, id: `${uid}|${k}` };
 };
 
-const toLocal = {
-  shelf: (x) => ({
-    id: `${uid}|${x.book_key}`, key: x.book_key, source: x.source, sourceId: x.source_id, title: x.title,
-    authors: x.authors || [], coverUrl: x.cover_url, languages: x.languages || [], subjects: x.subjects || [],
-    format: x.format, fileName: x.file_name, fileSize: x.file_size, status: x.status,
-    addedAt: x.added_at, lastOpenedAt: x.last_opened_at, deleted: x.deleted, updatedAt: Number(x.client_updated_at),
-  }),
-  progress: (x) => ({
-    id: `${uid}|${x.book_key}`, bookKey: x.book_key, cfi: x.cfi, percent: x.percent, chapter: x.chapter,
-    deleted: x.deleted, updatedAt: Number(x.client_updated_at),
-  }),
-  annotations: (x) => ({
-    id: `${uid}|${x.id}`, uid: x.id, bookKey: x.book_key, kind: x.kind, cfi: x.cfi, text: x.text_excerpt,
-    color: x.color, note: x.note, chapter: x.chapter, percent: x.percent, createdAt: x.created_at,
-    deleted: x.deleted, updatedAt: Number(x.client_updated_at),
-  }),
-};
+class SyncError extends Error { constructor(m, status) { super(m); this.status = status; } }
 
-async function push(sb) {
-  const dirty = await store.collectDirty(uid);
-  let pushed = 0;
-  for (const [local, table] of Object.entries(TABLES)) {
-    const rows = dirty[local];
-    for (let i = 0; i < rows.length; i += 200) {
-      const batch = rows.slice(i, i + 200);
-      const conflict = local === 'annotations' ? 'id' : 'user_id,book_key';
-      const { error } = await sb.from(table).upsert(batch.map(toRemote[local]), { onConflict: conflict });
-      if (error) throw error;
-      await store.markClean(local, batch);
-      pushed += batch.length;
-    }
+async function exchange(changes) {
+  const cursorKey = `sync-cursors|${uid}`;
+  const cursors = store.getSetting(cursorKey, {});
+  let r;
+  try {
+    r = await fetch('/api/sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken()}` },
+      body: JSON.stringify({ changes, cursors }),
+      cache: 'no-store',
+    });
+  } catch { throw new SyncError('Could not reach Mavis', 0); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new SyncError(j.message || `Sync answered ${r.status}`, r.status);
+  let pulled = 0;
+  for (const table of SYNCED) {
+    const rows = j.rows?.[table] || [];
+    if (rows.length) pulled += await store.applyRemote(table, uid, rows.map(toLocal));
   }
-  return pushed;
+  await store.setSetting(cursorKey, { ...cursors, ...(j.cursors || {}) });
+  return { pulled, more: !!j.more };
 }
 
-async function pull(sb) {
-  let pulled = 0;
-  for (const [local, table] of Object.entries(TABLES)) {
-    const cursorKey = `sync-cursor|${uid}|${table}`;
-    let cursor = store.getSetting(cursorKey, '1970-01-01T00:00:00Z');
-    for (let page = 0; page < 20; page++) {
-      const { data, error } = await sb.from(table).select('*').gte('updated_at', cursor).order('updated_at', { ascending: true }).limit(500);
-      if (error) throw error;
-      if (!data.length) break;
-      pulled += await store.applyRemote(local, uid, data.map(toLocal[local]));
-      const last = data[data.length - 1].updated_at;
-      const advanced = last !== cursor;
-      cursor = last;
-      await store.setSetting(cursorKey, cursor);
-      if (data.length < 500 || !advanced) break;
-    }
-  }
-  return pulled;
+async function pushAndPull() {
+  const dirty = await store.collectDirty(uid);
+  const changes = {};
+  for (const table of SYNCED) changes[table] = (dirty[table] || []).map(toRemote);
+  const out = await exchange(changes);
+  for (const table of SYNCED) if (dirty[table]?.length) await store.markClean(table, dirty[table]);
+  // Keep pulling if the server had more than one response's worth.
+  for (let i = 0; out.more && i < 20; i++) Object.assign(out, await exchange({}));
 }
 
 export async function syncNow() {
@@ -110,13 +75,12 @@ export async function syncNow() {
   running = true;
   set({ status: 'syncing', error: null });
   try {
-    const sb = await getClient();
-    await push(sb);
-    await pull(sb);
+    await pushAndPull();
     set({ status: 'idle', lastSyncedAt: Date.now() });
   } catch (err) {
     console.warn('Sync failed', err);
-    set({ status: 'error', error: err.message || 'Sync failed' });
+    if (err.status === 401) { set({ status: 'off', error: null }); sessionExpired(); return; }
+    set({ status: err.status === 0 ? 'offline' : 'error', error: err.message || 'Sync failed' });
   } finally {
     running = false;
     if (queued) { queued = false; setTimeout(syncNow, 500); }
@@ -157,5 +121,5 @@ export function stopSync() {
 export async function flushBeforeSignOut() {
   if (!uid || !navigator.onLine) return;
   schedule.cancel();
-  try { const sb = await getClient(); await push(sb); } catch (err) { console.warn('Final push failed', err); }
+  try { await pushAndPull(); } catch (err) { console.warn('Final push failed', err); }
 }

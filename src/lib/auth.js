@@ -1,107 +1,129 @@
-// Accounts via Supabase Auth. Mavis never stores or checks passwords itself.
-// When VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not set at build time,
-// accounts are reported as "not connected" and the app runs in guest mode.
+// Accounts on Mavis's own server (Netlify Functions + Netlify Blobs).
+// Passwords are sent only to /api/account over HTTPS and stored there as
+// scrypt hashes. This device keeps a signed session token so you stay signed
+// in, including offline. There is no email: a recovery code shown once at
+// sign-up is how a forgotten password is reset.
 
-const URL_ = import.meta.env.VITE_SUPABASE_URL || '';
-const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-export const authConfigured = Boolean(URL_ && KEY);
-export const googleEnabled = authConfigured && import.meta.env.VITE_AUTH_GOOGLE === 'true';
+import { loadFeatures } from './features.js';
 
-let client = null;
-let user = null;
-let recovery = false;
+const SESSION_KEY = 'mavis-session';
+const AVAILABLE_KEY = 'mavis-accounts-available';
+
+export let authConfigured = readLocal(AVAILABLE_KEY) === '1';
+export const googleEnabled = false;
+
+let session = parse(readLocal(SESSION_KEY)); // { token, user: { id, email } }
 const listeners = new Set();
 
+function readLocal(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function writeLocal(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* private mode */ } }
+function parse(s) { try { const o = JSON.parse(s); return o?.token && o?.user?.id ? o : null; } catch { return null; } }
+
 export function onAuth(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-function emit(event) { for (const fn of listeners) { try { fn({ user, event, recovery }); } catch (e) { console.error(e); } } }
+function emit(event) { for (const fn of listeners) { try { fn({ user: session?.user || null, event }); } catch (e) { console.error(e); } } }
 
-export function currentUser() { return user; }
-export function inRecovery() { return recovery; }
-export async function getClient() {
-  if (!authConfigured) return null;
-  if (client) return client;
-  const { createClient } = await import('@supabase/supabase-js');
-  client = createClient(URL_, KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
-  });
-  return client;
+export function currentUser() { return session?.user || null; }
+export function sessionToken() { return session?.token || null; }
+export function inRecovery() { return false; }
+
+function save(next) {
+  session = next;
+  writeLocal(SESSION_KEY, next ? JSON.stringify(next) : null);
 }
 
-export async function initAuth() {
-  if (!authConfigured) { emit('INITIAL'); return null; }
+export class AuthError extends Error {
+  constructor(message, status, code) { super(message); this.status = status; this.code = code; }
+}
+
+async function call(action, { method = 'POST', body, token } = {}) {
+  let r;
   try {
-    const sb = await getClient();
-    sb.auth.onAuthStateChange((event, session) => {
-      user = session?.user || null;
-      if (event === 'PASSWORD_RECOVERY') recovery = true;
-      if (event === 'SIGNED_OUT') recovery = false;
-      // Defer so Supabase's internal lock is released before listeners query.
-      setTimeout(() => emit(event), 0);
+    r = await fetch(`/api/account/${action}`, {
+      method,
+      headers: { accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
     });
-    const { data } = await sb.auth.getSession();
-    user = data.session?.user || null;
-    // Clean ?code= / error params out of the address bar after the redirect.
-    const sp = new URLSearchParams(location.search);
-    if (sp.has('code') || sp.has('error_description') || sp.has('reset')) {
-      if (sp.get('error_description')) setTimeout(() => emit({ error: sp.get('error_description') }), 0);
-      history.replaceState(null, '', location.pathname + location.hash);
-    }
-  } catch (err) {
-    console.warn('Auth unavailable', err);
+  } catch {
+    throw new AuthError('Could not reach Mavis. Check your connection and try again.', 0, 'offline');
   }
-  return user;
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new AuthError(j.message || `The account service answered ${r.status}.`, r.status, j.error);
+  return j;
 }
 
-const redirectTo = () => `${location.origin}${location.pathname}`;
+/** Find out whether accounts are switched on, and confirm a saved session is still valid. */
+export async function initAuth() {
+  const f = await loadFeatures();
+  if (f.reachable) {
+    authConfigured = !!f.accounts;
+    writeLocal(AVAILABLE_KEY, authConfigured ? '1' : '0');
+  }
+  if (!authConfigured) { if (f.reachable) save(null); emit('INITIAL'); return null; }
+  if (session && navigator.onLine !== false) {
+    try {
+      const me = await call('me', { method: 'GET', token: session.token });
+      save({ token: me.token || session.token, user: me.user });
+    } catch (err) {
+      if (err.status === 401) sessionExpired();
+      // Offline or server trouble: keep the saved session and try later.
+    }
+  }
+  emit('INITIAL');
+  return currentUser();
+}
 
-function friendly(error) {
-  const m = error?.message || String(error || '');
-  if (/invalid login credentials/i.test(m)) return 'That email and password don’t match. Check them, or reset your password.';
-  if (/email not confirmed/i.test(m)) return 'Confirm your email first. Check your inbox for the link we sent.';
-  if (/already registered|already been registered/i.test(m)) return 'An account with that email already exists. Sign in instead.';
-  if (/password should be at least|weak password/i.test(m)) return 'Choose a longer password (at least 8 characters, mixing letters and numbers).';
-  if (/rate limit|too many/i.test(m)) return 'Too many attempts. Wait a few minutes and try again.';
-  if (/fetch|network/i.test(m)) return 'Could not reach the account service. Check your connection.';
-  return m || 'Something went wrong with your account request.';
+/** Called by sync when the server says the session is no longer valid. */
+export function sessionExpired() {
+  if (!session) return;
+  save(null);
+  emit('SIGNED_OUT');
+  emit({ error: 'Your session ended (you may have signed out everywhere or changed your password). Sign in again to keep syncing.' });
 }
 
 export async function signUp(email, password) {
-  const sb = await getClient();
-  const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo() } });
-  if (error) throw new Error(friendly(error));
-  // With email confirmation on, Supabase returns a user without a session.
-  return { needsConfirmation: !data.session, existing: data.user && data.user.identities?.length === 0 };
+  const j = await call('signup', { body: { email, password } });
+  save({ token: j.token, user: j.user });
+  return { recoveryCode: j.recoveryCode, user: j.user };
 }
+
+export function announceSignedIn() { emit('SIGNED_IN'); }
 
 export async function signIn(email, password) {
-  const sb = await getClient();
-  const { error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) throw new Error(friendly(error));
+  const j = await call('signin', { body: { email, password } });
+  save({ token: j.token, user: j.user });
+  emit('SIGNED_IN');
 }
 
-export async function signInWithGoogle() {
-  const sb = await getClient();
-  const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: redirectTo() } });
-  if (error) throw new Error(friendly(error));
+export async function recoverWithCode(email, recoveryCode, password) {
+  const j = await call('recover', { body: { email, recoveryCode, password } });
+  save({ token: j.token, user: j.user });
+  return { recoveryCode: j.recoveryCode };
 }
 
-export async function sendReset(email) {
-  const sb = await getClient();
-  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: redirectTo() });
-  if (error) throw new Error(friendly(error));
+export async function changePassword(currentPassword, password) {
+  const j = await call('password', { body: { currentPassword, password }, token: session?.token });
+  save({ ...session, token: j.token });
 }
 
-export async function updatePassword(password) {
-  const sb = await getClient();
-  const { error } = await sb.auth.updateUser({ password });
-  if (error) throw new Error(friendly(error));
-  recovery = false;
-  emit('PASSWORD_UPDATED');
+export async function newRecoveryCode(password) {
+  const j = await call('recovery-code', { body: { password }, token: session?.token });
+  return j.recoveryCode;
+}
+
+export async function signOutEverywhere() {
+  await call('signout-all', { body: {}, token: session?.token });
+  save(null);
+  emit('SIGNED_OUT');
+}
+
+export async function deleteAccount(password) {
+  await call('delete', { body: { password }, token: session?.token });
+  save(null);
+  emit('SIGNED_OUT');
 }
 
 export async function signOut() {
-  const sb = await getClient();
-  if (!sb) return;
-  const { error } = await sb.auth.signOut();
-  if (error) throw new Error(friendly(error));
+  save(null);
+  emit('SIGNED_OUT');
 }

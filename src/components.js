@@ -16,11 +16,22 @@ export function generatedCover(book) {
  * fallback by a document-level error listener (inline handlers are blocked by
  * the content security policy).
  */
-export function cover(book, { localCover = null, eager = false } = {}) {
+export function cover(book, { localCover = null, eager = false, real = true } = {}) {
   const src = localCover || book.coverUrl;
-  return html`<div class="cover">${src
+  const lookup = real && !localCover && book.key && book.source !== 'import' && book.key !== 'bible';
+  const attrs = lookup
+    ? html` data-key="${book.key}" data-title="${book.title}" data-author="${(book.authors || [])[0] || ''}" ${book.isbn ? html`data-isbn="${book.isbn}"` : ''}`
+    : '';
+  if (book.key === 'bible') return bibleCover();
+  return html`<div class="cover"${attrs}>${src
     ? html`<img src="${src}" alt="" ${eager ? '' : html`loading="lazy"`} decoding="async" referrerpolicy="no-referrer" data-cover-fallback>${generatedCover(book)}`
     : generatedCover(book)}</div>`;
+}
+
+export function bibleCover() {
+  return html`<div class="cover cover-bible" aria-hidden="true"><div class="bible-cloth">
+    <svg viewBox="0 0 40 60" width="38%" aria-hidden="true"><path d="M20 8v44M10 20h20" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></svg>
+    <div class="bt">Holy Bible</div><div class="bs">KJV · WEB</div></div></div>`;
 }
 
 export function installCoverFallback() {

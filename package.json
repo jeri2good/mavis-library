@@ -1,6 +1,6 @@
 {
   "name": "mavis-library",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Mavis Library — a calm, installable reading app for Android tablets, phones, and desktop browsers.",
@@ -10,7 +10,8 @@
     "preview": "vite preview --port 4173",
     "test:db": "node tests/db/rls.test.mjs",
     "test:functions": "node tests/functions/functions.test.mjs",
-    "test:e2e": "python3 tests/e2e/run_e2e.py"
+    "test:e2e": "python3 tests/e2e/run_e2e.py",
+    "build:bible": "node scripts/build-bible.mjs"
   },
   "engines": {
     "node": ">=20"

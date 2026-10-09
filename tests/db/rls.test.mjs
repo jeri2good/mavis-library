@@ -28,7 +28,8 @@ await db.exec(`
   insert into auth.users values ('${A}'), ('${B}');
 `);
 await db.exec(readFileSync(new URL('../../supabase/migrations/0001_mavis_library.sql', import.meta.url), 'utf8'));
-ok('migration applies cleanly');
+await db.exec(readFileSync(new URL('../../supabase/migrations/0002_bible_and_quotes.sql', import.meta.url), 'utf8'));
+ok('migrations apply cleanly');
 
 async function as(user, sql, params = []) {
   await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${user || ''}', false);`);
@@ -102,6 +103,11 @@ ok('a row cannot be moved to another account');
 await assert.rejects(() => as(A, `insert into public.annotations (id, user_id, book_key, kind, cfi, client_updated_at) values (gen_random_uuid(), $1, 'x:1', 'scribble', 'c', 1)`, [A]));
 await assert.rejects(() => as(A, `insert into public.shelf_items (user_id, book_key, source, title, cover_url, client_updated_at) values ($1, 'import:1', 'import', 't', 'javascript:alert(1)', 1)`, [A]));
 ok('check constraints reject invalid kinds and non-https cover URLs');
+
+// 0002: Bible shelf items and quote annotations are accepted.
+await as(A, `insert into public.shelf_items (user_id, book_key, source, title, client_updated_at) values ($1, 'bible', 'bible', 'Holy Bible', 1)`, [A]);
+await as(A, `insert into public.annotations (id, user_id, book_key, kind, cfi, text_excerpt, client_updated_at) values (gen_random_uuid(), $1, 'bible', 'quote', 'John.3.16', 'For God so loved the world', 1)`, [A]);
+ok('Bible shelf items and quote annotations are accepted (0002)');
 
 // Server timestamps advance for the pull cursor.
 r = await as(A, 'select updated_at from public.shelf_items');

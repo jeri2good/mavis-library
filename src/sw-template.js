@@ -4,6 +4,7 @@
  *  - shell:   the built app (HTML, JS, CSS, bundled fonts, icons) — precached
  *  - catalog: public catalog API responses — network first, offline fallback
  *  - covers:  public cover images — cache first, capped
+ *  - bible:   Bible text, lexicon, cross-references — cache first, kept offline
  * Never cached here: /api/epub (book bytes go to IndexedDB instead), account
  * and sync traffic (Supabase is cross-origin and never intercepted), the
  * dictionary, and any non-GET request.
@@ -13,7 +14,7 @@ const PRECACHE = __PRECACHE_LIST__;
 const SHELL = `mavis-shell-${VERSION}`;
 const CATALOG = 'mavis-catalog-v1';
 const COVERS = 'mavis-covers-v1';
-const COVER_HOSTS = new Set(['www.gutenberg.org', 'gutenberg.org', 'covers.openlibrary.org']);
+const COVER_HOSTS = new Set(['www.gutenberg.org', 'gutenberg.org', 'covers.openlibrary.org', 'books.google.com']);
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -76,6 +77,18 @@ self.addEventListener('fetch', (event) => {
       })());
       return;
     }
+    if (url.pathname.startsWith('/bible/')) {
+      // Bible text, lexicon, and cross-references: cache first, kept offline.
+      event.respondWith((async () => {
+        const cache = await caches.open('mavis-bible-v1');
+        const hit = await cache.match(req, { ignoreSearch: true });
+        if (hit) return hit;
+        const res = await fetch(req);
+        if (res.ok) cache.put(req, res.clone());
+        return res;
+      })());
+      return;
+    }
     // Precached build files: cache first.
     event.respondWith((async () => {
       const hit = await caches.match(req, { ignoreSearch: false });
@@ -91,7 +104,7 @@ self.addEventListener('fetch', (event) => {
       if (hit) return hit;
       try {
         const res = await fetch(req);
-        if (res.ok || res.type === 'opaque') { cache.put(req, res.clone()); trim(COVERS, 300); }
+        if (res.ok || res.type === 'opaque') { cache.put(req, res.clone()); trim(COVERS, 600); }
         return res;
       } catch {
         return Response.error();

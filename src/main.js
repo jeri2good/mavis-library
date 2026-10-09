@@ -5,6 +5,7 @@ import { initAuth, onAuth, currentUser, authConfigured } from './lib/auth.js';
 import { startSync, stopSync, onSyncState, syncNow } from './lib/sync.js';
 import { html, icon, toast, closeAllDialogs, $, confirmDialog } from './lib/ui.js';
 import { brandMark, installCoverFallback } from './components.js';
+import { enhanceCovers } from './lib/covers.js';
 import { StorageUnavailableError } from './lib/idb.js';
 
 const routes = {
@@ -15,12 +16,15 @@ const routes = {
   shelf: () => import('./views/shelf.js'),
   read: () => import('./views/reader.js'),
   account: () => import('./views/account.js'),
+  bible: () => import('./views/bible.js'),
+  quotes: () => import('./views/quotes.js'),
   settings: () => import('./views/settings.js'),
 };
 
 const NAV = [
   { id: 'discover', label: 'Discover', icon: 'compass', href: '#/' },
   { id: 'search', label: 'Search', icon: 'search', href: '#/search' },
+  { id: 'bible', label: 'Bible', icon: 'cross', href: '#/bible' },
   { id: 'shelf', label: 'My shelf', icon: 'shelf', href: '#/shelf' },
   { id: 'account', label: 'Account', icon: 'user', href: '#/account' },
 ];
@@ -107,7 +111,7 @@ export async function renderRoute() {
   if (!loader) { navigate('/', { replace: true }); return; }
 
   for (const a of document.querySelectorAll('[data-nav]')) {
-    const active = a.dataset.nav === (route.name || 'discover') || (route.name === 'book' && a.dataset.nav === 'search');
+    const active = a.dataset.nav === (route.name || 'discover') || (route.name === 'book' && a.dataset.nav === 'search') || (route.name === 'quotes' && a.dataset.nav === 'shelf');
     if (active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
 
@@ -138,7 +142,9 @@ export async function renderRoute() {
     current.name = route.name;
     if (!isReader) {
       document.title = mod.title?.(route) ? `${mod.title(route)} · Mavis Library` : 'Mavis Library';
-      if (!route.params.has('keepScroll')) window.scrollTo(0, 0);
+      if (!route.params.has('keepScroll') && !route.params.has('v')) window.scrollTo(0, 0);
+      target.classList.add('view-enter');
+      setTimeout(() => target.classList.remove('view-enter'), 600);
       const h1 = target.querySelector('h1');
       if (document.activeElement === document.body || !document.activeElement) (h1 || document.getElementById('main')).focus?.({ preventScroll: true });
     }
@@ -182,6 +188,10 @@ async function onSignedIn(user) {
 async function boot() {
   installAppFonts();
   installCoverFallback();
+  // Upgrade covers to real published artwork as they appear on screen.
+  let coverTimer;
+  new MutationObserver(() => { clearTimeout(coverTimer); coverTimer = setTimeout(() => enhanceCovers(document), 60); })
+    .observe(document.getElementById('app'), { childList: true, subtree: true });
   try { await store.loadSettings(); }
   catch (err) { console.warn(err); }
   applyAppTheme();

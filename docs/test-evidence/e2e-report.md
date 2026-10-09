@@ -1,8 +1,8 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 00:17 EDT · Chromium 141.0.7390.37 (headless, Linux) · 53s
+Run: 2026-10-09 09:03 EDT · Chromium 141.0.7390.37 (headless, Linux) · 125s
 
-**31 of 31 checks passed.**
+**47 of 47 checks passed.**
 
 | Result | Check |
 |---|---|
@@ -37,6 +37,22 @@ Run: 2026-10-09 00:17 EDT · Chromium 141.0.7390.37 (headless, Linux) · 53s
 | ✅ pass | Conflict: the most recent change wins on both devices |
 | ✅ pass | Another account cannot see this user's shelf |
 | ✅ pass | Sign-out (with remove-from-device), wrong password, and email-confirmation flows |
+| ✅ pass | Bible opens at a reference with verse focus, chapter navigation, and offline caching |
+| ✅ pass | Verse lookup parses references like "1 Cor 13:4-7" and "ps 23" |
+| ✅ pass | Bible verses: highlight, save as quote, note, copy with reference — and they persist |
+| ✅ pass | Strong's concordance: tap a KJV word for Greek/Hebrew, then list every verse using it |
+| ✅ pass | Concordance word and phrase search with scope, counts by book, and highlighted matches |
+| ✅ pass | Cross-references and translation compare for a verse |
+| ✅ pass | Church display mode shows large verses, steps with arrow keys, exits with Escape |
+| ✅ pass | Bible read-aloud with the device voice follows verses and continues into the next chapter |
+| ✅ pass | Owner access code unlocks cloud voice, AI, and Jev; a wrong code is refused |
+| ✅ pass | Car mode with the cloud voice: MP3 audio from /api/tts plays, big controls pause and exit |
+| ✅ pass | Ask Mavis: consent first, answers about the open chapter, and can start read-aloud |
+| ✅ pass | Books: save a quote from a selection, share/copy with citation, and jump back from Saved quotes |
+| ✅ pass | Ask Mavis inside a book sends the chapter and answers |
+| ✅ pass | Cloud voice in a book reads the chapter as audio and follows along |
+| ✅ pass | Picked for you: recommendations from shelf genres, ranked by Jev when available |
+| ✅ pass | Phone at 360px: Bible, search, quotes, and settings fit without sideways scrolling |
 
 ## Console and CSP problems seen during the run
 

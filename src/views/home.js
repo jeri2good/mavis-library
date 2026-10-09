@@ -4,6 +4,12 @@ import * as store from '../lib/store.js';
 import { bookCard, cover, skeletonGrid, stateBlock, sourceBadges } from '../components.js';
 import { LIBRARY_FINDERS } from '../lib/links.js';
 import { listen, voiceInputSupported } from '../lib/voice-input.js';
+import { recommendations } from '../lib/recommend.js';
+import { bibleCover } from '../components.js';
+import * as B from '../lib/bible.js';
+
+// Well-known verses for the "verse of the day" (rotates by date).
+const DAILY = ['John.3.16', 'Ps.23.1', 'Prov.3.5', 'Isa.40.31', 'Phil.4.13', 'Rom.8.28', 'Jer.29.11', 'Josh.1.9', 'Matt.11.28', 'Ps.46.10', 'Rom.12.2', '1Cor.13.4', 'Heb.11.1', 'Gal.5.22', 'Ps.119.105', 'Matt.5.16', 'Isa.41.10', 'Mic.6.8', 'Lam.3.22', 'Eph.2.8', '2Tim.1.7', 'Ps.27.1', 'John.14.6', 'Rom.5.8', '1John.4.19', 'Ps.121.1', 'Prov.16.3', 'Col.3.23', 'Matt.6.33', 'Ps.37.4', 'John.16.33'];
 
 // Hand-picked Project Gutenberg ids. Titles and covers are always loaded live
 // from the catalog, never hard-coded.
@@ -50,7 +56,7 @@ export async function render(root, _route, { navigate, token }) {
           <div class="feature-cards">
             ${reading.slice(0, 3).map((b) => {
               const p = progress.get(b.key);
-              return html`<a class="continue" href="#/read/${encodeURIComponent(b.key)}">
+              return html`<a class="continue" href="${b.key === 'bible' ? '#/bible' : `#/read/${encodeURIComponent(b.key)}`}">
                 ${cover(b)}
                 <div style="display:grid;gap:6px;min-width:0">
                   <span class="title">${b.title}</span>
@@ -62,6 +68,22 @@ export async function render(root, _route, { navigate, token }) {
             })}
           </div>
         </section>` : ''}
+
+      <section class="section" aria-labelledby="bible-h">
+        <a class="bible-feature" href="#/bible">
+          ${bibleCover()}
+          <div style="min-width:0">
+            <p class="eyebrow" id="bible-h">Holy Bible · built in</p>
+            <h3>Read, search, and study the Bible</h3>
+            <p class="verse-of-day" id="votd">Verse lookup, Strong’s concordance, cross-references, highlights, and saved quotes in KJV and WEB.</p>
+          </div>
+        </a>
+      </section>
+
+      <section class="section" aria-labelledby="recs-h" id="recs-section" hidden>
+        <div class="section-head"><h2 class="h-section" id="recs-h">Picked for you</h2><span class="small faint" id="recs-note"></span></div>
+        <div id="recs"></div>
+      </section>
 
       <section class="section" aria-labelledby="classics-h">
         <div class="section-head">
@@ -138,6 +160,34 @@ export async function render(root, _route, { navigate, token }) {
       el.querySelector('[data-retry]').addEventListener('click', () => loadInto(el, fetcher, emptyText));
     }
   }
+
+  // Verse of the day.
+  (async () => {
+    try {
+      const day = Math.floor(Date.now() / 86400000);
+      const r = B.parseOsis(DAILY[day % DAILY.length]);
+      const [p] = await B.passageText('kjv', r);
+      const el = root.querySelector('#votd');
+      if (el && p && token()) el.textContent = `“${p.text}” — ${await B.label(r)}`;
+      root.querySelector('.bible-feature')?.setAttribute('href', `#/bible/${r.book}/${r.chapter}?v=${r.verse}`);
+    } catch { /* keep the description */ }
+  })();
+
+  // Picked for you, from the genres on your shelf.
+  (async () => {
+    const ctl = new AbortController();
+    controllers.push(ctl);
+    try {
+      const recs = await recommendations({ signal: ctl.signal });
+      if (!recs || !recs.items.length || !token()) return;
+      const sec = root.querySelector('#recs-section');
+      sec.hidden = false;
+      root.querySelector('#recs-note').textContent = recs.ranker === 'jev' ? 'Ranked by Jev from your reading' : `From your shelf: ${recs.topics.slice(0, 2).join(', ')}`;
+      root.querySelector('#recs').innerHTML = String(html`<div class="row">${recs.items.map((r) => bookCard(r.book, {
+        extra: r.because.length ? html`<span class="why">Because you like ${r.because[0]}</span>` : '',
+      }))}</div>`);
+    } catch { /* recommendations are optional */ }
+  })();
 
   loadInto(root.querySelector('#classics'), (signal) => searchGutenberg({ ids: CLASSICS.join(',') }, { signal }), 'The classics shelf is empty right now.');
 

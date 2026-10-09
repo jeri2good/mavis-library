@@ -153,6 +153,11 @@ export async function listAnnotations(key) {
   return rows.filter((r) => !r.deleted).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 }
 
+export async function listAllAnnotations() {
+  const rows = await idb.byOwner('annotations', owner);
+  return rows.filter((r) => !r.deleted).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
 export async function addAnnotation(key, { kind, cfi, text = '', color = null, note = '', chapter = '', percent = null }) {
   const id = uuid();
   const t = now();

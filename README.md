@@ -7,7 +7,13 @@ An installable reading app (Progressive Web App) for Android tablets, phones, an
 - **Free books:** Project Gutenberg catalog through Gutendex, downloaded via a locked-down server endpoint and stored on the device for offline reading.
 - **Everything else:** Open Library search, with title-specific links to Libby/OverDrive, hoopla, Kobo, and Google Play Books. Those services handle accounts, loans, purchases, and DRM; Mavis says so plainly.
 - **Reader:** epub.js with chapters, page turns (swipe, tap zones, keys), saved position, typography, Paper/Sepia/Night themes, bookmarks, highlights, notes, dictionary, focus mode, and read-aloud.
-- **Accounts (optional):** Supabase Auth plus Postgres with row-level security. Shelf metadata, progress, bookmarks, and notes sync across devices. Book files never leave the device.
+- **Holy Bible, built in:** KJV (with Strong’s numbers) and the World English Bible, verse lookup (“1 Cor 13:4-7”), concordance search by word, phrase, or Strong’s number, Hebrew/Greek lexicon, cross-references, translation compare, highlights, notes, saved quotes, church display mode, and read-aloud. Works offline after the first open.
+- **Real covers:** looked up from Open Library and Google Books, with designed covers as the fallback.
+- **Picked for you:** recommendations from the genres on your shelf; optionally ranked by Jev (TypeSafe AI, via Eden AI).
+- **Car mode and cloud voice:** large driving controls; an optional cloud voice (Fish Audio or Google) keeps reading with the screen off and responds to car/Bluetooth buttons.
+- **Ask Mavis:** an optional AI reading assistant (Anthropic or any OpenAI-compatible API) that summarizes, explains, and can start read-aloud or jump to a chapter.
+- **Saved quotes:** save, copy, and share passages with their citation from any book or the Bible.
+- **Accounts (optional):** Supabase Auth plus Postgres with row-level security. Shelf metadata, progress, bookmarks, notes, and quotes sync across devices. Book files never leave the device.
 
 See [docs/STATUS.md](docs/STATUS.md) for what's implemented and tested, and [docs/HANDOFF.md](docs/HANDOFF.md) for the architecture and comparison notes.
 
@@ -43,12 +49,22 @@ The first run asks you to create or pick a site; choose a name such as `mavis-li
 
 Both options work on Netlify's free plan. Check Netlify's current function limits if traffic grows.
 
+## Turn on the cloud voice, Ask Mavis, and Jev (optional)
+
+These use your paid accounts, so they are switched on with server-side environment variables in Netlify (**Site configuration → Environment variables**, scope **Functions**) and only answer devices that hold your access code. Keys never reach the browser.
+
+1. `MAVIS_ACCESS_CODE` — any passphrase. Enter the same code on each of your devices under **Settings → Cloud voice and AI**.
+2. Cloud voice: `TTS_PROVIDER=fish` with `FISH_AUDIO_API_KEY` (and optionally `FISH_AUDIO_VOICE_ID`), or `TTS_PROVIDER=google` with `GOOGLE_TTS_API_KEY`. Fish Audio’s API is billed from API credit, which may be separate from a Fish Audio app subscription.
+3. Ask Mavis: `LLM_PROVIDER=anthropic` (or `openai` for any OpenAI-compatible API) with `LLM_API_KEY`; optional `LLM_MODEL` and `LLM_BASE_URL`.
+4. Jev ranking: `EDENAI_API_KEY`.
+5. Redeploy. **Settings → Cloud voice and AI** shows what is switched on.
+
 ## Turn on accounts and sync (optional)
 
 Without these steps the app runs in guest mode and says so on the Account screen.
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. In **SQL Editor**, run `supabase/migrations/0001_mavis_library.sql`. (Or `supabase db push` with the Supabase CLI.)
+2. In **SQL Editor**, run `supabase/migrations/0001_mavis_library.sql`, then `0002_bible_and_quotes.sql`. (Or `supabase db push` with the Supabase CLI.)
 3. In **Authentication → URL Configuration**, set *Site URL* to your deployed URL and add it under *Redirect URLs*.
 4. Keep **Confirm email** on (default). Supabase's built-in email sender is rate-limited and meant for testing; add custom SMTP under *Authentication → Emails* before inviting many people.
 5. In Netlify **Site configuration → Environment variables**, add:
@@ -89,12 +105,15 @@ Then host the generated `assetlinks.json` at `https://<your-site>/.well-known/as
 ```
 index.html                 app entry
 src/main.js                boot, routing, shell, account wiring, service-worker registration
-src/views/                 home, search, book, shelf, reader, account, settings
-src/lib/                   store (IndexedDB), catalog client, importer, tts, voice input,
-                           dictionary, auth, sync, links, fonts, ui toolkit
+src/views/                 home, search, book, shelf, reader, bible, quotes, account, settings
+src/lib/                   store (IndexedDB), catalog client, importer, tts + speech (Narrator),
+                           car mode, assistant UI, bible, covers, recommend, features, quotes,
+                           voice input, dictionary, auth, sync, links, fonts, ui toolkit
+public/bible/              KJV (Strong’s), WEB, lexicon, cross-references (generated)
+scripts/build-bible.mjs    regenerates public/bible from the source packages
 src/sw-template.js         service worker (precache list injected at build)
 src/styles/app.css         design tokens and all styles
-netlify/functions/         catalog.mjs, openlibrary.mjs, epub.mjs  (/api/*)
+netlify/functions/         catalog, openlibrary, epub, covers, tts, assistant, rank, features (/api/*)
 netlify/lib/shared.mjs     shared validation, timeouts, soft rate limiting
 supabase/migrations/       database schema with row-level security
 public/                    manifest and icons
@@ -104,4 +123,4 @@ docs/                      status matrix, handoff notes, test evidence
 
 ## Credits and sources
 
-Free books: [Project Gutenberg](https://www.gutenberg.org) via [Gutendex](https://gutendex.com). Discovery: [Open Library](https://openlibrary.org). Definitions: [Free Dictionary API](https://dictionaryapi.dev) (Wiktionary data). Reader engine: [epub.js](https://github.com/futurepress/epub.js). Fonts: Literata, Source Serif 4, Atkinson Hyperlegible Next, Fraunces (SIL Open Font License, bundled via Fontsource).
+Bible: KJV from the [CrossWire Bible Society](https://crosswire.org) module (public domain; Crown copyright in the UK); [World English Bible](https://ebible.org/web/) (public domain); Strong’s lexicon from [STEPBible.org](https://www.stepbible.org) (Tyndale House, Cambridge, CC BY 4.0); cross-references from [OpenBible.info](https://www.openbible.info/labs/cross-references/) (CC BY). Free books: [Project Gutenberg](https://www.gutenberg.org) via [Gutendex](https://gutendex.com). Discovery: [Open Library](https://openlibrary.org). Definitions: [Free Dictionary API](https://dictionaryapi.dev) (Wiktionary data). Reader engine: [epub.js](https://github.com/futurepress/epub.js). Fonts: Literata, Source Serif 4, Atkinson Hyperlegible Next, Fraunces (SIL Open Font License, bundled via Fontsource).

@@ -9,6 +9,11 @@ import { define } from '../lib/dictionary.js';
 import { listen } from '../lib/voice-input.js';
 import { ReadAloud, ttsSupported, whenVoicesReady } from '../lib/tts.js';
 import { stateBlock } from '../components.js';
+import { Narrator, sentences } from '../lib/speech.js';
+import { openCarMode } from '../lib/carmode.js';
+import { openAssistant } from '../lib/assistant-ui.js';
+import { loadFeatures, can, features } from '../lib/features.js';
+import { copyQuote, shareQuote } from '../lib/quotes.js';
 
 export const title = () => 'Reading';
 
@@ -52,7 +57,7 @@ export async function render(root, route, { navigate }) {
     item = await store.saveToShelf({ ...meta, key }, { status: 'reading' });
   }
   if (file.mime === 'application/pdf' || item.format === 'pdf') return renderPdf(root, item, file, close);
-  return renderEpub(root, item, file, close);
+  return renderEpub(root, item, file, close, route);
 }
 
 // ---------------------------------------------------------------- PDF ----
@@ -75,7 +80,7 @@ function renderPdf(root, item, file, close) {
 
 // --------------------------------------------------------------- EPUB ----
 
-async function renderEpub(root, item, file, close) {
+async function renderEpub(root, item, file, close, route) {
   let prefs = readerPrefs();
   const key = item.key;
   root.innerHTML = String(html`
@@ -88,6 +93,7 @@ async function renderEpub(root, item, file, close) {
       <button class="icon-btn" type="button" data-act="display" aria-label="Display settings">${icon('type')}</button>
       <button class="icon-btn" type="button" data-act="tts" aria-label="Read aloud" aria-pressed="false">${icon('headphones')}</button>
       <button class="icon-btn" type="button" data-act="lookup" aria-label="Look up a word">${icon('dict')}</button>
+      <button class="icon-btn" type="button" data-act="ask" aria-label="Ask Mavis about this book">${icon('spark')}</button>
       <button class="icon-btn" type="button" data-act="immersive" aria-label="Focus mode (hide controls)">${icon('expand')}</button>
     </header>
     <div class="reader-stage" id="stage">
@@ -212,10 +218,11 @@ async function renderEpub(root, item, file, close) {
   async function displayCfi(target) {
     await rendition.display(target);
     if (!target || !String(target).startsWith('epubcfi(')) return;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 40)));
-      const loc = rendition.location;
-      if (!loc?.end?.cfi) return;
+      let loc = rendition.currentLocation();
+      if (loc && typeof loc.then === 'function') loc = await loc;
+      if (!loc?.end?.cfi) continue;
       const cmp = new EpubCFI();
       try {
         if (cmp.compare(target, loc.end.cfi) > 0 && !loc.atEnd) await rendition.next();
@@ -227,8 +234,9 @@ async function renderEpub(root, item, file, close) {
 
   // ---------- Restore position ----------
   const saved = await store.getProgress(key).catch(() => null);
+  const jumpTo = route?.params?.get('at');
   try {
-    await displayCfi(saved?.cfi || undefined);
+    await displayCfi((jumpTo && jumpTo.startsWith('epubcfi(') ? jumpTo : null) || saved?.cfi || undefined);
   } catch {
     try { await rendition.display(); } catch (err) { fail('This book couldn’t be displayed', err.message); return; }
   }
@@ -322,6 +330,8 @@ async function renderEpub(root, item, file, close) {
       <span class="sep" aria-hidden="true"></span>
       <button type="button" class="icon-btn" data-sel="note" aria-label="Add a note">${icon('note', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="define" aria-label="Look up in dictionary">${icon('dict', { size: 20 })}</button>
+      <button type="button" class="icon-btn" data-sel="quote" aria-label="Save as a quote">${icon('star', { size: 20 })}</button>
+      <button type="button" class="icon-btn" data-sel="share" aria-label="Share quote">${icon('share', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="copy" aria-label="Copy text">${icon('copy', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="close" aria-label="Close">${icon('close', { size: 18 })}</button>`);
     sel.hidden = false;
@@ -355,7 +365,19 @@ async function renderEpub(root, item, file, close) {
     } else if (b.dataset.sel === 'define') {
       hideSelection(true);
       openDictionary(text);
+    } else if (b.dataset.sel === 'quote') {
+      const a = await store.addAnnotation(key, { kind: 'quote', cfi: cfiRange, text, color: 'sun', chapter: chapterLabel(lastLoc), percent: pct() });
+      annotations.push(a); drawAnnotation(a);
+      hideSelection(true);
+      toast('Saved to your quotes.', { action: { label: 'View', run: () => { location.hash = '#/quotes'; } } });
+    } else if (b.dataset.sel === 'share') {
+      hideSelection(true);
+      shareQuote(text, citeHere());
     } else if (b.dataset.sel === 'copy') {
+      hideSelection(true);
+      copyQuote(text, citeHere());
+      return;
+    } else if (b.dataset.sel === 'copy-plain') {
       try { await navigator.clipboard.writeText(text); toast('Copied.'); }
       catch { toast('Copying isn’t allowed here. Use your device’s copy option instead.'); }
       hideSelection(true);
@@ -548,6 +570,7 @@ async function renderEpub(root, item, file, close) {
     if (act === 'display') openDisplay();
     if (act === 'tts') toggleTts();
     if (act === 'lookup') openDictionary('');
+    if (act === 'ask') askMavis();
     if (act === 'immersive') setImmersive(!immersive);
   });
 
@@ -737,70 +760,196 @@ async function renderEpub(root, item, file, close) {
   }
 
   // ---------- Read aloud ----------
+  // Two engines: the device voice reads the visible page and turns pages
+  // (ReadAloud); the cloud voice reads the chapter as audio (Narrator), which
+  // keeps playing with the screen off and responds to car/Bluetooth buttons.
   let voices = [];
+  let narr = null;
+  let carUI = null;
+  const rateNow = () => Number(store.getSetting('ttsRate', 1)) || 1;
+  const engineNow = () => (store.getSetting('voiceEngine', 'device') === 'cloud' && can('cloudVoice') ? 'cloud' : 'device');
+
   function toggleTts() {
     const show = ttsBar.hidden;
     ttsBar.hidden = !show;
     root.querySelector('[data-act="tts"]').setAttribute('aria-pressed', String(show));
     if (show) { paintTtsBar(); setTimeout(() => rendition.resize(), 50); }
-    else { tts?.stop(); setTimeout(() => rendition.resize(), 50); }
+    else { tts?.stop(); narr?.stop(); setTimeout(() => rendition.resize(), 50); }
   }
+
   async function paintTtsBar() {
-    if (!ttsSupported) {
-      ttsBar.innerHTML = String(html`<p class="small" style="text-align:center">This browser can’t read aloud. Chrome, Edge, Safari, and Firefox on most devices can.</p>`);
-      return;
-    }
     ttsBar.innerHTML = String(html`<p class="tts-sentence" id="tts-line">Loading voices…</p>`);
-    voices = await whenVoicesReady();
+    await loadFeatures();
+    voices = ttsSupported ? await whenVoicesReady() : [];
     const base = lang.slice(0, 2).toLowerCase();
     const matching = voices.filter((v) => v.lang?.toLowerCase().startsWith(base));
     const list = matching.length ? matching : voices;
     const saved = store.getSetting('ttsVoice', null);
     const chosen = list.find((v) => v.voiceURI === saved) || list.find((v) => v.default && v.localService) || list.find((v) => v.localService) || list[0];
-    const rate = store.getSetting('ttsRate', 1);
+    const rate = rateNow();
     const online = list.some((v) => !v.localService);
+    const cloudOk = can('cloudVoice');
+    const engine = engineNow();
+    const f = features();
     ttsBar.innerHTML = String(html`
-      <p class="tts-sentence" id="tts-line" aria-live="off">${voices.length ? 'Reads from the top of this page and turns pages for you.' : 'No voices are installed on this device. Add a text-to-speech voice in your device settings.'}</p>
+      <p class="tts-sentence" id="tts-line" aria-live="off">${engine === 'cloud' ? 'Cloud voice reads this chapter from your page onward, even with the screen off.' : voices.length ? 'Reads from the top of this page and turns pages for you.' : 'No voices are installed on this device. Add one in your device settings, or use the cloud voice.'}</p>
       <div class="tts-main">
-        <button type="button" class="icon-btn" data-tts="back" aria-label="Previous sentence">${icon('skipB')}</button>
-        <button type="button" class="icon-btn play" data-tts="play" aria-label="Start reading aloud" ${voices.length ? '' : 'disabled'}>${icon('play', { size: 26 })}</button>
-        <button type="button" class="icon-btn" data-tts="fwd" aria-label="Next sentence">${icon('skipF')}</button>
+        <button type="button" class="icon-btn" data-tts="back" aria-label="${engine === 'cloud' ? 'Back 15 seconds' : 'Previous sentence'}">${icon('skipB')}</button>
+        <button type="button" class="icon-btn play" data-tts="play" aria-label="Start reading aloud" ${engine === 'device' && !voices.length ? 'disabled' : ''}>${icon('play', { size: 26 })}</button>
+        <button type="button" class="icon-btn" data-tts="fwd" aria-label="${engine === 'cloud' ? 'Forward 15 seconds' : 'Next sentence'}">${icon('skipF')}</button>
         <button type="button" class="icon-btn" data-tts="stop" aria-label="Stop reading aloud">${icon('stop')}</button>
+        <button type="button" class="btn btn-sm" data-tts="car">${icon('car', { size: 18 })} Car mode</button>
       </div>
       <div class="tts-opts">
-        <label>Voice <select id="tts-voice">${list.map((v) => html`<option value="${v.voiceURI}" ${v === chosen ? 'selected' : ''}>${v.name}${v.localService ? '' : ' (online)'}</option>`)}</select></label>
+        <label>Voice
+          <select id="tts-engine" aria-label="Voice type">
+            <option value="device" ${engine === 'device' ? 'selected' : ''}>This device</option>
+            <option value="cloud" ${engine === 'cloud' ? 'selected' : ''} ${cloudOk ? '' : 'disabled'}>Cloud voice${cloudOk ? ` (${f.cloudVoice === 'fish' ? 'Fish Audio' : 'Google'})` : ' (not set up)'}</option>
+          </select></label>
+        <label ${engine === 'cloud' ? 'hidden' : ''} data-device-voice>Device voice <select id="tts-voice">${list.map((v) => html`<option value="${v.voiceURI}" ${v === chosen ? 'selected' : ''}>${v.name}${v.localService ? '' : ' (online)'}</option>`)}</select></label>
         <label>Speed <select id="tts-rate">${[0.75, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2].map((r) => html`<option value="${r}" ${Number(rate) === r ? 'selected' : ''}>${r}×</option>`)}</select></label>
         <label>${icon('timer', { size: 18 })}<span class="visually-hidden">Sleep timer</span> <select id="tts-sleep" aria-label="Sleep timer"><option value="0">No timer</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="chapter">End of chapter</option></select></label>
       </div>
-      <p class="small" id="tts-status" role="status" style="text-align:center;color:var(--r-faint)">${online ? 'Voices marked “online” send the text being read to the voice provider.' : ''}</p>`);
+      <p class="small" id="tts-status" role="status" style="text-align:center;color:var(--r-faint)">${engine === 'cloud' ? 'The cloud voice sends the text being read to the voice service and uses the site owner’s voice credit.' : online ? 'Voices marked “online” send the text being read to the voice provider.' : cloudOk ? '' : 'Tip: the device voice stops when your phone locks. For screen-off listening, the site owner can turn on a cloud voice.'}</p>`);
     const voiceSel = ttsBar.querySelector('#tts-voice');
     const rateSel = ttsBar.querySelector('#tts-rate');
     const voiceFn = () => voices.find((v) => v.voiceURI === voiceSel.value) || null;
     const rateFn = () => Number(rateSel.value) || 1;
-    if (!tts) {
+    if (!tts && ttsSupported) {
       tts = new ReadAloud({ rendition, voice: voiceFn, rate: rateFn, lang, title: item.title, onState: onTtsState });
-    } else { tts.voice = voiceFn; tts.rate = rateFn; }
-    voiceSel.addEventListener('change', () => { store.setSetting('ttsVoice', voiceSel.value); tts.restartSentence(); });
-    rateSel.addEventListener('change', () => { store.setSetting('ttsRate', rateFn()); tts.restartSentence(); });
+    } else if (tts) { tts.voice = voiceFn; tts.rate = rateFn; }
+    ttsBar.querySelector('#tts-engine').addEventListener('change', (e) => {
+      tts?.stop(); narr?.stop();
+      store.setSetting('voiceEngine', e.target.value);
+      paintTtsBar();
+    });
+    voiceSel.addEventListener('change', () => { store.setSetting('ttsVoice', voiceSel.value); tts?.restartSentence(); });
+    rateSel.addEventListener('change', () => { store.setSetting('ttsRate', rateFn()); tts?.restartSentence(); });
     ttsBar.querySelector('#tts-sleep').addEventListener('change', (e) => {
       const v = e.target.value;
-      tts.setSleep(v === 'chapter' ? 'chapter' : Number(v));
+      if (engineNow() === 'cloud') narr?.setSleep(v === 'chapter' ? 0 : Number(v)), sleepChapter = v === 'chapter';
+      else tts?.setSleep(v === 'chapter' ? 'chapter' : Number(v));
       toast(v === '0' ? 'Sleep timer off.' : v === 'chapter' ? 'Reading will stop at the end of this chapter.' : `Reading will stop in ${v} minutes.`);
     });
-    ttsBar.addEventListener('click', (e) => {
+    ttsBar.onclick = (e) => {
       const a = e.target.closest('[data-tts]')?.dataset.tts;
       if (!a) return;
-      if (a === 'play') {
-        if (tts.state === 'playing' || tts.state === 'loading') tts.pause();
-        else if (tts.state === 'paused') tts.resume();
-        else tts.start().catch((err) => toast(err.message, { tone: 'error' }));
-      }
-      if (a === 'stop') tts.stop();
-      if (a === 'fwd') tts.skip(1);
-      if (a === 'back') tts.skip(-1);
-    });
+      if (a === 'play') playToggle();
+      if (a === 'stop') { tts?.stop(); narr?.stop(); }
+      if (a === 'fwd') (engineNow() === 'cloud' ? narr : tts)?.skip(1);
+      if (a === 'back') (engineNow() === 'cloud' ? narr : tts)?.skip(-1);
+      if (a === 'car') openCar();
+    };
   }
+
+  let sleepChapter = false;
+  function playToggle() {
+    if (engineNow() === 'cloud') {
+      if (narr && narr.state !== 'idle' && narr.state !== 'error') { narr.toggle(); return; }
+      tts?.stop();
+      narr?.destroy();
+      narr = new Narrator({ source: chapterSource(), engine: 'cloud', rate: rateNow, title: item.title, onState: onCloudState });
+      narr.start();
+      return;
+    }
+    if (!tts) { toast('This browser can’t read aloud with a device voice.', { tone: 'error' }); return; }
+    narr?.stop();
+    if (tts.state === 'playing' || tts.state === 'loading') tts.pause();
+    else if (tts.state === 'paused') tts.resume();
+    else tts.start().catch((err) => toast(err.message, { tone: 'error' }));
+  }
+
+  // Reads the book section by section from the current position, as text,
+  // without needing the page to be on screen.
+  function chapterSource() {
+    let sIdx = lastLoc?.start?.index ?? 0;
+    let startCfi = lastLoc?.start?.cfi || null;
+    let served = 0;
+    const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, dd, dt, figcaption';
+    return {
+      label: () => chapterNowPlaying || item.title,
+      async next() {
+        while (sIdx < book.spine.length) {
+          const section = book.spine.get(sIdx);
+          if (!section || section.linear === false) { sIdx++; startCfi = null; continue; }
+          if (sleepChapter && served >= 1) { sleepChapter = false; return null; }
+          await section.load(book.load.bind(book));
+          const doc = section.document;
+          let blocks = [...doc.querySelectorAll(BLOCKS)].filter((el) => !el.querySelector(BLOCKS) && el.textContent.trim());
+          if (startCfi) {
+            try {
+              const r = new EpubCFI(startCfi).toRange(doc);
+              const node = r?.startContainer;
+              const el = (node?.nodeType === 1 ? node : node?.parentElement)?.closest?.(BLOCKS);
+              const at = blocks.indexOf(el);
+              if (at > 0) blocks = blocks.slice(at);
+            } catch { /* start at the beginning of the section */ }
+            startCfi = null;
+          }
+          const idx = sIdx;
+          sIdx++;
+          served++;
+          const label = toc.find((t) => book.spine.get(t.href.split('#')[0])?.index === idx)?.label?.trim();
+          const items = [];
+          for (const el of blocks) {
+            let cfi = null;
+            try { cfi = section.cfiFromElement(el); } catch { /* ignore */ }
+            for (const sentence of sentences(el.textContent, lang)) {
+              items.push({ text: sentence, onStart: () => followAlong(cfi, label) });
+            }
+          }
+          if (items.length) return items;
+        }
+        return null;
+      },
+    };
+  }
+
+  const followAlong = debounce((cfi, label) => {
+    if (label) chapterNowPlaying = label;
+    if (!cfi) return;
+    store.setProgress(key, { cfi, percent: locationsReady ? book.locations.percentageFromCfi(cfi) : null, chapter: label || '' }).catch(() => {});
+    if (document.visibilityState !== 'visible' || carUI) return;
+    try {
+      const cmp = new EpubCFI();
+      const loc = rendition.location;
+      if (!loc?.end?.cfi || cmp.compare(cfi, loc.end.cfi) > 0 || cmp.compare(cfi, loc.start.cfi) < 0) displayCfi(cfi);
+    } catch { /* ignore */ }
+  }, 400);
+  let chapterNowPlaying = '';
+
+  function onCloudState(s) {
+    const play = ttsBar.querySelector('[data-tts="play"]');
+    const line = ttsBar.querySelector('#tts-line');
+    const status = ttsBar.querySelector('#tts-status');
+    carUI?.update({ ...s, label: chapterNowPlaying || s.label });
+    if (!play) return;
+    const playing = s.state === 'playing' || s.state === 'loading';
+    play.innerHTML = String(icon(playing ? 'pause' : 'play', { size: 26 }));
+    play.setAttribute('aria-label', playing ? 'Pause reading aloud' : s.state === 'paused' ? 'Resume reading aloud' : 'Start reading aloud');
+    if (s.text) line.textContent = s.text;
+    if (s.state === 'idle') line.textContent = s.reason === 'end' ? 'Reached the end of the book.' : s.reason === 'sleep' ? 'Sleep timer finished. Reading stopped.' : 'Stopped. Press play to read from this page.';
+    status.textContent = s.error || (s.state === 'loading' ? 'Preparing audio…' : s.state === 'paused' ? 'Paused.' : s.state === 'playing' ? `Cloud voice · ${chapterNowPlaying || 'reading'}` : '');
+  }
+
+  function openCar() {
+    carUI?.close();
+    const cloud = engineNow() === 'cloud';
+    carUI = openCarMode({
+      title: item.title, subtitle: chapterLabel(lastLoc), cloud, container: readerEl,
+      onToggle: playToggle,
+      onBack: () => (cloud ? narr : tts)?.skip(-1),
+      onForward: () => (cloud ? narr : tts)?.skip(1),
+      onSleep: (m) => (cloud ? narr?.setSleep(m) : tts?.setSleep(m)),
+      onExit: () => { carUI = null; },
+    });
+    const p = cloud ? narr : tts;
+    if (p) carUI.update({ state: p.state, label: chapterLabel(lastLoc) });
+    if (!p || p.state === 'idle') playToggle();
+  }
+
   function onTtsState(s) {
+    carUI?.update({ state: s.state, text: s.sentence, label: chapterLabel(lastLoc), error: s.error, sleepAt: s.sleepAt });
     const play = ttsBar.querySelector('[data-tts="play"]');
     const line = ttsBar.querySelector('#tts-line');
     const status = ttsBar.querySelector('#tts-status');
@@ -814,6 +963,47 @@ async function renderEpub(root, item, file, close) {
     else if (s.state === 'paused') status.textContent = 'Paused. Resuming repeats the current sentence.';
     else if (s.state === 'playing') status.textContent = s.sleepAt ? `Sentence ${s.index + 1} of ${s.total} on this page · stops at ${new Date(s.sleepAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : s.sleepChapter != null ? `Sentence ${s.index + 1} of ${s.total} on this page · stops at chapter end` : `Sentence ${s.index + 1} of ${s.total} on this page`;
     else if (s.state === 'idle' && s.reason !== 'user') status.textContent = '';
+  }
+
+  // ---------- Ask Mavis ----------
+  function citeHere() {
+    const ch = chapterLabel(lastLoc);
+    return `${item.title}${item.authors?.[0] ? `, ${item.authors[0]}` : ''}${ch ? ` (${ch})` : ''}`;
+  }
+  async function chapterText() {
+    try {
+      const section = book.spine.get(lastLoc.start.index);
+      await section.load(book.load.bind(book));
+      return (section.document.body?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 24000);
+    } catch { return ''; }
+  }
+  async function askMavis() {
+    const selection = pendingSel?.text || '';
+    hideSelection(true);
+    const text = await chapterText();
+    await openAssistant({
+      container: readerEl,
+      getContext: () => ({ title: item.title, author: (item.authors || []).join(', '), chapter: chapterLabel(lastLoc), text, selection }),
+      actions: {
+        read_aloud: async ({ from }) => {
+          if (from === 'chapter_start') {
+            const t = toc.find((x) => x.label.trim() === chapterLabel(lastLoc));
+            if (t) await rendition.display(t.href);
+          }
+          if (ttsBar.hidden) toggleTts();
+          setTimeout(playToggle, 400);
+        },
+        stop_reading: () => { tts?.stop(); narr?.stop(); },
+        go_to: async ({ target }) => {
+          const t = String(target || '').toLowerCase();
+          const n = Number(t.replace(/\D+/g, ''));
+          const hit = toc.find((x) => x.label.toLowerCase().includes(t)) || (n ? toc.filter((x) => x.depth === 0)[n - 1] : null);
+          if (hit) await rendition.display(hit.href); else toast(`I couldn’t find “${target}” in this book.`);
+        },
+        car_mode: () => openCar(),
+        define_word: ({ word }) => openDictionary(word || ''),
+      },
+    });
   }
 
   // ---------- Helpers ----------
@@ -848,6 +1038,7 @@ async function renderEpub(root, item, file, close) {
     if (lastLoc && saveProgress) saveProgress.flush(lastLoc);
     cleanups.forEach((f) => f());
     try { tts?.destroy(); } catch { /* ignore */ }
+    try { narr?.destroy(); carUI?.close(); } catch { /* ignore */ }
     try { if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* ignore */ }
     try { rendition?.destroy(); } catch { /* ignore */ }
     try { book?.destroy(); } catch { /* ignore */ }

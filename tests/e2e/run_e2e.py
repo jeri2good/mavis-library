@@ -87,6 +87,13 @@ def fake_recognition(mode):
 DICT = json.dumps([{'word': 'harbor', 'phonetic': '/ˈhɑːbə/', 'meanings': [{'partOfSpeech': 'noun', 'definitions': [{'definition': 'A sheltered expanse of water where ships can anchor.', 'example': 'The boats came home to the harbor.'}], 'synonyms': ['port', 'haven']}]}])
 PNG = bytes.fromhex('89504e470d0a1a0a0000000d49484452000000010000000108020000009077' '53de0000000c4944415478da63f8cfc0f01f0005fe02fea7c66bb40000000049454e44ae426082')
 
+def _cover_png():
+    import io
+    from PIL import Image, ImageDraw
+    im = Image.new('RGB', (120, 180), (120, 40, 50)); d = ImageDraw.Draw(im); d.rectangle([10, 10, 110, 60], fill=(230, 210, 150))
+    b = io.BytesIO(); im.save(b, 'PNG'); return b.getvalue()
+COVER_PNG = _cover_png()
+
 def new_context(browser, *, tts=True, mic='ok', **kw):
     ctx = browser.new_context(viewport=kw.pop('viewport', {'width': 1280, 'height': 860}), **kw)
     if tts: ctx.add_init_script(FAKE_TTS)
@@ -94,6 +101,7 @@ def new_context(browser, *, tts=True, mic='ok', **kw):
     ctx.route('https://api.dictionaryapi.dev/**', lambda r: r.fulfill(status=200, content_type='application/json', body=DICT, headers={'access-control-allow-origin': '*'}))
     ctx.route('https://www.gutenberg.org/**', lambda r: r.fulfill(status=404, body=''))
     ctx.route('https://covers.openlibrary.org/**', lambda r: r.fulfill(status=200, content_type='image/png', body=PNG))
+    ctx.route('https://books.google.com/**', lambda r: r.fulfill(status=200, content_type='image/png', body=COVER_PNG))
     return ctx
 
 def watch(page, label):
@@ -153,8 +161,11 @@ def run_public(browser):
         assert page.locator('#classics .book-card').count() == 16
         expect(page.locator('#classics .book-card').first).to_contain_text('Pride and Prejudice')
         # Gutenberg covers 404 in the test → typographic fallback shown, broken <img> removed.
-        expect(page.locator('#classics .book-card').first.locator('img')).to_have_count(0)
+        # Pride and Prejudice gets a real published cover (Google Books fixture);
+        # the rest fall back to designed covers when no real cover is found.
+        expect(page.locator('#classics .book-card').first.locator('.cover')).to_have_class(re.compile('has-real-cover'), timeout=8000)
         assert page.locator('#classics .cover-gen').count() == 16
+        assert page.locator('#classics .cover.has-real-cover').count() == 1
         assert no_hscroll(page), 'page scrolls horizontally'
         shot(page, '01-home-desktop')
     _(page)
@@ -759,11 +770,272 @@ def download_first_classic_auth(page):
     wait_reader(page)
 
 # ======================================================================
+FEAT = 'http://localhost:4323'
+
+def run_v2(browser):
+    """0.2 features against a server with cloud voice, AI assistant, and Jev switched on (fixtures)."""
+    ctx = new_context(browser)
+    page = watch(ctx.new_page(), 'v2')
+
+    @test('Bible opens at a reference with verse focus, chapter navigation, and offline caching')
+    def _(page):
+        page.goto(FEAT + '/#/bible/John/3?v=16')
+        expect(page.locator('.verses .v')).to_have_count(36)
+        expect(page.locator('#v16')).to_contain_text('For God so loved the world')
+        expect(page.locator('#v16')).to_have_class(re.compile('focus'))
+        page.get_by_role('button', name=re.compile('Next')).last.click()
+        expect(page.locator('#ch-title')).to_contain_text('John 4')
+        wait_until(page, "caches.has('mavis-bible-v1')", timeout=15000)
+        shot(page, '23-bible')
+    _(page)
+
+    @test('Verse lookup parses references like "1 Cor 13:4-7" and "ps 23"')
+    def _(page):
+        page.fill('#lookup-q', '1 Cor 13:4-7'); page.keyboard.press('Enter')
+        expect(page).to_have_url(re.compile(r'#/bible/1Cor/13\?v=4&ve=7'))
+        expect(page.locator('.v.focus')).to_have_count(4)
+        page.fill('#lookup-q', 'ps 23'); page.keyboard.press('Enter')
+        expect(page.locator('#ch-title')).to_contain_text('Psalms 23')
+        expect(page.locator('#v1')).to_contain_text('The Lord is my shepherd')
+    _(page)
+
+    @test('Bible verses: highlight, save as quote, note, copy with reference — and they persist')
+    def _(page):
+        page.goto(FEAT + '/#/bible/John/3')
+        page.locator('#v16').click()
+        expect(page.locator('#verse-bar')).to_be_visible()
+        page.locator('#v17').click()  # extends the selection
+        expect(page.locator('#verse-bar')).to_contain_text('John 3:16–17')
+        page.get_by_role('button', name='Highlight mint').click()
+        expect(page.locator('#v16')).to_have_class(re.compile('hl-mint'))
+        page.locator('#v16').click()
+        page.get_by_role('button', name=re.compile('Save quote')).click()
+        expect(page.locator('.toast').filter(has_text='Saved to your quotes')).to_be_visible()
+        page.locator('#v3').click()
+        page.get_by_role('button', name='Note').click()
+        page.locator('#bnote').fill('Born again: compare 1 Peter 1:23.')
+        page.get_by_role('button', name='Save note').click()
+        expect(page.locator('#v3 .v-note')).to_be_visible()
+        page.reload()
+        expect(page.locator('#v16')).to_have_class(re.compile('hl-mint'))
+        expect(page.locator('#v16 .v-ico')).to_be_visible()
+        page.goto(FEAT + '/#/quotes')
+        expect(page.locator('.quote-card')).to_have_count(1)
+        expect(page.locator('.quote-card')).to_contain_text('For God so loved the world')
+        expect(page.locator('.quote-card')).to_contain_text('John 3:16 (KJV)')
+        page.get_by_role('tab', name=re.compile('Notes')).click()
+        expect(page.locator('.quote-card')).to_contain_text('Born again')
+        shot(page, '24-saved-quotes')
+        page.get_by_role('tab', name=re.compile('Quotes')).click()
+        page.locator('.quote-card a').first.click()
+        expect(page).to_have_url(re.compile(r'#/bible/John/3\?v=16'))
+    _(page)
+
+    @test("Strong's concordance: tap a KJV word for Greek/Hebrew, then list every verse using it")
+    def _(page):
+        page.goto(FEAT + '/#/bible/John/3')
+        page.get_by_role('button', name=re.compile('Strong’s numbers')).click()
+        page.locator('#v16 .w', has_text='God').first.click()
+        sheet = page.get_by_role('dialog', name='Strong’s concordance')
+        expect(sheet).to_contain_text('G2316')
+        expect(sheet.locator('.lex').first).to_contain_text('theos')
+        shot(page, '25-strongs')
+        sheet.get_by_role('button', name=re.compile('Every verse with G2316')).click()
+        expect(page.locator('.result-count')).to_contain_text(re.compile(r'[\d,]{3,} verses use G2316'), timeout=20000)
+        expect(page.locator('.hits li').first).to_contain_text('Matthew')
+        page.get_by_role('button', name=re.compile('Strong’s numbers')).count()  # stays on search page
+    _(page)
+
+    @test('Concordance word and phrase search with scope, counts by book, and highlighted matches')
+    def _(page):
+        page.goto(FEAT + '/#/bible/search?q=%22living%20water%22')
+        expect(page.locator('.result-count')).to_contain_text('verse', timeout=20000)
+        expect(page.locator('.hits')).to_contain_text('John 4:10')
+        expect(page.locator('.hits mark').first).to_have_text(re.compile('living water', re.I))
+        page.select_option('#bs-scope', 'OT')
+        expect(page.locator('.hits')).to_contain_text('Jeremiah')
+        page.goto(FEAT + '/#/bible/search?q=faith%20hope&scope=NT')
+        expect(page.locator('.hits li').first).to_be_visible(timeout=20000)
+        shot(page, '26-bible-search')
+    _(page)
+
+    @test('Cross-references and translation compare for a verse')
+    def _(page):
+        page.goto(FEAT + '/#/bible/John/3')
+        page.locator('#v16').click()
+        page.get_by_role('button', name='Cross-refs').click()
+        d = page.get_by_role('dialog', name=re.compile('Cross-references'))
+        expect(d.locator('.xref').first).to_be_visible()
+        expect(d).to_contain_text('Romans 5:8')
+        page.keyboard.press('Escape')
+        expect(page.locator('#verse-bar')).to_be_visible()  # selection is kept
+        page.get_by_role('button', name='Compare').click()
+        d = page.get_by_role('dialog', name=re.compile('Compare'))
+        expect(d).to_contain_text('only begotten Son')
+        expect(d).to_contain_text('one and only Son')
+        page.keyboard.press('Escape')
+    _(page)
+
+    @test('Church display mode shows large verses, steps with arrow keys, exits with Escape')
+    def _(page):
+        expect(page.locator('#verse-bar')).to_contain_text('John 3:16')  # still selected from the previous check
+        page.get_by_role('button', name='Display').click()
+        expect(page.locator('.present-text')).to_contain_text('For God so loved')
+        expect(page.locator('.present-ref')).to_have_text('John 3:16 · KJV')
+        shot(page, '27-display-mode')
+        page.keyboard.press('ArrowRight')
+        expect(page.locator('.present-ref')).to_have_text('John 3:17 · KJV')
+        page.keyboard.press('Escape')
+        expect(page.locator('.present')).to_have_count(0)
+    _(page)
+
+    @test('Bible read-aloud with the device voice follows verses and continues into the next chapter')
+    def _(page):
+        page.goto(FEAT + '/#/bible/Jude/1')
+        page.evaluate('window.__utter = []; window.__ttsDelay = 5')
+        page.get_by_role('button', name='Listen to this chapter').click()
+        wait_until(page, "window.__utter.length > 3")
+        assert page.evaluate('window.__utter[0]') == 'Jude, chapter 1.'
+        expect(page.locator('#listen-bar')).to_be_visible()
+        wait_until(page, "window.__utter.some(s => s.startsWith('Revelation, chapter 1'))", timeout=20000)
+        expect(page.locator('#ch-title')).to_contain_text('Revelation 1')
+        page.get_by_role('button', name='Stop listening').click()
+        n = page.evaluate('window.__utter.length'); page.wait_for_timeout(400)
+        assert page.evaluate('window.__utter.length') == n
+    _(page)
+
+    @test('Owner access code unlocks cloud voice, AI, and Jev; a wrong code is refused')
+    def _(page):
+        page.goto(FEAT + '/#/settings')
+        expect(page.locator('#feat-list')).to_contain_text('Fish Audio')
+        page.fill('#access-code', 'nope'); page.get_by_role('button', name='Save code').click()
+        expect(page.locator('#code-msg')).to_contain_text('didn’t match')
+        page.fill('#access-code', 'test-code'); page.get_by_role('button', name='Save code').click()
+        expect(page.locator('#code-msg')).to_contain_text('Code accepted')
+        expect(page.locator('#feat-list')).to_contain_text('Owner access')
+        page.get_by_role('button', name='Cloud voice').click()
+        shot(page, '28-settings-owner')
+    _(page)
+
+    @test('Car mode with the cloud voice: MP3 audio from /api/tts plays, big controls pause and exit')
+    def _(page):
+        page.goto(FEAT + '/#/bible/Ps/117')
+        page.get_by_role('button', name='Listen to this chapter').click()
+        page.get_by_role('button', name='Car mode').click()
+        car = page.get_by_role('dialog', name='Car mode')
+        expect(car).to_be_visible()
+        expect(car).to_contain_text('lock the phone')
+        wait_until(page, "fetch('/__test/tts-calls').then(r => r.json()).then(n => n > 0)", timeout=10000)
+        wait_until(page, "['playing','loading'].includes(window.__mavisNarrator && window.__mavisNarrator.state)")
+        shot(page, '29-car-mode')
+        car.get_by_role('button', name='Pause').click()
+        expect(car.locator('[data-status]')).to_have_text('Paused')
+        car.get_by_role('button', name=re.compile('Exit car mode')).click()
+        expect(page.locator('.carmode')).to_have_count(0)
+        page.get_by_role('button', name='Stop listening').click()
+    _(page)
+
+    @test('Ask Mavis: consent first, answers about the open chapter, and can start read-aloud')
+    def _(page):
+        page.goto(FEAT + '/#/bible/John/3')
+        page.get_by_role('button', name='Ask Mavis about this chapter').click()
+        page.get_by_role('dialog', name='Before you ask').get_by_role('button', name='Got it').click()
+        d = page.get_by_role('dialog', name='Ask Mavis')
+        d.get_by_role('button', name='Summarize this chapter').click()
+        expect(d.locator('.msg-assistant')).to_have_text('Fixture answer about the Bible.')
+        shot(page, '30-ask-mavis')
+        d.locator('#chat-q').fill('Please read it to me'); d.locator('#chat-q').press('Enter')
+        expect(page.locator('#listen-bar')).to_be_visible()
+        page.get_by_role('button', name='Stop listening').click()
+    _(page)
+
+    @test('Books: save a quote from a selection, share/copy with citation, and jump back from Saved quotes')
+    def _(page):
+        download_first_classic_at(page, FEAT)
+        page.locator('[data-act="toc"]').click()
+        page.get_by_role('dialog', name='Contents').get_by_role('button', name='Fog Over the Harbor').click()
+        page.wait_for_timeout(400)
+        frame(page).locator('body').evaluate("""b => { const p = b.ownerDocument.querySelectorAll('p')[1]; const t = p.firstChild; const r = b.ownerDocument.createRange(); r.setStart(t, 0); r.setEnd(t, 40); const s = b.ownerDocument.getSelection(); s.removeAllRanges(); s.addRange(r); }""")
+        page.get_by_role('button', name='Save as a quote').click()
+        expect(page.locator('.toast').filter(has_text='Saved to your quotes')).to_be_visible()
+        page.wait_for_timeout(600)
+        page.locator('[data-act="close"]').first.click()
+        page.goto(FEAT + '/#/quotes')
+        card = page.locator('.quote-card').filter(has_text='Pride and Prejudice')
+        expect(card).to_contain_text('Fog Over the Harbor')
+        card.locator('a').click()
+        wait_reader(page)
+        expect(page.locator('#r-chapter')).to_have_text('Fog Over the Harbor')
+    _(page)
+
+    @test('Ask Mavis inside a book sends the chapter and answers')
+    def _(page):
+        page.get_by_role('button', name='Ask Mavis about this book').click()
+        d = page.get_by_role('dialog', name='Ask Mavis')
+        d.locator('#chat-q').fill('Who keeps the lantern?'); d.locator('#chat-q').press('Enter')
+        expect(d.locator('.msg-assistant')).to_have_text('Fixture answer about the book.')
+        page.keyboard.press('Escape')
+    _(page)
+
+    @test('Cloud voice in a book reads the chapter as audio and follows along')
+    def _(page):
+        page.locator('[data-act="tts"]').click()
+        expect(page.locator('#tts-engine')).to_have_value('cloud')
+        before = page.evaluate("fetch('/__test/tts-calls').then(r => r.json())")
+        page.get_by_role('button', name='Start reading aloud').click()
+        wait_until(page, f"fetch('/__test/tts-calls').then(r => r.json()).then(n => n > {before})", timeout=10000)
+        expect(page.locator('#tts-status')).to_contain_text(re.compile('Cloud voice|Preparing'))
+        page.get_by_role('button', name='Stop reading aloud').click()
+        page.locator('[data-act="close"]').first.click()
+    _(page)
+
+    @test('Picked for you: recommendations from shelf genres, ranked by Jev when available')
+    def _(page):
+        page.goto(FEAT + '/#/')
+        expect(page.locator('#recs-section')).to_be_visible(timeout=15000)
+        expect(page.locator('#recs-note')).to_contain_text('Jev')
+        assert page.locator('#recs .book-card').count() > 3
+        assert page.locator('#recs .book-card', has_text='Pride and Prejudice').count() == 0, 'shelf books must not be recommended'
+        expect(page.locator('#votd')).to_contain_text('—')
+        shot(page, '31-home-v2', full=True)
+    _(page)
+
+    ctx.close()
+
+    c = new_context(browser, viewport={'width': 360, 'height': 760}, is_mobile=True, has_touch=True, device_scale_factor=2)
+    p = watch(c.new_page(), 'v2-phone')
+    @test('Phone at 360px: Bible, search, quotes, and settings fit without sideways scrolling')
+    def _(p):
+        for route, name in [('/#/bible/Ps/23', '32-phone-bible'), ('/#/bible/search?q=shepherd', None), ('/#/quotes', None), ('/#/settings', None), ('/#/', None)]:
+            p.goto(FEAT + route); p.wait_for_timeout(1200)
+            assert no_hscroll(p), f'horizontal scroll on {route}'
+            if name: shot(p, name)
+        p.goto(FEAT + '/#/bible/Ps/23')
+        p.locator('#v1').click()
+        expect(p.locator('#verse-bar')).to_be_visible()
+        shot(p, '33-phone-verse-actions')
+        assert no_hscroll(p)
+        box = p.locator('#verses').bounding_box()
+        p.mouse.move(box['x'] + box['width'] - 10, box['y'] + 60)
+        p.touchscreen.tap(box['x'] + 10, box['y'] + 10)
+    _(p)
+    c.close()
+
+def download_first_classic_at(page, base):
+    page.goto(base + '/#/book/gutenberg:1342')
+    page.get_by_role('button', name=re.compile('Download')).click()
+    page.wait_for_url(re.compile(r'#/read/'), timeout=15000)
+    wait_reader(page)
+
+
+# ======================================================================
 def main():
     subprocess.run(['node', 'tests/e2e/make-files.mjs', str(FILES)], cwd=ROOT, check=True)
     procs = [
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4321'], cwd=ROOT),
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist-auth', '--port', '4322', '--supabase'], cwd=ROOT),
+        subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4323'], cwd=ROOT,
+                         env={**os.environ, 'MAVIS_ACCESS_CODE': 'test-code', 'TTS_PROVIDER': 'fish', 'FISH_AUDIO_API_KEY': 'fixture', 'LLM_API_KEY': 'fixture', 'EDENAI_API_KEY': 'fixture'}),
     ]
     time.sleep(2.5)
     started = time.time()
@@ -775,6 +1047,8 @@ def main():
             manifest_check(browser)
             print('Accounts build (Supabase emulator):')
             run_accounts(browser)
+            print('0.2 features (cloud voice, AI, Jev on fixtures):')
+            run_v2(browser)
             version = browser.version
             browser.close()
     finally:

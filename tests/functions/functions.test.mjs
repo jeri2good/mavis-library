@@ -21,7 +21,13 @@ function withUrl(res, url) { Object.defineProperty(res, 'url', { value: url }); 
 const catalog = (await import('../../netlify/functions/catalog.mjs')).default;
 const openlibrary = (await import('../../netlify/functions/openlibrary.mjs')).default;
 const epub = (await import('../../netlify/functions/epub.mjs')).default;
+const covers = (await import('../../netlify/functions/covers.mjs')).default;
+const tts = (await import('../../netlify/functions/tts.mjs')).default;
+const assistant = (await import('../../netlify/functions/assistant.mjs')).default;
+const rank = (await import('../../netlify/functions/rank.mjs')).default;
+const featuresFn = (await import('../../netlify/functions/features.mjs')).default;
 const ctx = (ip = '1.2.3.4') => ({ ip });
+const post = (path, body, headers = {}) => new Request(`https://mavis.test${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
 const get = (path) => new Request(`https://mavis.test${path}`);
 
 let passed = 0;
@@ -137,6 +143,93 @@ await test('epub endpoint rate-limits bursts from one client', async () => {
   let last;
   for (let i = 0; i < 14; i++) last = await epub(get('/api/epub?id=1'), ctx('9.9.9.9'));
   assert.equal(last.status, 429);
+});
+
+await test('covers: Open Library search first, Google Books fallback, title must match', async () => {
+  routes = [
+    [(u) => u.startsWith('https://openlibrary.org/search.json'), () => respond({ docs: [{ title: 'Some Other Book', cover_i: 1 }, { title: 'Frankenstein', cover_i: 42, edition_count: 300 }] })],
+  ];
+  let res = await covers(get('/api/covers?title=Frankenstein%3B%20Or%2C%20The%20Modern%20Prometheus&author=Mary%20Shelley'), ctx('c1'));
+  let body = await res.json();
+  assert.equal(body.cover, 'https://covers.openlibrary.org/b/id/42-L.jpg');
+  assert.match(res.headers.get('netlify-cdn-cache-control'), /s-maxage=2592000/);
+  routes = [
+    [(u) => u.startsWith('https://openlibrary.org/search.json'), () => respond({ docs: [] })],
+    [(u) => u.startsWith('https://www.googleapis.com/books/v1/volumes'), () => respond({ items: [{ volumeInfo: { title: 'Wrong', imageLinks: { thumbnail: 'http://x/1' } } }, { volumeInfo: { title: 'Dracula', imageLinks: { thumbnail: 'http://books.google.com/books/content?id=a&img=1&edge=curl' } } }] })],
+  ];
+  body = await (await covers(get('/api/covers?title=Dracula&author=Bram%20Stoker'), ctx('c2'))).json();
+  assert.equal(body.cover, 'https://books.google.com/books/content?id=a&img=1');
+  assert.equal(body.source, 'Google Books');
+  assert.equal((await covers(get('/api/covers?isbn=12'), ctx('c3'))).status, 400);
+});
+
+await test('paid endpoints stay off without an owner access code', async () => {
+  delete process.env.MAVIS_ACCESS_CODE;
+  process.env.FISH_AUDIO_API_KEY = 'k'; process.env.LLM_API_KEY = 'k'; process.env.EDENAI_API_KEY = 'k';
+  for (const [fn, path] of [[tts, '/api/tts'], [assistant, '/api/assistant'], [rank, '/api/rank']]) {
+    const res = await fn(post(path, { text: 'hi', messages: [{ role: 'user', content: 'hi' }], candidates: [{ id: 'a', title: 'A' }] }), ctx('p0'));
+    assert.equal(res.status, 403, path);
+  }
+  assert.equal(calls.length, 0);
+});
+
+await test('paid endpoints reject a wrong code and cross-site posts', async () => {
+  process.env.MAVIS_ACCESS_CODE = 'right-code';
+  let res = await tts(post('/api/tts', { text: 'hi' }, { 'x-mavis-access': 'wrong' }), ctx('p1'));
+  assert.equal(res.status, 401);
+  res = await tts(post('/api/tts', { text: 'hi' }, { 'x-mavis-access': 'right-code', origin: 'https://evil.example' }), ctx('p1'));
+  assert.equal(res.status, 403);
+  res = await tts(new Request('https://mavis.test/api/tts', { method: 'GET' }), ctx('p1'));
+  assert.equal(res.status, 405);
+  assert.equal(calls.length, 0);
+});
+
+await test('tts: Fish Audio request shape, size cap, and MP3 response', async () => {
+  process.env.MAVIS_ACCESS_CODE = 'right-code'; process.env.TTS_PROVIDER = 'fish'; process.env.FISH_AUDIO_VOICE_ID = 'voice-1';
+  let sent;
+  routes = [[(u) => u === 'https://api.fish.audio/v1/tts', (u, o) => { sent = { headers: o.headers, body: JSON.parse(o.body) }; return respond(new Uint8Array([0xff, 0xfb, 0x90, 0x00]), { headers: { 'content-type': 'audio/mpeg' } }); }]];
+  const res = await tts(post('/api/tts', { text: 'In the beginning.', speed: 1.25 }, { 'x-mavis-access': 'right-code' }), ctx('t1'));
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'audio/mpeg');
+  assert.equal(sent.headers.authorization, 'Bearer k');
+  assert.deepEqual([sent.body.text, sent.body.format, sent.body.reference_id, sent.body.prosody.speed], ['In the beginning.', 'mp3', 'voice-1', 1.25]);
+  const long = await tts(post('/api/tts', { text: 'x'.repeat(5000) }, { 'x-mavis-access': 'right-code' }), ctx('t2'));
+  assert.equal(long.status, 413);
+});
+
+await test('assistant: sends passage + tools to Anthropic and returns reply and actions', async () => {
+  process.env.LLM_PROVIDER = 'anthropic';
+  let sent;
+  routes = [[(u) => u === 'https://api.anthropic.com/v1/messages', (u, o) => { sent = { headers: o.headers, body: JSON.parse(o.body) }; return respond({ content: [{ type: 'text', text: 'Here is a summary.' }, { type: 'tool_use', name: 'read_aloud', input: { from: 'here' } }, { type: 'tool_use', name: 'delete_everything', input: {} }] }); }]];
+  const res = await assistant(post('/api/assistant', { messages: [{ role: 'user', content: 'Summarize and read it' }], context: { title: 'Emma', chapter: 'Chapter 1', text: 'Emma Woodhouse, handsome, clever, and rich…' } }, { 'x-mavis-access': 'right-code' }), ctx('a1'));
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(body.reply, 'Here is a summary.');
+  assert.deepEqual(body.actions, [{ name: 'read_aloud', input: { from: 'here' } }]);
+  assert.equal(sent.headers['x-api-key'], 'k');
+  assert.match(sent.body.system, /Emma Woodhouse/);
+  assert.ok(sent.body.tools.some((t) => t.name === 'go_to' && t.input_schema));
+});
+
+await test('rank: builds Jev score questions and maps scores to candidates', async () => {
+  let sent;
+  routes = [[(u) => u === 'https://api.edenai.run/v3/alpha/decisions', (u, o) => { sent = JSON.parse(o.body); return respond({ model: 'typesafe/jev-1', answers: { c0: { score: 4 }, c1: { score: 1 } } }); }]];
+  const res = await rank(post('/api/rank', { profile: { genres: ['adventure'] }, candidates: [{ id: 'g:1', title: 'Treasure Island' }, { id: 'g:2', title: 'Emma' }] }, { 'x-mavis-access': 'right-code' }), ctx('r1'));
+  const body = await res.json();
+  assert.equal(sent.model, 'typesafe/jev-latest');
+  assert.equal(sent.questions.c0.type, 'score');
+  assert.deepEqual(body.scores, { 'g:1': 1, 'g:2': 0.25 });
+});
+
+await test('features: reports what is on without exposing keys, and verifies the code', async () => {
+  let res = await featuresFn(get('/api/features'));
+  let body = await res.json();
+  assert.equal(body.cloudVoice, 'fish');
+  assert.ok(!JSON.stringify(body).includes('right-code') && !JSON.stringify(body).includes('"k"'));
+  res = await featuresFn(new Request('https://mavis.test/api/features', { headers: { 'x-mavis-access': 'right-code' } }));
+  body = await res.json();
+  assert.equal(body.owner, true);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
 });
 
 console.log(`\n${passed} endpoint checks passed.`);

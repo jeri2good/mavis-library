@@ -56,6 +56,7 @@ export async function render(root, route, { navigate, token }) {
         <div class="section-head">
           <h1>My shelf</h1>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a class="btn" href="#/quotes">${icon('quote', { size: 20 })} Saved quotes</a>
             <label class="btn btn-primary" for="import-input" style="cursor:pointer">${icon('upload', { size: 20 })} Import a book</label>
             <input id="import-input" type="file" accept="${ACCEPT}" multiple class="visually-hidden" />
           </div>
@@ -154,13 +155,14 @@ export async function render(root, route, { navigate, token }) {
       body.innerHTML = String(html`<div class="grid">${list.map((b) => {
         const p = progress.get(b.key);
         const onDevice = files.has(b.key);
+        const isBible = b.key === 'bible';
         const badges = [];
         if (p?.percent != null && b.status !== 'finished') badges.push({ label: `${Math.round(p.percent * 100)}%`, tone: 'accent' });
         if (b.status === 'finished') badges.push({ label: 'Finished', tone: 'ok' });
-        if (onDevice) badges.push({ label: 'On device', tone: 'ok' });
+        if (onDevice || isBible) badges.push({ label: isBible ? 'Built in · offline' : 'On device', tone: 'ok' });
         if (b.source === 'import') badges.push({ label: b.format === 'pdf' ? 'PDF' : 'Imported' });
         if (b.source === 'import' && !onDevice) badges.push({ label: 'File on another device', tone: 'warn' });
-        const href = onDevice ? `#/read/${encodeURIComponent(b.key)}` : `#/book/${encodeURIComponent(b.key)}`;
+        const href = isBible ? '#/bible' : onDevice ? `#/read/${encodeURIComponent(b.key)}` : `#/book/${encodeURIComponent(b.key)}`;
         return html`<div class="shelf-card">
           ${bookCard(b, { href, badges, progress: p?.percent ?? null, localCover: covers.get(b.key) })}
           <button type="button" class="icon-btn menu-btn" data-menu="${b.key}" aria-label="Options for ${b.title}">${icon('more', { size: 20 })}</button>
@@ -190,8 +192,9 @@ export async function render(root, route, { navigate, token }) {
       title: item.title,
       variant: 'sheet',
       body: html`<div class="menu-list">
+        ${item.key === 'bible' ? html`<a class="menu-item" href="#/bible">${icon('book')} Open the Bible</a>` : ''}
         ${onDevice ? html`<a class="menu-item" href="#/read/${encodeURIComponent(item.key)}">${icon('book')} Read</a>` : ''}
-        <a class="menu-item" href="#/book/${encodeURIComponent(item.key)}">${icon('info')} Book details</a>
+        ${item.key !== 'bible' ? html`<a class="menu-item" href="#/book/${encodeURIComponent(item.key)}">${icon('info')} Book details</a>` : ''}
         ${Object.entries(store.STATUSES).filter(([k]) => k !== item.status).map(([k, v]) => html`<button type="button" class="menu-item" data-status="${k}">${icon(k === 'finished' ? 'check' : 'bookmark')} Move to ${v}</button>`)}
         ${item.source === 'gutenberg' && !onDevice ? html`<button type="button" class="menu-item" data-dl>${icon('download')} Download for offline reading</button>` : ''}
         ${onDevice && item.source !== 'import' ? html`<button type="button" class="menu-item" data-rmfile>${icon('trash')} Remove download <span class="sub">keeps it on your shelf</span></button>` : ''}

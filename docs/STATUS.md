@@ -1,4 +1,4 @@
-# Mavis Library — feature status (v0.1.0)
+# Mavis Library — feature status (v0.2.0)
 
 **Legend.** *Tested* = exercised in a real browser (headless Chromium) or real database engine with assertions. *Simulated* = tested, but with a stand-in for an outside service or device capability that the build sandbox doesn't have. *Inspected* = code reviewed, not executed. *Unverified* = needs a live deployment or real device.
 
@@ -33,4 +33,27 @@ Build sandbox limits: no outbound access to Gutendex, Project Gutenberg, Open Li
 | Responsive — 360 px phone, tablet, desktop | Implemented · Tested at 360 px and 1280 px | No sideways scrolling on any screen. Tablet portrait/landscape inspected only. |
 | Older Android | Unverified | Uses CSS `color-mix()`, container query units, `Intl.Segmenter` (with fallbacks for the last). Expect Chrome 111+ for full styling. |
 | **Public deployment** | **Not done** | The sandbox cannot reach Netlify. Ready to deploy with one command; see README. |
-| **Mavis AI reading assistant** | Planned (off) | Not built, and nothing in the UI pretends otherwise. |
+| **Mavis AI reading assistant** | Implemented · Tested (simulated provider) | See “Ask Mavis” below. Off until the owner adds keys. |
+
+## Added in 0.2
+
+| Area | Status | Evidence and limits |
+|---|---|---|
+| **Holy Bible** — KJV with Strong’s tags (31,102 verses, 343,937 tagged word groups) and WEB (31,103 verses), book/chapter picker, translation switch and side-by-side, swipe between chapters | Implemented · Tested | Data generated from CrossWire KJV, WEB, STEPBible TBESH/TBESG, OpenBible cross-references (`scripts/build-bible.mjs`). About 5 MB compressed; cached for offline on first open. |
+| Verse lookup (“1 Cor 13:4-7”, “ps 23”, “jn 3 16”) | Implemented · Tested | |
+| Concordance search: words (all must appear), exact phrase in quotes, Strong’s number (H/G); scope by testament or book; counts by book; highlighted matches; load more | Implemented · Tested | Full-Bible search runs in the browser (no server). |
+| Strong’s lexicon sheet (lemma, transliteration, gloss, definition) and “every verse with Gxxxx” | Implemented · Tested | Definitions trimmed to ~900 characters. |
+| Cross-references (top OpenBible votes) and KJV/WEB compare | Implemented · Tested | |
+| Verse highlights (4 colors), notes, saved quotes, copy/share with citation | Implemented · Tested | Stored as annotations on the `bible` shelf item; sync via migration 0002. |
+| Church display mode (full-screen large verses, arrow keys, Escape) | Implemented · Tested | Fullscreen request is best-effort. |
+| Bible read-aloud: verse by verse, continues into next chapter/book, listen bar | Implemented · Tested (simulated speech engine) | |
+| **Saved quotes** page (quotes, highlights, notes from every book and the Bible; filter; copy/share/delete; jump back) | Implemented · Tested | |
+| Save quote / share quote from a text selection in any book | Implemented · Tested | |
+| **Real covers** via `/api/covers` (Open Library by ISBN or title, then Google Books), only for covers on screen, cached on device and CDN | Implemented · Tested (simulated upstream) | Live match quality unverified from the sandbox. |
+| **Picked for you** from shelf genres; Jev re-ranking through Eden AI when configured | Implemented · Tested (simulated Jev) | Jev’s Eden AI endpoint is marked alpha; format checked against Eden’s published example, not a live call. |
+| **Car mode**: full-screen dark player, 150 px play button, ±skip, sleep timer, exit | Implemented · Tested | |
+| **Cloud voice** (`/api/tts`, Fish Audio or Google) playing through an audio element with media-session controls; reads by chapter without the screen; follows along when visible | Implemented · Tested (simulated voice service) | Screen-off playback and steering-wheel buttons need a real phone to verify. |
+| **Ask Mavis** (`/api/assistant`, Anthropic or OpenAI-compatible): consent first, chapter + selection as context, tools for read aloud, stop, go to chapter/verse, car mode, define | Implemented · Tested (simulated provider) | Real answers depend on the provider key. |
+| Paid-feature protection: owner access code, same-origin POST, rate limits, keys only in server env | Implemented · Tested | 7 new endpoint tests. |
+| Motion and phone polish: screen transitions, staggered cards, cover fade-in, tab indicator, tighter phone layouts, 5-tab bar | Implemented · Tested at 360 px | Respects reduced motion. |
+

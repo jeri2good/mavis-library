@@ -1,8 +1,8 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 17:37 EDT · Chromium 141.0.7390.37 (headless, Linux) · 130s
+Run: 2026-10-09 17:47 EDT · Chromium 141.0.7390.37 (headless, Linux) · 134s
 
-**54 of 54 checks passed.**
+**55 of 55 checks passed.**
 
 | Result | Check |
 |---|---|
@@ -57,6 +57,7 @@ Run: 2026-10-09 17:37 EDT · Chromium 141.0.7390.37 (headless, Linux) · 130s
 | ✅ pass | Ask Mavis inside a book sends the chapter and answers |
 | ✅ pass | Cloud voice in a book reads the chapter as audio and follows along |
 | ✅ pass | Commentary summarized by Ask Mavis |
+| ✅ pass | Reading companion: picture this page, a spoiler-free spoken recap with cached chapter notes, and a character map |
 | ✅ pass | Offline audiobook: save a whole book as audio, listen, keep playing with no network, resume where you stopped |
 | ✅ pass | Picked for you: recommendations from shelf genres, ranked by Jev when available |
 | ✅ pass | Phone at 360px: Bible, search, quotes, and settings fit without sideways scrolling |

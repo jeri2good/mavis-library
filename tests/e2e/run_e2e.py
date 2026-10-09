@@ -1136,6 +1136,46 @@ def run_v2(browser):
         page.keyboard.press('Escape')
     _(page)
 
+    @test('Reading companion: picture this page, a spoiler-free spoken recap with cached chapter notes, and a character map')
+    def _(page):
+        page.goto(FEAT + '/#/read/' + 'gutenberg%3A1342')
+        wait_reader(page)
+        page.locator('[data-act="toc"]').click()
+        page.get_by_role('dialog', name='Contents').get_by_role('button', name='Notes in the Margins').click()
+        expect(page.locator('#r-chapter')).to_have_text('Notes in the Margins')
+        page.wait_for_timeout(400)
+        page.get_by_role('button', name=re.compile('^Reading companion')).click()
+        d = page.get_by_role('dialog', name='Reading companion')
+        d.get_by_role('button', name=re.compile('Picture this page')).click()
+        viewer = page.get_by_role('dialog', name='Notes in the Margins')
+        expect(viewer.locator('img')).to_be_visible(timeout=20000)
+        info = page.evaluate("fetch('/__test/openai').then(r => r.json())")
+        assert 'Absolutely no text' in info['imagePrompt'] and 'Notes in the Margins' in info['imagePrompt'], info['imagePrompt'][:300]
+        shot(page, '41-picture-this')
+        viewer.get_by_role('button', name='Close').click()
+        expect(d.locator('.pic-thumb')).to_have_count(1)
+        d.get_by_role('tab', name=re.compile('Story so far')).click()
+        d.get_by_role('button', name='Catch me up').click()
+        expect(d.locator('.recap')).to_contain_text('ninety-one steps', timeout=20000)
+        first = page.evaluate("fetch('/__test/openai').then(r => r.json())")['summaries']
+        assert first == 2, f'expected notes for the 2 finished chapters, got {first}'
+        d.get_by_role('button', name='Catch me up').click()
+        expect(d.locator('.recap')).to_contain_text('ninety-one steps', timeout=20000)
+        assert page.evaluate("fetch('/__test/openai').then(r => r.json())")['summaries'] == first, 'chapter notes should be reused'
+        d.get_by_role('button', name='Listen').click()
+        expect(d.get_by_role('button', name='Stop')).to_be_visible(timeout=10000)
+        d.get_by_role('button', name='Stop').click()
+        shot(page, '42-story-so-far')
+        d.get_by_role('tab', name=re.compile('Characters')).click()
+        d.get_by_role('button', name=re.compile('Build my character list')).click()
+        expect(d.locator('.person')).to_have_count(2, timeout=20000)
+        expect(d.locator('.relmap')).to_be_visible()
+        expect(d.locator('.person').first).to_contain_text('Lighthouse keeper')
+        shot(page, '43-characters')
+        page.keyboard.press('Escape')
+        page.locator('[data-act="close"]').first.click()
+    _(page)
+
     @test('Offline audiobook: save a whole book as audio, listen, keep playing with no network, resume where you stopped')
     def _(page):
         page.goto(FEAT + '/#/book/gutenberg:1342')
@@ -1225,7 +1265,7 @@ def main():
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4321'], cwd=ROOT),
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4322', '--accounts'], cwd=ROOT),
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4323'], cwd=ROOT,
-                         env={**os.environ, 'MAVIS_ACCESS_CODE': 'test-code', 'TTS_PROVIDER': 'fish', 'FISH_AUDIO_API_KEY': 'fixture', 'LLM_API_KEY': 'fixture', 'EDENAI_API_KEY': 'fixture'}),
+                         env={**os.environ, 'MAVIS_ACCESS_CODE': 'test-code', 'TTS_PROVIDER': 'fish', 'FISH_AUDIO_API_KEY': 'fixture', 'LLM_PROVIDER': 'openai', 'LLM_MODEL': 'gpt-5.6-luna', 'LLM_API_KEY': 'fixture', 'EDENAI_API_KEY': 'fixture'}),
     ]
     time.sleep(2.5)
     started = time.time()

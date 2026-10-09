@@ -225,6 +225,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         <button type="button" class="vb-btn" data-vb="original">${icon('dict', { size: 20 })}<span>Original</span></button>
         <button type="button" class="vb-btn" data-vb="commentary">${icon('note', { size: 20 })}<span>Commentary</span></button>
         ${single ? html`<button type="button" class="vb-btn" data-vb="topics">${icon('library', { size: 20 })}<span>Topics</span></button>` : ''}
+        <button type="button" class="vb-btn" data-vb="picture">${icon('present', { size: 20 })}<span>Picture</span></button>
         <button type="button" class="vb-btn" data-vb="listen">${icon('headphones', { size: 20 })}<span>Listen</span></button>
         <button type="button" class="vb-btn" data-vb="present">${icon('present', { size: 20 })}<span>Display</span></button>
         <button type="button" class="vb-btn" data-vb="ask">${icon('spark', { size: 20 })}<span>Ask</span></button>
@@ -627,6 +628,13 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       if (vb === 'original') showInterlinear();
       if (vb === 'commentary') showCommentary(r.verse);
       if (vb === 'topics') showTopics(r.verse);
+      if (vb === 'picture') {
+        const passage = `${B.labelSync(idx, r)} (${trShort()}): ${selText()}`;
+        import('../lib/companion.js').then(({ openCompanion }) => openCompanion({
+          key: KEY, title: 'the Holy Bible', author: '', chapter: () => B.labelSync(idx, r),
+          pageText: () => passage, selectionText: () => passage, textSoFar: () => '', previousSections: async () => [],
+        }, { only: 'picture', defaultStyle: 'stained glass' }));
+      }
       if (vb === 'listen') { const v = r.verse; selected.clear(); paintBar(); paint(); startListening(v); }
       if (vb === 'present') present();
       if (vb === 'ask') ask();

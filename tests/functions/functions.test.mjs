@@ -344,6 +344,44 @@ await test('rank: prefers TypeSafe’s own API when TYPESAFE_API_KEY is set', as
   delete process.env.TYPESAFE_API_KEY;
 });
 
+await test('study: chapter summaries, spoiler-safe recap, cleaned character JSON, and background pictures', async () => {
+  const study = (await import('../../netlify/functions/study.mjs')).default;
+  process.env.LLM_PROVIDER = 'openai'; process.env.LLM_MODEL = 'gpt-5.6-luna';
+  const sent = [];
+  routes = [
+    [(u) => u === 'https://api.openai.com/v1/chat/completions', (u, o) => {
+      const b = JSON.parse(o.body); sent.push(b);
+      if (b.response_format) return respond({ choices: [{ message: { content: JSON.stringify({ characters: [{ name: 'Emma', importance: 9, relations: [{ to: 'Mr. Knightley', relation: 'friend' }, { relation: 'no target' }] }, { role: 'nameless' }] }) } }] });
+      return respond({ choices: [{ message: { content: 'A short summary.' } }] });
+    }],
+    [(u) => u === 'https://api.openai.com/v1/responses', () => respond({ id: 'resp_abc123def456', status: 'queued' })],
+    [(u) => u === 'https://api.openai.com/v1/responses/resp_abc123def456', () => respond({ status: 'completed', output: [{ type: 'image_generation_call', result: 'AAAA', revised_prompt: 'x' }] })],
+  ];
+  const H = { 'x-mavis-access': 'right-code' };
+  assert.equal((await study(post('/api/study', { task: 'summarize', text: 'x'.repeat(100) }), ctx('s0'))).status, 401, 'needs the access code');
+  let r = await study(post('/api/study', { task: 'summarize', title: 'Emma', chapter: 'Chapter 1', text: 'Emma Woodhouse, handsome, clever, and rich… '.repeat(5) }, H), ctx('s1'));
+  assert.equal((await r.json()).summary, 'A short summary.');
+  assert.equal(sent[0].reasoning_effort, 'none');
+  r = await study(post('/api/study', { task: 'recap', title: 'Emma', summaries: [{ chapter: 'Chapter 1', summary: 'Emma meets Harriet.' }], current: { chapter: 'Chapter 2', text: 'Up to here.' } }, H), ctx('s2'));
+  assert.equal((await r.json()).recap, 'A short summary.');
+  assert.match(sent[1].messages[0].content, /never hint at what happens next/);
+  assert.match(sent[1].messages[1].content, /Emma meets Harriet/);
+  r = await study(post('/api/study', { task: 'characters', title: 'Emma', summaries: [], current: { text: 'Emma.' } }, H), ctx('s3'));
+  const { characters } = await r.json();
+  assert.equal(characters.length, 1, 'nameless entries dropped');
+  assert.equal(characters[0].importance, 3, 'importance clamped');
+  assert.deepEqual(characters[0].relations, [{ to: 'Mr. Knightley', relation: 'friend' }]);
+  r = await study(post('/api/study', { task: 'picture', title: 'Emma', passage: 'Emma walked through the garden at Hartfield in the morning light.' }, H), ctx('s4'));
+  assert.equal((await r.json()).id, 'resp_abc123def456');
+  const poll = await study(new Request('https://mavis.test/api/study?picture=resp_abc123def456', { headers: H }), ctx('s5'));
+  const pj = await poll.json();
+  assert.equal(pj.status, 'done'); assert.equal(pj.image, 'AAAA');
+  assert.equal((await study(new Request('https://mavis.test/api/study?picture=../../x', { headers: H }), ctx('s6'))).status, 400);
+  assert.equal((await study(new Request('https://mavis.test/api/study?picture=resp_abc123def456'), ctx('s7'))).status, 401);
+  assert.equal((await study(post('/api/study', { task: 'shell' }, H), ctx('s8'))).status, 400);
+  process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
+});
+
 await test('features: reports what is on without exposing keys, and verifies the code', async () => {
   let res = await featuresFn(get('/api/features'));
   let body = await res.json();

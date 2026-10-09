@@ -95,6 +95,7 @@ async function renderEpub(root, item, file, close, route) {
       <button class="icon-btn" type="button" data-act="tts" aria-label="Read aloud" aria-pressed="false">${icon('headphones')}</button>
       <button class="icon-btn" type="button" data-act="lookup" aria-label="Look up a word">${icon('dict')}</button>
       <button class="icon-btn" type="button" data-act="ask" aria-label="Ask Mavis about this book">${icon('spark')}</button>
+      <button class="icon-btn" type="button" data-act="companion" aria-label="Reading companion: picture this page, story so far, characters">${icon('present')}</button>
       <button class="icon-btn" type="button" data-act="immersive" aria-label="Focus mode (hide controls)">${icon('expand')}</button>
     </header>
     <div class="reader-stage" id="stage">
@@ -333,6 +334,7 @@ async function renderEpub(root, item, file, close, route) {
       <button type="button" class="icon-btn" data-sel="define" aria-label="Look up in dictionary">${icon('dict', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="quote" aria-label="Save as a quote">${icon('star', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="share" aria-label="Share quote">${icon('share', { size: 20 })}</button>
+      <button type="button" class="icon-btn" data-sel="picture" aria-label="Picture this passage">${icon('present', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="copy" aria-label="Copy text">${icon('copy', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="close" aria-label="Close">${icon('close', { size: 18 })}</button>`);
     sel.hidden = false;
@@ -371,6 +373,8 @@ async function renderEpub(root, item, file, close, route) {
       annotations.push(a); drawAnnotation(a);
       hideSelection(true);
       toast('Saved to your quotes.', { action: { label: 'View', run: () => { location.hash = '#/quotes'; } } });
+    } else if (b.dataset.sel === 'picture') {
+      openReadingCompanion('picture');
     } else if (b.dataset.sel === 'share') {
       hideSelection(true);
       shareQuote(text, citeHere());
@@ -572,6 +576,7 @@ async function renderEpub(root, item, file, close, route) {
     if (act === 'tts') toggleTts();
     if (act === 'lookup') openDictionary('');
     if (act === 'ask') askMavis();
+    if (act === 'companion') openReadingCompanion();
     if (act === 'immersive') setImmersive(!immersive);
   });
 
@@ -985,6 +990,58 @@ async function renderEpub(root, item, file, close, route) {
       return (section.document.body?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 24000);
     } catch { return ''; }
   }
+  // ---------- Reading companion ----------
+  function pageText() {
+    try {
+      const loc = rendition.location || lastLoc;
+      const c = rendition.getContents().find((x) => x.sectionIndex === loc.start.index);
+      if (!c) return '';
+      const a = c.range(loc.start.cfi);
+      const r = c.document.createRange();
+      r.setStart(a.startContainer, a.startOffset);
+      if (loc.end && loc.end.index === loc.start.index) { const b = c.range(loc.end.cfi); r.setEnd(b.endContainer, b.endOffset); }
+      else r.setEndAfter(c.document.body.lastChild || c.document.body);
+      return r.toString().replace(/\s+/g, ' ').trim().slice(0, 3500);
+    } catch { return ''; }
+  }
+  function textSoFar() {
+    try {
+      const loc = rendition.location || lastLoc;
+      const c = rendition.getContents().find((x) => x.sectionIndex === loc.start.index);
+      if (!c) return '';
+      const r = c.document.createRange();
+      r.setStart(c.document.body, 0);
+      const b = c.range((loc.end && loc.end.index === loc.start.index ? loc.end : loc.start).cfi);
+      r.setEnd(b.endContainer, b.endOffset);
+      return r.toString().replace(/\s+/g, ' ').trim().slice(-12000);
+    } catch { return ''; }
+  }
+  async function previousSections() {
+    const out = [];
+    const upto = (rendition.location || lastLoc)?.start?.index ?? 0;
+    for (let i = 0; i < upto && i < book.spine.length; i++) {
+      const section = book.spine.get(i);
+      if (!section || section.linear === false) continue;
+      try {
+        await section.load(book.load.bind(book));
+        const text = (section.document.body?.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text.length < 400) continue; // title pages, contents, epigraphs
+        const label = toc.find((t) => book.spine.get(t.href.split('#')[0])?.index === i)?.label?.trim() || `Part ${out.length + 1}`;
+        out.push({ index: i, label, text: text.slice(0, 30000) });
+      } catch { /* skip unreadable sections */ }
+    }
+    return out;
+  }
+  async function openReadingCompanion(tab) {
+    const sel = pendingSel?.text || '';
+    hideSelection(true);
+    const { openCompanion } = await import('../lib/companion.js');
+    openCompanion({
+      key, title: item.title, author: (item.authors || []).join(', '), container: readerEl,
+      chapter: () => chapterLabel(rendition.location || lastLoc), pageText, selectionText: () => sel, textSoFar, previousSections,
+    }, { tab });
+  }
+
   async function askMavis() {
     const selection = pendingSel?.text || '';
     hideSelection(true);

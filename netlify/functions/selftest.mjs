@@ -1,37 +1,31 @@
-// TEMPORARY: check OpenAI background image generation with the site's key.
-// Requires ?code=<owner access code>. ?id=<response id> polls.
+// TEMPORARY: live check of the reading companion with the site's real keys.
+// ?code=<owner code>            → summary + characters + starts a picture (returns id)
+// ?code=<owner code>&id=<resp>  → polls that picture
 import { json, env } from '../lib/shared.mjs';
+import study from './study.mjs';
 
-export default async (req) => {
+export default async (req, context) => {
   const u = new URL(req.url);
   if (!env('MAVIS_ACCESS_CODE') || u.searchParams.get('code') !== env('MAVIS_ACCESS_CODE')) return json({ error: 'forbidden' }, { status: 403 });
-  const key = env('LLM_API_KEY');
-  const model = u.searchParams.get('model') || env('LLM_MODEL');
-  const headers = { authorization: `Bearer ${key}`, 'content-type': 'application/json' };
+  const H = { 'content-type': 'application/json', 'x-mavis-access': env('MAVIS_ACCESS_CODE') };
+  const call = async (body) => { const t = Date.now(); const r = await study(new Request(`${u.origin}/api/study`, { method: 'POST', headers: H, body: JSON.stringify(body) }), context); return { status: r.status, ms: Date.now() - t, body: await r.json() }; };
   const id = u.searchParams.get('id');
-  const t0 = Date.now();
   if (id) {
-    const r = await fetch(`https://api.openai.com/v1/responses/${encodeURIComponent(id)}`, { headers });
-    const j = await r.json().catch(() => ({}));
-    const img = (j.output || []).find((o) => o.type === 'image_generation_call');
-    return json({ http: r.status, status: j.status, error: j.error, outputTypes: (j.output || []).map((o) => `${o.type}:${o.status || ''}`), imageBytes: img?.result ? Math.round(img.result.length * 0.75) : 0, revised: (img?.revised_prompt || '').slice(0, 200), ms: Date.now() - t0 });
+    const r = await study(new Request(`${u.origin}/api/study?picture=${encodeURIComponent(id)}`, { headers: H }), context);
+    const j = await r.json();
+    return json({ status: r.status, picture: j.status, error: j.error, imageKB: j.image ? Math.round((j.image.length * 0.75) / 1024) : 0 });
   }
-  if (u.searchParams.get('w') === 'models') {
-    const r = await fetch('https://api.openai.com/v1/models', { headers });
-    const j = await r.json().catch(() => ({}));
-    return json({ http: r.status, models: (j.data || []).map((m) => m.id).filter((x) => /image|gpt-5|gpt-4\.1|gpt-4o/.test(x)).sort() });
-  }
-  const r = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST', headers,
-    body: JSON.stringify({
-      model, background: true,
-      input: 'Paint a calm, painterly book illustration (no text, no letters) of a lighthouse keeper climbing a spiral stair at dusk, lantern in hand.',
-      tools: [{ type: 'image_generation', size: '1024x1536', quality: 'low', output_format: 'webp' }],
-      tool_choice: { type: 'image_generation' },
-    }),
+  const text = 'It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters. “My dear Mr. Bennet,” said his lady to him one day, “have you heard that Netherfield Park is let at last?” Mr. Bennet replied that he had not.';
+  const [summary, characters, picture] = await Promise.all([
+    call({ task: 'summarize', title: 'Pride and Prejudice', author: 'Jane Austen', chapter: 'Chapter 1', text }),
+    call({ task: 'characters', title: 'Pride and Prejudice', author: 'Jane Austen', summaries: [], current: { chapter: 'Chapter 1', text } }),
+    call({ task: 'picture', title: 'Pride and Prejudice', author: 'Jane Austen', chapter: 'Chapter 1', passage: text, style: 'watercolor' }),
+  ]);
+  return json({
+    summary: { status: summary.status, ms: summary.ms, text: summary.body.summary || summary.body.message },
+    characters: { status: characters.status, ms: characters.ms, names: (characters.body.characters || []).map((c) => `${c.name} (${c.role})`), error: characters.body.message },
+    picture: { status: picture.status, ms: picture.ms, id: picture.body.id, error: picture.body.message },
   });
-  const j = await r.json().catch(() => ({}));
-  return json({ http: r.status, id: j.id, status: j.status, error: j.error, model, ms: Date.now() - t0 });
 };
 
 export const config = { path: '/api/selftest' };

@@ -6,6 +6,7 @@ import { ttsProvider } from './tts.mjs';
 import { llmConfig } from './assistant.mjs';
 import { jevProvider } from './rank.mjs';
 import { accountsEnabled } from '../lib/accounts.mjs';
+import { imageConfig } from '../lib/llm.mjs';
 
 export default async (req) => {
   const pre = onlyGet(req);
@@ -21,6 +22,7 @@ export default async (req) => {
     jev: jevProvider()?.name || false,
     googleBooksKey: Boolean(env('GOOGLE_BOOKS_API_KEY')),
     accounts: accountsEnabled(),
+    pictures: Boolean(imageConfig()),
   }, { cache: checking ? 'no-store' : 'public, max-age=60' });
 };
 

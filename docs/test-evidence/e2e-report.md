@@ -1,8 +1,8 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 16:36 EDT · Chromium 141.0.7390.37 (headless, Linux) · 121s
+Run: 2026-10-09 16:48 EDT · Chromium 141.0.7390.37 (headless, Linux) · 129s
 
-**47 of 47 checks passed.**
+**48 of 48 checks passed.**
 
 | Result | Check |
 |---|---|
@@ -51,6 +51,7 @@ Run: 2026-10-09 16:36 EDT · Chromium 141.0.7390.37 (headless, Linux) · 121s
 | ✅ pass | Books: save a quote from a selection, share/copy with citation, and jump back from Saved quotes |
 | ✅ pass | Ask Mavis inside a book sends the chapter and answers |
 | ✅ pass | Cloud voice in a book reads the chapter as audio and follows along |
+| ✅ pass | Offline audiobook: save a whole book as audio, listen, keep playing with no network, resume where you stopped |
 | ✅ pass | Picked for you: recommendations from shelf genres, ranked by Jev when available |
 | ✅ pass | Phone at 360px: Bible, search, quotes, and settings fit without sideways scrolling |
 

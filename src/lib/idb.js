@@ -2,7 +2,7 @@
 // reload lives here; failures surface as errors the UI reports (never silent).
 
 const DB_NAME = 'mavis-library';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORES = {
   shelf: 'shelf', //            id = `${owner}|${bookKey}`
@@ -11,6 +11,8 @@ export const STORES = {
   files: 'files', //            id = `${owner}|${bookKey}` → { blob, mime, size }
   cache: 'cache', //            device cache: epub locations etc. id = string
   kv: 'kv', //                  device settings
+  audiobooks: 'audiobooks', //  id = `${owner}|${bookKey}` → downloaded-audio manifest (device only)
+  audio: 'audio', //            id = `${owner}|${bookKey}|${chapter}|${chunk}` → { blob }
 };
 
 let dbPromise = null;
@@ -49,6 +51,8 @@ export function openDB() {
       if (!db.objectStoreNames.contains('files')) db.createObjectStore('files', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('cache')) db.createObjectStore('cache', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('audiobooks')) db.createObjectStore('audiobooks', { keyPath: 'id' }).createIndex('owner', 'owner');
+      if (!db.objectStoreNames.contains('audio')) db.createObjectStore('audio', { keyPath: 'id' });
     };
     req.onsuccess = () => {
       const db = req.result;
@@ -123,4 +127,18 @@ export async function keysWithPrefix(store, prefix) {
   const db = await openDB();
   const range = IDBKeyRange.bound(prefix, prefix + '￿');
   return wrap(db.transaction(store).objectStore(store).getAllKeys(range));
+}
+
+/** Delete every record whose key starts with prefix. */
+export async function delPrefix(store, prefix) {
+  const db = await openDB();
+  const tx = db.transaction(store, 'readwrite');
+  tx.objectStore(store).delete(IDBKeyRange.bound(prefix, `${prefix}￿`));
+  return txDone(tx);
+}
+
+/** Count records whose key starts with prefix. */
+export async function countPrefix(store, prefix) {
+  const db = await openDB();
+  return wrap(db.transaction(store).objectStore(store).count(IDBKeyRange.bound(prefix, `${prefix}￿`)));
 }

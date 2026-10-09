@@ -14,6 +14,7 @@ import { openCarMode } from '../lib/carmode.js';
 import { openAssistant } from '../lib/assistant-ui.js';
 import { loadFeatures, can, features } from '../lib/features.js';
 import { copyQuote, shareQuote } from '../lib/quotes.js';
+import { manifest as audiobookManifest, summarize as audiobookSummary } from '../lib/audiobook.js';
 
 export const title = () => 'Reading';
 
@@ -932,7 +933,14 @@ async function renderEpub(root, item, file, close, route) {
     status.textContent = s.error || (s.state === 'loading' ? 'Preparing audio…' : s.state === 'paused' ? 'Paused.' : s.state === 'playing' ? `Cloud voice · ${chapterNowPlaying || 'reading'}` : '');
   }
 
-  function openCar() {
+  async function openCar() {
+    // A saved audiobook plays offline, with the screen off and chapter skipping.
+    const saved = await audiobookManifest(key).catch(() => null);
+    if (saved && audiobookSummary(saved).done) {
+      tts?.stop(); narr?.stop();
+      location.hash = `#/listen/${encodeURIComponent(key)}?play=1`;
+      return;
+    }
     carUI?.close();
     const cloud = engineNow() === 'cloud';
     carUI = openCarMode({

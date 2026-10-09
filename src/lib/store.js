@@ -333,6 +333,8 @@ export async function clearOwnerData(who) {
     for (const r of rows) await idb.del(store, r.id);
   }
   for (const k of await idb.keysWithPrefix('files', `${who}|`)) await idb.del('files', k);
+  await idb.delPrefix('audio', `${who}|`);
+  await idb.delPrefix('audiobooks', `${who}|`);
   // Forget how far this device had synced, so signing in again pulls everything back.
   await setSetting(`sync-cursors|${who}`, {});
   emit({ type: 'owner' });

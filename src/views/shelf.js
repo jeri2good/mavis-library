@@ -1,3 +1,4 @@
+import { listDownloaded, summarize } from '../lib/audiobook.js';
 import { html, icon, toast, openDialog, confirmDialog, formatBytes, debounce, timeAgo } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import { bookCard, stateBlock } from '../components.js';
@@ -115,7 +116,8 @@ export async function render(root, route, { navigate, token }) {
     if (painting) { again = true; return; }
     painting = true;
     try {
-      const [items, progress, files] = await Promise.all([store.listShelf(), store.allProgress(), store.fileKeysForOwner()]);
+      const [items, progress, files, audio] = await Promise.all([store.listShelf(), store.allProgress(), store.fileKeysForOwner(), listDownloaded()]);
+      const audioKeys = new Set(audio.filter((m) => summarize(m).done > 0).map((m) => m.bookKey));
       if (!token()) return;
       const counts = { all: items.length, reading: 0, want: 0, finished: 0 };
       for (const b of items) counts[b.status] = (counts[b.status] || 0) + 1;
@@ -160,6 +162,7 @@ export async function render(root, route, { navigate, token }) {
         if (p?.percent != null && b.status !== 'finished') badges.push({ label: `${Math.round(p.percent * 100)}%`, tone: 'accent' });
         if (b.status === 'finished') badges.push({ label: 'Finished', tone: 'ok' });
         if (onDevice || isBible) badges.push({ label: isBible ? 'Built in · offline' : 'On device', tone: 'ok' });
+        if (audioKeys.has(b.key)) badges.push({ label: 'Audio saved', tone: 'ok' });
         if (b.source === 'import') badges.push({ label: b.format === 'pdf' ? 'PDF' : 'Imported' });
         if (b.source === 'import' && !onDevice) badges.push({ label: 'File on another device', tone: 'warn' });
         const href = isBible ? '#/bible' : onDevice ? `#/read/${encodeURIComponent(b.key)}` : `#/book/${encodeURIComponent(b.key)}`;
@@ -168,6 +171,10 @@ export async function render(root, route, { navigate, token }) {
           <button type="button" class="icon-btn menu-btn" data-menu="${b.key}" aria-label="Options for ${b.title}">${icon('more', { size: 20 })}</button>
         </div>`;
       })}</div>`);
+      for (const k of audioKeys) {
+        const card = [...body.querySelectorAll('[data-menu]')].find((x) => x.dataset.menu === k)?.closest('.shelf-card');
+        if (card) card.insertAdjacentHTML('beforeend', String(html`<a class="icon-btn listen-btn" href="#/listen/${encodeURIComponent(k)}" aria-label="Listen to the saved audio">${icon('headphones', { size: 20 })}</a>`));
+      }
       for (const btn of body.querySelectorAll('[data-menu]')) btn.addEventListener('click', () => openMenu(items.find((x) => x.key === btn.dataset.menu), files.has(btn.dataset.menu)));
     } catch (err) {
       body.innerHTML = String(stateBlock({ tone: 'error', title: "Your shelf couldn't be opened", text: `${err.message} If you're in a private window, your browser may block offline storage.` }));

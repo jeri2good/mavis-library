@@ -777,3 +777,39 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 3px; paddi
   padding: 18px 12px; border-radius: 14px; border: 2px dashed var(--accent);
   background: var(--surface-2, var(--surface)); user-select: all; word-break: break-all; margin: 0;
 }
+
+/* ---------- Offline audiobook: book page panel + listen screen ---------- */
+.ab-panel { margin-top: 18px; padding: 16px 18px; border-radius: 16px; border: 1px solid var(--line); background: var(--paper-raised); display: grid; gap: 12px; }
+.ab-panel .h-section { display: flex; align-items: center; gap: 8px; margin: 0; }
+.ab-status { display: grid; gap: 8px; }
+.ab-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.listen { display: grid; gap: 16px; padding-top: 10px; padding-bottom: 28px; max-width: 760px; }
+.listen-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.listen-head { display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: center; }
+.listen-cover .cover { width: 96px; border-radius: 8px; box-shadow: var(--shadow-2, 0 8px 24px rgba(0,0,0,.18)); }
+.listen-meta h1 { font-family: var(--font-display); font-size: var(--step-2); line-height: 1.15; margin: 2px 0 4px; }
+.listen-chapter { color: var(--ink-soft, inherit); font-weight: 600; }
+.listen-line {
+  font-family: var(--font-read); font-size: clamp(1.15rem, 4.2vw, 1.6rem); line-height: 1.45; min-height: 4.4em;
+  padding: 18px 20px; border-radius: 18px; background: #0b0e0c; color: #f2ecdd; margin: 0;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.listen-progress { display: grid; gap: 6px; }
+.listen-controls {
+  display: flex; justify-content: center; align-items: center; gap: clamp(6px, 3vw, 22px);
+  padding: 22px 10px; border-radius: 24px; background: #0b0e0c; color: #f2ecdd;
+}
+.listen-controls .car-btn { width: clamp(56px, 16vw, 84px); height: clamp(56px, 16vw, 84px); position: relative; }
+.listen-controls .car-play { width: clamp(96px, 28vw, 132px); height: clamp(96px, 28vw, 132px); }
+.listen.is-playing .car-play { animation: ring 2s infinite; }
+.car-btn-label { position: absolute; bottom: 10%; font-size: .7rem; font-weight: 700; opacity: .8; }
+.listen .car-status { color: var(--accent); }
+.listen-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.listen-chapters summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.listen-chapters ol { margin: 6px 0 0; padding-left: 1.4em; display: grid; gap: 6px; max-height: 50vh; overflow: auto; }
+.listen-chapters [aria-current] { font-weight: 700; color: var(--primary); }
+.linklike { background: none; border: 0; padding: 4px 0; color: inherit; font: inherit; text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; min-height: 32px; }
+.listen-note { text-align: center; }
+@media (max-width: 380px) { .listen-options { grid-template-columns: 1fr; } }
+.shelf-card .listen-btn { position: absolute; top: 46px; right: 4px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: var(--primary); color: var(--on-primary, #fff); box-shadow: var(--shadow); }

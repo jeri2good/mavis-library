@@ -18,6 +18,7 @@ const routes = {
   account: () => import('./views/account.js'),
   bible: () => import('./views/bible.js'),
   quotes: () => import('./views/quotes.js'),
+  listen: () => import('./views/listen.js'),
   settings: () => import('./views/settings.js'),
 };
 
@@ -111,7 +112,7 @@ export async function renderRoute() {
   if (!loader) { navigate('/', { replace: true }); return; }
 
   for (const a of document.querySelectorAll('[data-nav]')) {
-    const active = a.dataset.nav === (route.name || 'discover') || (route.name === 'book' && a.dataset.nav === 'search') || (route.name === 'quotes' && a.dataset.nav === 'shelf');
+    const active = a.dataset.nav === (route.name || 'discover') || (route.name === 'book' && a.dataset.nav === 'search') || ((route.name === 'quotes' || route.name === 'listen') && a.dataset.nav === 'shelf');
     if (active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
 

@@ -160,12 +160,23 @@ export class ReadAloud {
   }
 
   async gather() {
-    let loc = this.r.currentLocation();
-    if (loc && typeof loc.then === 'function') loc = await loc;
-    if (!loc?.start) return [];
-    const contents = this.r.getContents();
-    const c = contents.find((x) => x.sectionIndex === loc.start.index) || contents[0];
-    if (!c) return [];
+    // Right after a jump (contents, bookmark) the rendition can still hold the
+    // previous page for a moment. Wait until the page being shown is the one
+    // the reader reported, and never read from a different section.
+    let loc = null, c = null;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      loc = this.r.location?.start ? this.r.location : this.r.currentLocation();
+      if (loc && typeof loc.then === 'function') loc = await loc;
+      if (loc?.start) {
+        const now = this.r.currentLocation();
+        const settled = !now?.start || typeof now.then === 'function' || now.start.cfi === loc.start.cfi;
+        c = this.r.getContents().find((x) => x.sectionIndex === loc.start.index) || null;
+        if (c && settled) break;
+      }
+      c = null;
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    if (!loc?.start || !c) return [];
     const doc = c.document;
     let startR, endR;
     try {

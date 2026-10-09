@@ -13,7 +13,7 @@ const DAILY = ['John.3.16', 'Ps.23.1', 'Prov.3.5', 'Isa.40.31', 'Phil.4.13', 'Ro
 
 // Hand-picked Project Gutenberg ids. Titles and covers are always loaded live
 // from the catalog, never hard-coded.
-const CLASSICS = [1342, 84, 2701, 11, 1661, 64317, 345, 1260, 174, 98, 768, 1184, 158, 120, 5200, 2554];
+const CLASSICS = [1342, 84, 2701, 11, 1661, 64317, 345, 1260, 174, 98, 768, 1184, 158, 120, 1400, 2554];
 
 const SHELVES = [
   { topic: 'adventure', label: 'Adventure' },

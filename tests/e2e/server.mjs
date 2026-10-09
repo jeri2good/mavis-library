@@ -20,8 +20,8 @@ const PORT = Number(args.port || 4321);
 const WITH_SUPABASE = !!args.supabase;
 
 // ---------- Fixture upstream ----------
-const TITLES = ['Pride and Prejudice', 'Frankenstein; Or, The Modern Prometheus', 'Moby Dick; Or, The Whale', "Alice's Adventures in Wonderland", 'The Adventures of Sherlock Holmes', 'The Great Gatsby', 'Dracula', 'Jane Eyre: An Autobiography', 'The Picture of Dorian Gray', 'A Tale of Two Cities', 'Wuthering Heights', 'The Count of Monte Cristo', 'Emma', 'Treasure Island', 'Metamorphosis', 'Crime and Punishment'];
-const IDS = [1342, 84, 2701, 11, 1661, 64317, 345, 1260, 174, 98, 768, 1184, 158, 120, 5200, 2554];
+const TITLES = ['Pride and Prejudice', 'Frankenstein; Or, The Modern Prometheus', 'Moby Dick; Or, The Whale', "Alice's Adventures in Wonderland", 'The Adventures of Sherlock Holmes', 'The Great Gatsby', 'Dracula', 'Jane Eyre: An Autobiography', 'The Picture of Dorian Gray', 'A Tale of Two Cities', 'Wuthering Heights', 'The Count of Monte Cristo', 'Emma', 'Treasure Island', 'Great Expectations', 'Crime and Punishment'];
+const IDS = [1342, 84, 2701, 11, 1661, 64317, 345, 1260, 174, 98, 768, 1184, 158, 120, 1400, 2554];
 const CATALOG = [];
 for (let i = 0; i < 70; i++) {
   const id = IDS[i] || 9000 + i;

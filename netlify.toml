@@ -15,7 +15,7 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob: https://www.gutenberg.org https://gutenberg.org https://covers.openlibrary.org https://*.archive.org https://books.google.com https://*.googleusercontent.com; font-src 'self' data: blob:; connect-src 'self' https://api.dictionaryapi.dev; frame-src 'self' blob:; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob: https://www.gutenberg.org https://gutenberg.org https://covers.openlibrary.org https://*.archive.org https://books.google.com https://*.googleusercontent.com; font-src 'self' data: blob:; connect-src 'self' https://api.dictionaryapi.dev; frame-src 'self' blob:; worker-src 'self' blob:; media-src 'self' blob: https://*.fish.audio; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
     Referrer-Policy = "strict-origin-when-cross-origin"
     X-Content-Type-Options = "nosniff"
     Permissions-Policy = "microphone=(self), camera=(), geolocation=(), payment=()"

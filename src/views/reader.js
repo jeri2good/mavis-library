@@ -815,6 +815,8 @@ async function renderEpub(root, item, file, close, route) {
         <label ${engine === 'cloud' ? 'hidden' : ''} data-device-voice>Device voice <select id="tts-voice">${list.map((v) => html`<option value="${v.voiceURI}" ${v === chosen ? 'selected' : ''}>${v.name}${v.localService ? '' : ' (online)'}</option>`)}</select></label>
         <label>Speed <select id="tts-rate">${[0.75, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2].map((r) => html`<option value="${r}" ${Number(rate) === r ? 'selected' : ''}>${r}×</option>`)}</select></label>
         <label>${icon('timer', { size: 18 })}<span class="visually-hidden">Sleep timer</span> <select id="tts-sleep" aria-label="Sleep timer"><option value="0">No timer</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="chapter">End of chapter</option></select></label>
+        ${engine === 'cloud' && f.cloudVoice === 'fish' ? html`<label class="tts-cast"><input type="checkbox" id="tts-fullcast" ${store.getSetting('fullCast', false) ? 'checked' : ''} /> Full cast</label>
+        <button type="button" class="btn btn-sm btn-quiet" data-tts="cast">${icon('user', { size: 16 })} Cast…</button>` : ''}
       </div>
       <p class="small" id="tts-status" role="status" style="text-align:center;color:var(--r-faint)">${engine === 'cloud' ? 'The cloud voice sends the text being read to the voice service and uses the site owner’s voice credit.' : online ? 'Voices marked “online” send the text being read to the voice provider.' : cloudOk ? '' : 'Tip: the device voice stops when your phone locks. For screen-off listening, the site owner can turn on a cloud voice.'}</p>`);
     const voiceSel = ttsBar.querySelector('#tts-voice');
@@ -824,6 +826,13 @@ async function renderEpub(root, item, file, close, route) {
     if (!tts && ttsSupported) {
       tts = new ReadAloud({ rendition, voice: voiceFn, rate: rateFn, lang, title: item.title, onState: onTtsState });
     } else if (tts) { tts.voice = voiceFn; tts.rate = rateFn; }
+    ttsBar.querySelector('#tts-fullcast')?.addEventListener('change', (e) => {
+      store.setSetting('fullCast', e.target.checked);
+      const wasPlaying = narr && narr.state !== 'idle' && narr.state !== 'error';
+      narr?.stop();
+      toast(e.target.checked ? 'Full cast on: each character gets their own voice. Mavis works out who’s speaking as it reads.' : 'Full cast off: one narrator voice.');
+      if (wasPlaying) playToggle();
+    });
     ttsBar.querySelector('#tts-engine').addEventListener('change', (e) => {
       tts?.stop(); narr?.stop();
       store.setSetting('voiceEngine', e.target.value);
@@ -845,6 +854,7 @@ async function renderEpub(root, item, file, close, route) {
       if (a === 'fwd') (engineNow() === 'cloud' ? narr : tts)?.skip(1);
       if (a === 'back') (engineNow() === 'cloud' ? narr : tts)?.skip(-1);
       if (a === 'car') openCar();
+      if (a === 'cast') openCastEditor();
     };
   }
 
@@ -897,13 +907,26 @@ async function renderEpub(root, item, file, close, route) {
           served++;
           const label = toc.find((t) => book.spine.get(t.href.split('#')[0])?.index === idx)?.label?.trim();
           const items = [];
-          for (const el of blocks) {
-            let cfi = null;
-            try { cfi = section.cfiFromElement(el); } catch { /* ignore */ }
-            for (const sentence of sentences(el.textContent, lang)) {
-              items.push({ text: sentence, onStart: () => followAlong(cfi, label) });
-            }
+          const withCfi = blocks.map((el) => { let cfi = null; try { cfi = section.cfiFromElement(el); } catch { /* ignore */ } return { el, cfi, text: el.textContent }; });
+          let cast = null;
+          if (store.getSetting('fullCast', false) && features().cloudVoice === 'fish') {
+            try {
+              const { castSection } = await import('../lib/fullcast.js');
+              const ttsLine = ttsBar.querySelector('#tts-line');
+              if (ttsLine) ttsLine.textContent = 'Working out who’s speaking in this chapter…';
+              cast = await castSection({ key, title: item.title, author: (item.authors || []).join(', '), sectionIndex: idx, blocks: withCfi.map((b) => ({ text: b.text, cfi: b.cfi })) });
+            } catch (err) { toast(`Full cast unavailable for this chapter: ${err.message}`, { tone: 'error' }); }
           }
+          withCfi.forEach((b, bi) => {
+            const segs = cast ? cast.blocks[bi].segments : [{ kind: 'narration', text: b.text }];
+            for (const seg of segs) {
+              const voice = seg.kind === 'quote' && seg.speaker && seg.speaker !== 'Narrator' ? cast?.cast[seg.speaker]?.id : undefined;
+              for (const sentence of sentences(seg.text, lang)) {
+                if (!/[\p{L}\p{N}]/u.test(sentence)) continue;
+                items.push({ text: sentence, voice, speaker: seg.speaker, onStart: () => followAlong(b.cfi, label) });
+              }
+            }
+          });
           if (items.length) return items;
         }
         return null;
@@ -990,6 +1013,40 @@ async function renderEpub(root, item, file, close, route) {
       return (section.document.body?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 24000);
     } catch { return ''; }
   }
+  // ---------- Full-cast editor ----------
+  async function openCastEditor() {
+    const [{ getCast, setCast }, { castingPool, narratorVoice }] = await Promise.all([import('../lib/fullcast.js'), import('../lib/voices.js')]);
+    const cast = await getCast(key);
+    const names = Object.keys(cast);
+    const d = openDialog({ title: 'Cast', variant: 'side', container: readerEl, body: html`<p class="muted">Loading voices…</p>` });
+    let pool;
+    try { pool = await castingPool(); } catch (err) { d.body.innerHTML = String(html`<p class="muted">${err.message}</p>`); return; }
+    const all = [...pool.male, ...pool.female];
+    const audio = new Audio();
+    d.body.innerHTML = String(html`
+      <p class="small muted">Narrator: <strong>${narratorVoice()?.title || 'the site’s default voice'}</strong> (change it in Settings → Voices).</p>
+      ${names.length ? html`<ul class="cast-list">${names.map((n) => html`<li>
+        <span class="cast-name">${n}</span>
+        <select class="select" data-cast="${n}" aria-label="Voice for ${n}">${all.map((v) => html`<option value="${v.id}" ${cast[n].id === v.id ? 'selected' : ''}>${v.title} · ${v.tags?.includes('female') ? 'female' : 'male'}</option>`)}</select>
+        <button type="button" class="icon-btn" data-play="${n}" aria-label="Hear the voice for ${n}">${icon('play', { size: 18 })}</button></li>`)}</ul>`
+        : html`<p class="muted">No characters yet. Turn on <strong>Full cast</strong> and press play — Mavis finds the speakers as it reads.</p>`}
+      <p class="small faint">Voices are from Fish Audio’s licensed voice library. Who-says-what is worked out by the AI from the text around each line, so the occasional line may go to the wrong voice.</p>`);
+    d.body.addEventListener('change', async (e) => {
+      const sel = e.target.closest('[data-cast]');
+      if (!sel) return;
+      const v = all.find((x) => x.id === sel.value);
+      cast[sel.dataset.cast] = { ...cast[sel.dataset.cast], id: v.id, title: v.title, sample: v.sample };
+      await setCast(key, cast);
+      toast(`${sel.dataset.cast} will be read by ${v.title}.`);
+    });
+    d.body.addEventListener('click', (e) => {
+      const n = e.target.closest('[data-play]')?.dataset.play;
+      if (!n) return;
+      const v = all.find((x) => x.id === cast[n].id);
+      if (v?.sample) { audio.src = v.sample; audio.play().catch(() => toast('Couldn’t play the sample.')); }
+    });
+  }
+
   // ---------- Reading companion ----------
   function pageText() {
     try {

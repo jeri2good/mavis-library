@@ -96,8 +96,34 @@ async function fixtureFetch(url, opts = {}) {
   }
   if (u.host === 'covers.openlibrary.org') return new Response('', { status: u.pathname.includes('/isbn/') ? 200 : 404 });
   if (u.host === 'www.googleapis.com') return json({ items: [{ volumeInfo: { title: 'Pride and Prejudice', imageLinks: { thumbnail: 'http://books.google.com/books/content?id=fixture&printsec=frontcover&img=1&zoom=1&edge=curl' } } }] });
+  if (u.host === 'api.fish.audio' && u.pathname === '/model' && (opts.method || 'GET') === 'GET') {
+    const v = (id, title, tags) => ({ _id: id, type: 'tts', title, tags, languages: ['en'], state: 'trained', samples: [{ audio: `https://platform.r2.fish.audio/samples/${id}.mp3` }] });
+    if (u.searchParams.get('self') === 'true') return json({ total: globalThis.__fishMine?.length || 0, items: globalThis.__fishMine || [] });
+    const tags = u.searchParams.getAll('tag');
+    const all = [
+      v('a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', 'Warm Narrator', ['male', 'middle-aged', 'narration', 'warm']),
+      v('b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', 'Ferry Captain', ['male', 'old', 'narration', 'deep']),
+      v('c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3', 'Calm Reflective Voice', ['female', 'middle-aged', 'narration', 'calm']),
+      v('d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4', 'Bright Young Reader', ['female', 'young', 'narration', 'bright']),
+    ];
+    const items = all.filter((x) => tags.every((t) => x.tags.includes(t)));
+    return json({ total: items.length, items });
+  }
+  if (u.host === 'api.fish.audio' && u.pathname === '/model' && opts.method === 'POST') {
+    const fd = opts.body;
+    const file = fd.get('voices');
+    globalThis.__fishCreate = { type: fd.get('type'), visibility: fd.get('visibility'), title: fd.get('title'), trainMode: fd.get('train_mode'), bytes: file?.size || 0 };
+    const model = { _id: 'e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5', type: 'tts', title: fd.get('title'), state: 'trained', visibility: 'private', tags: [], samples: [] };
+    globalThis.__fishMine = [model];
+    return json(model, 201);
+  }
+  if (u.host === 'api.fish.audio' && u.pathname.startsWith('/model/') && opts.method === 'DELETE') {
+    globalThis.__fishMine = (globalThis.__fishMine || []).filter((m) => !u.pathname.endsWith(m._id));
+    return new Response(null, { status: 204 });
+  }
   if (u.host === 'api.fish.audio' || u.host === 'texttospeech.googleapis.com') {
     globalThis.__ttsCalls = (globalThis.__ttsCalls || 0) + 1;
+    if (u.host === 'api.fish.audio') { try { (globalThis.__fishVoices ||= []).push(JSON.parse(opts.body).reference_id || null); } catch { /* ignore */ } }
     return new Response(SILENT_MP3, { status: 200, headers: { 'content-type': 'audio/mpeg' } });
   }
   if (u.host === 'api.anthropic.com') {
@@ -124,6 +150,11 @@ async function fixtureFetch(url, opts = {}) {
       const say = (content, extra = {}) => json({ choices: [{ message: { content, ...extra }, finish_reason: 'stop' }] });
       if (/summarize one chapter/i.test(sys)) { globalThis.__summaries = (globalThis.__summaries || 0) + 1; return say('Fixture chapter summary: the keeper climbs the steps and finds a letter.'); }
       if (/story so far/i.test(sys)) return say('So far, the lantern keeper has climbed the ninety-one steps and found an old letter in the fog.');
+      if (/attribute lines of dialogue/i.test(sys)) {
+        const n = (q.match(/^#\d+ /gm) || []).length;
+        const lines = Array.from({ length: n }, (_, i) => ({ i, speaker: i === 0 ? 'The Ferryman' : 'The Keeper' }));
+        return say(JSON.stringify({ speakers: { 'The Ferryman': { gender: 'male', age: 'old' }, 'The Keeper': { gender: 'female', age: 'adult' } }, lines }));
+      }
       if (/character list/i.test(sys)) return say(JSON.stringify({ characters: [
         { name: 'The Keeper', aka: ['Mara'], role: 'Lighthouse keeper', description: 'Tends the lantern each night.', firstSeen: 'The Ninety-One Steps', importance: 3, relations: [{ to: 'The Ferryman', relation: 'old friend' }] },
         { name: 'The Ferryman', aka: [], role: 'Brings supplies', description: 'Crosses the harbor at dawn.', firstSeen: 'Fog Over the Harbor', importance: 2, relations: [{ to: 'The Keeper', relation: 'old friend' }] },
@@ -194,6 +225,7 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) body += chunk;
   try {
     if (url.pathname === '/__test/reset-failures') { failOnce = new Set(); res.end('ok'); return; }
+    if (url.pathname === '/__test/fish') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ voices: globalThis.__fishVoices || [], create: globalThis.__fishCreate || null })); return; }
     if (url.pathname === '/__test/openai') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ calls: globalThis.__openaiCalls || 0, summaries: globalThis.__summaries || 0, imagePrompt: globalThis.__lastImagePrompt || '' })); return; }
     if (url.pathname === '/__test/tts-calls') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(String(globalThis.__ttsCalls || 0)); return; }
     if (url.pathname === '/__test/sync-log') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(syncLog)); return; }

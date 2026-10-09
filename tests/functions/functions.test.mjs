@@ -382,6 +382,52 @@ await test('study: chapter summaries, spoiler-safe recap, cleaned character JSON
   process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
 });
 
+await test('voices: licensed library, private cloning only with consent, deletes, and a chosen voice reaches Fish', async () => {
+  const voices = (await import('../../netlify/functions/voices.mjs')).default;
+  const tts = (await import('../../netlify/functions/tts.mjs')).default;
+  process.env.MAVIS_ACCESS_CODE = 'right-code'; process.env.FISH_AUDIO_API_KEY = 'k'; process.env.TTS_PROVIDER = 'fish';
+  let created = null; const ttsBodies = [];
+  routes = [
+    [(u) => u.startsWith('https://api.fish.audio/model?'), (u) => respond({ total: 1, items: [{ _id: 'a'.repeat(32), type: 'tts', title: 'Warm', tags: ['male'], samples: [{ audio: 'https://platform.r2.fish.audio/x.mp3' }], query: u }] })],
+    [(u) => u === 'https://api.fish.audio/model', (u, o) => { created = Object.fromEntries([...o.body.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : `file:${v.size}`])); return respond({ _id: 'b'.repeat(32), type: 'tts', title: o.body.get('title'), state: 'trained' }); }],
+    [(u) => u.startsWith('https://api.fish.audio/model/'), () => new Response(null, { status: 204 })],
+    [(u) => u === 'https://api.fish.audio/v1/tts', (u, o) => { ttsBodies.push(JSON.parse(o.body)); return new Response(new Uint8Array(600), { headers: { 'content-type': 'audio/mpeg' } }); }],
+  ];
+  const H = { 'x-mavis-access': 'right-code' };
+  assert.equal((await voices(get('/api/voices?list=library'), ctx('v0'))).status, 401);
+  let r = await voices(new Request('https://mavis.test/api/voices?list=library&gender=female&age=bogus', { headers: H }), ctx('v1'));
+  const lib = await r.json();
+  assert.equal(lib.items[0].sample, 'https://platform.r2.fish.audio/x.mp3');
+  const q = new URL(calls[calls.length - 1]).searchParams;
+  assert.equal(q.get('licensed'), 'true'); assert.deepEqual(q.getAll('tag'), ['female']);
+  const form = (fields) => { const fd = new FormData(); for (const [k, v] of Object.entries(fields)) fd.append(k, v); return fd; };
+  const audio = new File([new Uint8Array(60_000)], 'me.webm', { type: 'audio/webm' });
+  const postForm = (fd, extra = {}) => new Request('https://mavis.test/api/voices', { method: 'POST', headers: { ...H, ...extra }, body: fd });
+  assert.equal((await voices(postForm(form({ title: 'Me', audio })), ctx('v2'))).status, 400, 'consent is required');
+  assert.equal((await voices(postForm(form({ consent: 'yes', audio: new File([new Uint8Array(500)], 'x.webm', { type: 'audio/webm' }) })), ctx('v3'))).status, 400, 'too short');
+  assert.equal((await voices(postForm(form({ consent: 'yes', audio }), { origin: 'https://evil.example' }), ctx('v4'))).status, 403);
+  r = await voices(postForm(form({ consent: 'yes', title: 'Me', audio })), ctx('v5'));
+  assert.equal(r.status, 200);
+  assert.equal(created.type, 'tts'); assert.equal(created.visibility, 'private'); assert.equal(created.train_mode, 'fast'); assert.equal(created.voices, 'file:60000');
+  assert.equal((await voices(new Request('https://mavis.test/api/voices?id=../../x', { method: 'DELETE', headers: H }), ctx('v6'))).status, 400);
+  assert.equal((await voices(new Request(`https://mavis.test/api/voices?id=${'b'.repeat(32)}`, { method: 'DELETE', headers: H }), ctx('v7'))).status, 200);
+  await tts(post('/api/tts', { text: 'Hello', voice: 'c'.repeat(32) }, H), ctx('v8'));
+  await tts(post('/api/tts', { text: 'Hello', voice: 'not a voice; drop table' }, H), ctx('v9'));
+  assert.equal(ttsBodies[0].reference_id, 'c'.repeat(32));
+  assert.equal(ttsBodies[1].reference_id, process.env.FISH_AUDIO_VOICE_ID, 'invalid voice ids fall back to the default');
+});
+
+await test('study cast: speaker lines are cleaned and indexed', async () => {
+  const study = (await import('../../netlify/functions/study.mjs')).default;
+  process.env.LLM_PROVIDER = 'openai'; process.env.LLM_MODEL = 'gpt-5.6-luna';
+  routes = [[(u) => u === 'https://api.openai.com/v1/chat/completions', () => respond({ choices: [{ message: { content: JSON.stringify({ speakers: { Ann: { gender: 'female', age: 'weird' }, '': { gender: 'x' } }, lines: [{ i: 0, speaker: 'Ann' }, { i: 7, speaker: 'Ghost' }, { i: 1 }] }) } }] })]];
+  const r = await study(post('/api/study', { task: 'cast', title: 'T', quotes: [{ text: '“Hi.”' }, { text: '“Bye.”' }] }, { 'x-mavis-access': 'right-code' }), ctx('c1'));
+  const j = await r.json();
+  assert.deepEqual(j.speakers, { Ann: { gender: 'female', age: 'adult' } });
+  assert.deepEqual(j.lines, [{ i: 0, speaker: 'Ann' }, { i: 1, speaker: 'Narrator' }]);
+  process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
+});
+
 await test('features: reports what is on without exposing keys, and verifies the code', async () => {
   let res = await featuresFn(get('/api/features'));
   let body = await res.json();

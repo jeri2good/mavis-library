@@ -71,7 +71,7 @@ export class AudiobookPlayer {
     const k = this.m.chapters[ch]?.chunks[n];
     if (!k) return null;
     if (!navigator.onLine) throw new Error('This part isn’t saved on the phone and you’re offline. Save the rest of the book when you have signal.');
-    const blob = await ownerPost('/api/tts', { text: k.text, speed: 1 }, { as: 'blob' });
+    const blob = await ownerPost('/api/tts', { text: k.text, speed: 1, voice: this.m.voiceId || undefined }, { as: 'blob' });
     try {
       await idb.put('audio', { id: `${store.getOwner()}|${this.key}|${ch}|${n}`, blob });
       k.done = true;

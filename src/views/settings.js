@@ -41,6 +41,7 @@ export async function render(root) {
         <div class="seg" role="group" aria-label="Default voice">${[['device', 'This device'], ['cloud', 'Cloud voice']].map(([v, l]) => html`<button type="button" data-engine="${v}" aria-pressed="${store.getSetting('voiceEngine', 'device') === v}">${l}</button>`)}</div></div>
       <p class="hint">Cloud voice keeps reading with the screen off and works with car and Bluetooth buttons. The device voice is free but stops when the phone locks.</p>
     </div>
+    <div class="panel" id="voices-panel"></div>
     <div class="panel">
       <h2>This device</h2>
       <dl class="kv">
@@ -54,7 +55,7 @@ export async function render(root) {
     </div>
     <div class="panel">
       <h2>About</h2>
-      <p class="muted">Mavis Library: your books, your library, your imagination. Free books come from Project Gutenberg (via Gutendex). Book search beyond free titles comes from Open Library. Definitions come from the Free Dictionary API. Borrowing and buying happen on the provider’s own site or app.</p>
+      <p class="muted">Mavis Library: your books, your library, your imagination. Free books come from Project Gutenberg’s own catalog. Book search beyond free titles comes from Open Library. Definitions come from the Free Dictionary API. Borrowing and buying happen on the provider’s own site or app.</p>
     </div>
   </div></div>`);
   async function paintFeatures() {
@@ -68,7 +69,7 @@ export async function render(root) {
       <dt>Jev picks</dt><dd>${f.jev ? yes(f.jev === 'typesafe' ? 'TypeSafe AI' : 'Eden AI') : no('Not set up (free genre ranking in use)')}</dd>`);
     if (!f.reachable) root.querySelector('#feat-list').innerHTML = String(html`<dt>Status</dt><dd>The Mavis server can’t be reached right now.</dd>`);
   }
-  paintFeatures();
+  paintFeatures().then(() => import('../lib/voices-ui.js')).then(({ mountVoicesPanel }) => mountVoicesPanel(root.querySelector('#voices-panel'))).catch(() => {});
   root.querySelector('#code-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const v = root.querySelector('#access-code').value.trim();
@@ -76,7 +77,8 @@ export async function render(root) {
     const f = await setAccessCode(v);
     root.querySelector('#code-msg').textContent = f.owner ? 'Code accepted. Paid features are unlocked on this device.' : 'That code didn’t match. Check it and try again.';
     root.querySelector('#access-code').value = '';
-    paintFeatures();
+    await paintFeatures();
+    import('../lib/voices-ui.js').then(({ mountVoicesPanel }) => mountVoicesPanel(root.querySelector('#voices-panel')));
   });
   root.addEventListener('click', async (e) => {
     if (e.target.closest('[data-forget]')) { await setAccessCode(''); toast('Access code removed from this device.'); paintFeatures(); }

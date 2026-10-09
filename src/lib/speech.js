@@ -13,6 +13,7 @@
 
 import { ttsSupported } from './tts.js';
 import { ownerPost } from './features.js';
+import { getSetting } from './store.js';
 
 const CHUNK = 1400; // characters per cloud request
 
@@ -108,17 +109,20 @@ export class Narrator {
       const it = this.items[this.idx];
       if (!it) break;
       if (items.length && len + it.text.length > CHUNK) break;
+      // Full cast: each chunk is one voice, so a change of speaker starts a new chunk.
+      if (items.length && (it.voice || null) !== (items[0].voice || null)) break;
       items.push(it); len += it.text.length + 1; this.idx++;
       if (len > CHUNK) break;
     }
     if (!items.length) return null;
-    const chunk = { items, text: items.map((i) => i.text).join(' '), url: null, promise: null };
+    const chunk = { items, voice: items[0].voice || null, text: items.map((i) => i.text).join(' '), url: null, promise: null };
     chunk.promise = this.synthesize(chunk);
     return chunk;
   }
 
   async synthesize(chunk) {
-    const blob = await ownerPost('/api/tts', { text: chunk.text, speed: this.rate() }, { as: 'blob' });
+    const voice = chunk.voice || getSetting('narratorVoice', null)?.id || undefined;
+    const blob = await ownerPost('/api/tts', { text: chunk.text, speed: this.rate(), voice }, { as: 'blob' });
     chunk.url = URL.createObjectURL(blob);
     return chunk;
   }

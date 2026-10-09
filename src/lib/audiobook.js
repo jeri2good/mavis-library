@@ -125,7 +125,8 @@ export function download(key, { title = '', from = 0, upTo = Infinity, voice = '
     if (!m) {
       emit(key, { phase: 'planning' });
       const p = await plan(key);
-      m = { bookKey: key, title, lang: p.lang, voice, createdAt: Date.now(), bytes: 0, position: { ch: 0, n: 0, t: 0 },
+      const nv = store.getSetting('narratorVoice', null);
+      m = { bookKey: key, title, lang: p.lang, voice, voiceId: nv?.id || null, voiceTitle: nv?.title || null, createdAt: Date.now(), bytes: 0, position: { ch: 0, n: 0, t: 0 },
         chapters: p.chapters.map((c) => ({ ...c, chunks: c.chunks.map((k) => ({ ...k, done: false })) })) };
       await saveManifest(m);
     }
@@ -143,7 +144,7 @@ export function download(key, { title = '', from = 0, upTo = Infinity, voice = '
         let blob = null;
         for (let attempt = 0; attempt < 4 && !cancelled; attempt++) {
           try {
-            blob = await ownerPost('/api/tts', { text: job2.k.text, speed: 1 }, { as: 'blob' });
+            blob = await ownerPost('/api/tts', { text: job2.k.text, speed: 1, voice: m.voiceId || undefined }, { as: 'blob' });
             if (!blob || blob.size < 200) throw new Error('The voice service sent an empty file.');
             break;
           } catch (err) {

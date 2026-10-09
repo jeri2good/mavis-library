@@ -98,6 +98,8 @@ function chapterBody(n, paragraphs = 14) {
     const c = SENTENCES[(i * 7 + n + 2) % SENTENCES.length];
     ps.push(`<p>${a} ${b} ${c}</p>`);
   }
+  // One short exchange of dialogue (used by the full-cast narration tests).
+  if (n === 1) ps.unshift('<p>“Is the light lit tonight?” asked the ferryman, shaking the rain from his coat. “Every night,” the keeper said, “for as long as there are boats.”</p>');
   return ps.join('\n');
 }
 

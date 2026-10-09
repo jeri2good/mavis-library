@@ -2,6 +2,7 @@
 //   POST { task: 'summarize', title, author, chapter, text }            → { summary }
 //   POST { task: 'recap', title, author, summaries: [{chapter, summary}], current: {chapter, text} } → { recap }
 //   POST { task: 'characters', title, author, summaries, current }      → { characters: [...] }
+//   POST { task: 'cast', title, author, quotes: [{text, before, after}], known } → { speakers, lines }
 //   POST { task: 'picture', title, author, chapter, passage, style }    → { id }   (starts a picture)
 //   GET  ?picture=<id>                                                  → { status, image?, revised?, error? }
 // Only the text the reader has reached is sent, so answers can't spoil what comes later.
@@ -62,6 +63,26 @@ const tasks = {
       relations: (Array.isArray(c.relations) ? c.relations : []).slice(0, 8).map((r) => ({ to: clean(r.to, 80), relation: clean(r.relation, 80) })).filter((r) => r.to),
     })).filter((c) => c.name);
     return { characters };
+  },
+
+  async cast(b) {
+    const quotes = (Array.isArray(b.quotes) ? b.quotes : []).slice(0, 60).map((q, i) => ({ i, text: cut(q.text, 260), before: cut(q.before, 200), after: cut(q.after, 140) }));
+    if (!quotes.length) return { speakers: {}, lines: [] };
+    const known = (Array.isArray(b.known) ? b.known : []).slice(0, 40).map((k) => cut(k, 60)).filter(Boolean);
+    const out = await complete({
+      system: 'You attribute lines of dialogue in a book to the characters who speak them, using the surrounding text. Return JSON only: {"speakers":{"Name":{"gender":"male|female|unknown","age":"child|young|adult|old"}},"lines":[{"i":0,"speaker":"Name"}]}. Give every line an entry. Use one consistent name per character, reusing names from the known list when they match. If a quoted line is not spoken aloud (a sign, a title, a thought), use "Narrator". Use only the text given.',
+      user: `Book: ${about(b)}\nKnown speakers: ${known.join(', ') || '(none yet)'}\n\nLines (i, text, and the words around it):\n${quotes.map((q) => `#${q.i} [${q.before}] «${q.text}» [${q.after}]`).join('\n')}`,
+      json: true, maxTokens: 1600,
+    });
+    const speakers = {};
+    for (const [name, info] of Object.entries(out.speakers || {}).slice(0, 40)) {
+      const n = clean(name, 60);
+      if (!n) continue;
+      speakers[n] = { gender: ['male', 'female'].includes(info?.gender) ? info.gender : 'unknown', age: ['child', 'young', 'adult', 'old'].includes(info?.age) ? info.age : 'adult' };
+    }
+    const lines = (Array.isArray(out.lines) ? out.lines : []).map((l) => ({ i: Number(l.i), speaker: clean(l.speaker, 60) || 'Narrator' }))
+      .filter((l) => Number.isInteger(l.i) && l.i >= 0 && l.i < quotes.length);
+    return { speakers, lines };
   },
 
   async picture(b) {

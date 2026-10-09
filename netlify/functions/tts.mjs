@@ -1,4 +1,4 @@
-// POST /api/tts  { text, speed }  → audio/mpeg
+// POST /api/tts  { text, speed, voice? }  → audio/mpeg   (voice: a Fish Audio voice id)
 // Turns a short passage into MP3 with the owner's cloud voice so read-aloud
 // keeps playing with the screen off and works with car/Bluetooth controls.
 // Providers (set by environment variables, never sent to the browser):
@@ -19,9 +19,11 @@ export function ttsProvider() {
   return null;
 }
 
-async function fish(text, speed) {
+export const validVoiceId = (v) => typeof v === 'string' && /^[a-f0-9]{24,40}$/i.test(v);
+
+async function fish(text, speed, voiceOverride) {
   const body = { text, format: 'mp3', mp3_bitrate: 64, latency: 'balanced', normalize: true, prosody: { speed } };
-  const voice = env('FISH_AUDIO_VOICE_ID');
+  const voice = validVoiceId(voiceOverride) ? voiceOverride : env('FISH_AUDIO_VOICE_ID');
   if (voice) body.reference_id = voice;
   const headers = { authorization: `Bearer ${env('FISH_AUDIO_API_KEY')}`, 'content-type': 'application/json' };
   const model = env('FISH_AUDIO_MODEL');
@@ -70,7 +72,7 @@ export default async (req, context) => {
   if (!text) return fail(400, 'bad_request', 'Nothing to read.');
   if (text.length > MAX_CHARS) return fail(413, 'too_long', `Send at most ${MAX_CHARS} characters at a time.`);
   try {
-    const audio = provider === 'fish' ? await fish(text, speed) : await google(text, speed);
+    const audio = provider === 'fish' ? await fish(text, speed, body.voice) : await google(text, speed);
     if (!audio.length) return fail(502, 'empty_audio', 'The voice service returned no audio.');
     return new Response(audio, { status: 200, headers: { 'content-type': 'audio/mpeg', 'cache-control': 'private, max-age=86400', 'x-mavis-voice': provider } });
   } catch (err) {

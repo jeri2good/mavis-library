@@ -108,6 +108,8 @@ def watch(page, label):
         t = m.text
         if 'Blocked script execution' in t:  # the hostile fixture's script being blocked by the sandbox: expected
             return
+        if 'setting end offset to start container length failed' in t:  # epub.js logs and recovers while measuring page breaks
+            return
         if m.type == 'error' and 'Failed to load resource' not in t:
             console_problems.append(f'[{label}] console error: {t[:300]}')
         if 'Content Security Policy' in t or 'Refused to' in t:
@@ -1176,6 +1178,65 @@ def run_v2(browser):
         page.locator('[data-act="close"]').first.click()
     _(page)
 
+    @test('Voices: choose a narrator from the voice library, and make a private copy of your own voice (with consent)')
+    def _(page):
+        page.goto(FEAT + '/#/settings')
+        panel = page.locator('#voices-panel')
+        expect(panel).to_contain_text('Narrator', timeout=10000)
+        panel.get_by_role('button', name=re.compile('Choose a narrator')).click()
+        d = page.get_by_role('dialog', name='Choose a narrator')
+        expect(d.locator('.voice-item')).to_have_count(4)
+        d.get_by_role('button', name='Female', exact=True).click()
+        expect(d.locator('.voice-item')).to_have_count(2)
+        d.locator('.voice-item', has_text='Calm Reflective Voice').get_by_role('button', name='Choose').click()
+        expect(panel).to_contain_text('Calm Reflective Voice')
+        panel.get_by_role('button', name=re.compile('Record my voice')).click()
+        r = page.get_by_role('dialog', name='Record your voice')
+        expect(r.locator('.read-this')).to_contain_text('steady and clear')
+        r.locator('#rfile').set_input_files(str(FILES / 'voice.wav'))
+        expect(r.get_by_role('button', name='Create my voice')).to_be_disabled()
+        r.locator('#rconsent').check()
+        r.locator('#rtitle').fill('Dad reading')
+        shot(page, '44-record-voice')
+        r.get_by_role('button', name='Create my voice').click()
+        expect(page.locator('.toast').filter(has_text='is ready')).to_be_visible(timeout=10000)
+        expect(panel).to_contain_text('Dad reading')
+        expect(panel.locator('.setting-row')).to_contain_text('Dad reading')
+        info = page.evaluate("fetch('/__test/fish').then(r => r.json())")
+        assert info['create'] == {'type': 'tts', 'visibility': 'private', 'title': 'Dad reading', 'trainMode': 'fast', 'bytes': info['create']['bytes']} and info['create']['bytes'] > 30000, info
+    _(page)
+
+    @test('Full cast: each character gets a voice that fits, the narrator uses your voice, and the cast can be changed')
+    def _(page):
+        page.goto(FEAT + '/#/read/' + 'gutenberg%3A1342')
+        wait_reader(page)
+        page.locator('[data-act="toc"]').click()
+        page.get_by_role('dialog', name='Contents').get_by_role('button', name='Fog Over the Harbor').click()
+        expect(page.locator('#r-chapter')).to_have_text('Fog Over the Harbor')
+        page.wait_for_timeout(400)
+        page.locator('[data-act="tts"]').click()
+        expect(page.locator('#tts-engine')).to_have_value('cloud')
+        page.locator('#tts-fullcast').check()
+        before = len(page.evaluate("fetch('/__test/fish').then(r => r.json())")['voices'])
+        page.get_by_role('button', name='Start reading aloud').click()
+        wait_until(page, f"fetch('/__test/fish').then(r => r.json()).then(j => j.voices.length >= {before + 4})", timeout=20000)
+        used = page.evaluate("fetch('/__test/fish').then(r => r.json())")['voices'][before:]
+        assert 'b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2' in used, f'the old ferryman should get the older male voice: {used}'
+        assert 'c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3' in used, f'the keeper should get a female voice: {used}'
+        assert 'e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5' in used, f'narration should use the chosen narrator (your voice): {used}'
+        page.get_by_role('button', name='Stop reading aloud').click()
+        page.get_by_role('button', name='Cast…').click()
+        c = page.get_by_role('dialog', name='Cast')
+        expect(c).to_contain_text('The Ferryman')
+        expect(c).to_contain_text('The Keeper')
+        c.locator('[data-cast="The Keeper"]').select_option('d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4')
+        expect(page.locator('.toast').filter(has_text='Bright Young Reader')).to_be_visible()
+        shot(page, '45-full-cast')
+        page.keyboard.press('Escape')
+        page.locator('#tts-fullcast').uncheck()
+        page.locator('[data-act="close"]').first.click()
+    _(page)
+
     @test('Offline audiobook: save a whole book as audio, listen, keep playing with no network, resume where you stopped')
     def _(page):
         page.goto(FEAT + '/#/book/gutenberg:1342')
@@ -1261,6 +1322,10 @@ def download_first_classic_at(page, base):
 # ======================================================================
 def main():
     subprocess.run(['node', 'tests/e2e/make-files.mjs', str(FILES)], cwd=ROOT, check=True)
+    import wave, math
+    with wave.open(str(FILES / 'voice.wav'), 'wb') as w:  # 3 s test tone standing in for a voice recording
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+        w.writeframes(b''.join(int(8000 * math.sin(2 * math.pi * 220 * i / 16000)).to_bytes(2, 'little', signed=True) for i in range(48000)))
     procs = [
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4321'], cwd=ROOT),
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4322', '--accounts'], cwd=ROOT),

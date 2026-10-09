@@ -14,7 +14,7 @@ const TARGETS = {
 async function probe(url, ua) {
   const t = Date.now();
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 9000);
+  const timer = setTimeout(() => ctl.abort(), 4000);
   try {
     const r = await fetch(url, { method: 'GET', headers: ua ? { 'user-agent': ua } : {}, signal: ctl.signal, redirect: 'follow' });
     const body = (await r.text()).slice(0, 120).replace(/\s+/g, ' ');
@@ -27,8 +27,7 @@ async function probe(url, ua) {
 export default async () => {
   const out = {};
   await Promise.all(Object.entries(TARGETS).map(async ([k, u]) => {
-    out[k] = await probe(u, UA);
-    if (!out[k].status || out[k].status >= 400) out[`${k}_noUA`] = await probe(u, null);
+    [out[k], out[`${k}_noUA`]] = await Promise.all([probe(u, UA), probe(u, null)]);
   }));
   return json(out);
 };

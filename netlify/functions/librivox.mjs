@@ -13,8 +13,12 @@ const https = (u) => (typeof u === 'string' && /^https?:\/\/(www\.)?archive\.org
 export function matches(b, { gid, title, author }) {
   const src = String(b.url_text_source || '');
   if (gid && new RegExp(`gutenberg\\.org/(?:etext|ebooks|files)/${gid}(?:\\D|$)`).test(src)) return 2;
+  const have = String(b.title || '').replace(/\([^)]*\)/g, '').trim();
   const tWant = norm(shortTitle(title));
-  const tHave = norm(shortTitle(String(b.title || '').replace(/\(version \d+\)/i, '')));
+  const tHave = norm(shortTitle(have));
+  // "Pride and Prejudice: A Play" is a different work unless the book's own title says so too.
+  const sub = (t) => norm((String(t).match(/[:;](?!\s*or\b)\s*(.+)$/i) || [])[1]);
+  if (sub(have) && sub(have) !== sub(title)) return 0;
   const surname = norm(author).split(' ').filter(Boolean).pop();
   const authorOk = !surname || (b.authors || []).some((a) => norm(a.last_name) === surname);
   return tWant && tHave === tWant && authorOk ? 1 : 0;

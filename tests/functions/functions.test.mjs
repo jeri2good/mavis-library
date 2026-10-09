@@ -449,6 +449,7 @@ await test('librivox: exact Gutenberg match first, solo readers ahead of groups,
     { id: '9', title: 'Pride and Prejudice', language: 'French', url_text_source: '', authors: [{ last_name: 'Austen' }], sections: [sec('c', 1, 'Fr')] },
     { id: '10', title: 'Pride and Prejudice and Zombies', language: 'English', authors: [{ last_name: 'Grahame-Smith' }], sections: [sec('d', 1, 'Z')] },
     { id: '11', title: 'Pride and Prejudice', language: 'English', authors: [{ last_name: 'Austen' }], sections: [sec('e', 1, 'Evil', 'https://evil.example')] },
+    { id: '12', title: 'Pride and Prejudice: A Play', language: 'English', authors: [{ last_name: 'Austen' }], sections: [sec('f', 1, 'Play')] },
   ] }); }]];
   const r = await lv(get('/api/librivox?gid=1342&title=Pride%20and%20Prejudice&author=Jane%20Austen'), ctx('lv1'));
   assert.equal(r.status, 200);

@@ -15,6 +15,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 EVID = ROOT / 'docs' / 'test-evidence'
 SHOTS = EVID / 'screenshots'
 SHOTS.mkdir(parents=True, exist_ok=True)
+for _old in SHOTS.glob('fail-*.png'):
+    _old.unlink()
 FILES = pathlib.Path(tempfile.mkdtemp(prefix='mavis-files-'))
 BASE = 'http://localhost:4321'
 AUTH = 'http://localhost:4322'

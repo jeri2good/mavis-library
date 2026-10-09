@@ -925,7 +925,7 @@ def run_v2(browser):
     def _(page):
         page.goto(FEAT + '/#/bible/John/3?fresh=tr')
         page.select_option('#tr-pick', 'BSB')
-        expect(page.locator('#v16')).to_contain_text('one and only', timeout=10000)
+        expect(page.locator('#v16')).to_contain_text('one and only Son', timeout=10000)
         expect(page.locator('.v-heading').first).to_have_text('Jesus and Nicodemus')
         page.locator('#v16 [data-fn]').click()
         expect(page.get_by_role('dialog', name=re.compile('Note'))).to_contain_text('Or his only begotten')

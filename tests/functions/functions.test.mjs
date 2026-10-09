@@ -116,6 +116,29 @@ await test('catalog rejects non-GET methods', async () => {
   assert.equal(res.status, 405);
 });
 
+await test('bible-ext: allowlisted translations and commentaries, normalized headings, notes, and spacing', async () => {
+  const bx = (await import('../../netlify/functions/bible-ext.mjs')).default;
+  routes = [[(u) => u.startsWith('https://bible.helloao.org/api/BSB/PSA/23.json'), () => respond({ chapter: { content: [
+    { type: 'hebrew_subtitle', content: ['A Psalm of David.'] },
+    { type: 'heading', content: ['The LORD Is My Shepherd'] },
+    { type: 'verse', number: 1, content: ['The LORD is my shepherd;', { lineBreak: true }, { text: 'I shall not want.', poem: 2 }] },
+    { type: 'verse', number: 2, content: ['He makes me lie down', { noteId: 7 }, 'in green pastures'] },
+  ], footnotes: [{ noteId: 7, text: 'A translator note' }] } })]];
+  const res = await bx(get('/api/bible-ext?tr=bsb&b=Ps&c=23'), ctx());
+  const j = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(j.subtitle, 'A Psalm of David.');
+  assert.deepEqual(j.headings, { 1: ['The LORD Is My Shepherd'] });
+  assert.equal(j.verses[0], 'The LORD is my shepherd; I shall not want.');
+  assert.equal(j.verses[1], 'He makes me lie down in green pastures');
+  assert.deepEqual(j.notes, { 2: ['A translator note'] });
+  assert.equal((await bx(get('/api/bible-ext?tr=NIV&b=Ps&c=23'), ctx())).status, 400, 'only allowlisted translations');
+  assert.equal((await bx(get('/api/bible-ext?cm=../../etc&b=Ps&c=23'), ctx())).status, 400);
+  assert.equal((await bx(get('/api/bible-ext?tr=BSB&b=Psalms&c=23'), ctx())).status, 400, 'book ids only');
+  assert.equal((await bx(get('/api/bible-ext?tr=BSB&b=Ps&c=999'), ctx())).status, 400);
+  assert.ok(calls.every((u) => u.startsWith('https://bible.helloao.org/api/')));
+});
+
 await test('open library search shapes results and validates input', async () => {
   routes = [[(u) => u.startsWith('https://openlibrary.org/search.json'), () => respond(openLibrarySearch())]];
   const res = await openlibrary(get('/api/openlibrary?q=dune&page=1'), ctx());

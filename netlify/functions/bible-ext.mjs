@@ -66,7 +66,10 @@ export function normalizeChapter(j) {
         if (t) (notes[v] ||= []).push(t);
         continue;
       }
-      s += textOf(p);
+      const piece = textOf(p);
+      // Text on either side of a footnote marker arrives as separate strings.
+      if (s && piece && !/\s$/.test(s) && !/^[\s,.;:!?’”)\]]/.test(piece)) s += ' ';
+      s += piece;
     }
     s = s.replace(/\s+/g, ' ').trim();
     verses[v - 1] = verses[v - 1] ? `${verses[v - 1]} ${s}` : s;

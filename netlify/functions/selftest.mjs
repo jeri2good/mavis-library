@@ -37,6 +37,16 @@ export default async (req) => {
     const c = await fetch(`${F}/model`, { method: 'POST', headers: auth(), body: fd });
     const cj = await c.json().catch(() => ({}));
     out.createStatus = c.status; out.modelId = cj._id; out.state = cj.state; out.createError = cj.message || cj.detail;
+    out.ms = Date.now() - t0;
+    return json(out);
+  }
+  if (w === 'clone2') {
+    const t0 = Date.now();
+    const out = {};
+    const cj = { _id: u.searchParams.get('id') };
+    const m = await fetch(`${F}/model/${cj._id}`, { headers: auth() });
+    const mj = await m.json().catch(() => ({}));
+    out.getStatus = m.status; out.state = mj.state; out.visibility = mj.visibility;
     // 3. Speak with it.
     if (cj._id) {
       const t = await fetch(`${F}/v1/tts`, { method: 'POST', headers: { ...auth(), 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Hello from the cloned test voice.', reference_id: cj._id, format: 'mp3' }) });

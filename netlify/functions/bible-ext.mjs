@@ -90,7 +90,7 @@ export function normalizeCommentary(j) {
   return { intro: intro || undefined, sections };
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   if (softLimit(`bx:${clientKey(req, context)}`, { limit: 240 })) return fail(429, 'rate_limited', 'Too many requests. Wait a minute.');
@@ -119,6 +119,18 @@ export default async (req, context) => {
     return json(body, { cache: 'public, max-age=604800', cdn: 'public, s-maxage=2592000, stale-while-revalidate=2592000' });
   } catch (err) {
     return fail(err?.name === 'AbortError' ? 504 : 502, 'upstream_unreachable', 'The Bible service didn’t answer. Try again in a moment.');
+  }
+};
+
+export default async (req, context) => {
+  const dbg = new URL(req.url).searchParams.get('dbg') === '1';
+  try {
+    const res = await handler(req, context);
+    if (dbg) return json({ status: res.status, headers: Object.fromEntries(res.headers), body: (await res.text()).slice(0, 600) });
+    return res;
+  } catch (err) {
+    if (dbg) return json({ thrown: `${err.name}: ${err.message}`, stack: String(err.stack).slice(0, 800) });
+    throw err;
   }
 };
 

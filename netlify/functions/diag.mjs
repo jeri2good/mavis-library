@@ -25,9 +25,11 @@ export default async (req) => {
   if (r.text) {
     // Strip the text to tag skeleton: element names and attributes, values masked.
     const entries = r.text.split('<entry').length - 1;
-    const firstEntry = r.text.slice(r.text.indexOf('<entry'), r.text.indexOf('</entry>') + 8);
+    const all = r.text.split('<entry').slice(1).map((e) => '<entry' + e.split('</entry>')[0] + '</entry>');
+    const books = all.filter((e) => /ebooks\/\d+/.test(e));
+    const firstEntry = (books[0] || all[0] || '') + '\n\n' + (books[1] || '');
     const head = r.text.slice(0, r.text.indexOf('<entry') > 0 ? r.text.indexOf('<entry') : 1500);
-    return json({ status: r.status, ms: r.ms, ctype: r.ctype, len: r.len, entries, head: head.slice(0, 3000), firstEntry: firstEntry.slice(0, 4000) });
+    return json({ status: r.status, ms: r.ms, ctype: r.ctype, len: r.len, entries, bookEntries: books.length, head: head.slice(0, 3000), firstEntry: firstEntry.slice(0, 4000) });
   }
   return json(r);
 };

@@ -4,6 +4,7 @@ import * as store from '../lib/store.js';
 import { cover, stateBlock } from '../components.js';
 import { lendingLinks, retailLinks } from '../lib/links.js';
 import { mountAudioPanel } from '../lib/audiobook-ui.js';
+import { isKids } from '../lib/kids.js';
 
 export const title = (route) => recallBook(route.segs[0])?.title || 'Book';
 
@@ -123,9 +124,9 @@ export async function render(root, route, { navigate, token }) {
 
             ${isFree ? html`
               <div class="notice" style="margin-top:22px">${icon('globe')}<span>This book is public domain in the USA. If you live elsewhere, check your country’s copyright rules before downloading. <a href="${book.sourceUrl}" target="_blank" rel="noopener noreferrer">View on Project Gutenberg</a>${book.epubUrl ? html` · <a href="${book.epubUrl}" target="_blank" rel="noopener noreferrer">EPUB file at the source</a>` : ''}</span></div>` : ''}
-            ${source === 'openlibrary' && book.sourceUrl ? html`<p class="small" style="margin-top:14px"><a href="${book.sourceUrl}" target="_blank" rel="noopener noreferrer">View on Open Library ${icon('external', { size: 14 })}</a></p>` : ''}
+            ${source === 'openlibrary' && book.sourceUrl && !isKids() ? html`<p class="small" style="margin-top:14px"><a href="${book.sourceUrl}" target="_blank" rel="noopener noreferrer">View on Open Library ${icon('external', { size: 14 })}</a></p>` : ''}
 
-            ${source !== 'import' ? html`
+            ${source !== 'import' && !isKids() ? html`
             <section class="section" aria-labelledby="borrow-h" style="margin-top:34px">
               <h2 class="h-section" id="borrow-h">${isFree ? 'Prefer another edition?' : 'Borrow from a library'}</h2>
               ${isFree ? '' : html`<p class="small muted">Mavis doesn't connect to your library card or show live availability. These links search the lending service for this title; borrowing and reading happen there.</p>`}

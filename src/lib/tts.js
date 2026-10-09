@@ -26,6 +26,21 @@ export function whenVoicesReady(timeout = 2500) {
   });
 }
 
+/** Say one word or short phrase with the device voice (slightly slow, for learning). */
+export async function speakWord(text, { lang = 'en', rate = 0.85 } = {}) {
+  if (!ttsSupported || !text) return false;
+  const voices = await whenVoicesReady(1500);
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(String(text).slice(0, 200));
+  const base = lang.slice(0, 2).toLowerCase();
+  const v = voices.find((x) => x.lang?.toLowerCase().startsWith(base) && x.localService) || voices.find((x) => x.lang?.toLowerCase().startsWith(base));
+  if (v) u.voice = v;
+  u.lang = v?.lang || lang;
+  u.rate = rate;
+  speechSynthesis.speak(u);
+  return true;
+}
+
 const segmenterFor = (lang) => {
   try { return new Intl.Segmenter(lang || 'en', { granularity: 'sentence' }); } catch { return null; }
 };

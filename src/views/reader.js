@@ -5,9 +5,11 @@ import { html, icon, toast, openDialog, confirmDialog, debounce, prefersReducedM
 import * as store from '../lib/store.js';
 import { recallBook } from '../lib/catalog.js';
 import { fontFaceCSS, READER_FONTS } from '../lib/fonts.js';
-import { define } from '../lib/dictionary.js';
+import { define, normalizeTerm } from '../lib/dictionary.js';
+import * as vocab from '../lib/vocab.js';
+import { trackReading, isKids } from '../lib/kids.js';
 import { listen } from '../lib/voice-input.js';
-import { ReadAloud, ttsSupported, whenVoicesReady } from '../lib/tts.js';
+import { ReadAloud, ttsSupported, whenVoicesReady, speakWord } from '../lib/tts.js';
 import { stateBlock } from '../components.js';
 import { Narrator, sentences } from '../lib/speech.js';
 import { openCarMode } from '../lib/carmode.js';
@@ -27,8 +29,11 @@ const THEMES = {
 const DEFAULTS = { theme: 'light', font: 'literata', size: 100, lineHeight: 1.6, margin: 'normal', justify: false, motion: 'slide', spread: 'auto' };
 const MARGINS = { narrow: '2%', normal: '7%', wide: '14%' };
 
-function readerPrefs() { return { ...DEFAULTS, ...(store.getSetting('reader', {}) || {}) }; }
-function saveReaderPrefs(p) { store.setSetting('reader', p); }
+// Kids mode keeps its own reader settings, starting bigger and airier.
+const KIDS_DEFAULTS = { size: 130, lineHeight: 1.85, font: 'atkinson', margin: 'normal' };
+const prefsKey = () => (isKids() ? 'reader-kids' : 'reader');
+function readerPrefs() { return { ...DEFAULTS, ...(isKids() ? KIDS_DEFAULTS : {}), ...(store.getSetting(prefsKey(), {}) || {}) }; }
+function saveReaderPrefs(p) { store.setSetting(prefsKey(), p); }
 
 export async function render(root, route, { navigate }) {
   const key = route.segs[0] || '';
@@ -299,6 +304,13 @@ async function renderEpub(root, item, file, close, route) {
     saveProgress(loc);
   }
   rendition.on('relocated', onRelocated);
+  // Reading time (kept on this device): counts while the reader is turning pages or listening.
+  const reading = trackReading();
+  cleanups.push(() => reading.stop());
+  rendition.on('relocated', () => reading.poke());
+  rendition.on('click', () => reading.poke());
+  const listenTick = setInterval(() => { try { if (narr?.state === 'playing' || tts?.state === 'playing') reading.poke(); } catch { /* not set up yet */ } }, 20_000);
+  cleanups.push(() => clearInterval(listenTick));
   if (rendition.location) onRelocated(rendition.location);
 
   slider.addEventListener('change', async () => {
@@ -366,8 +378,10 @@ async function renderEpub(root, item, file, close, route) {
       annotations.push(a); drawAnnotation(a);
       editAnnotation(a, { isNew: true });
     } else if (b.dataset.sel === 'define') {
+      let sentence = '';
+      try { sentence = vocab.sentenceAround(pendingSel.contents.range(cfiRange)); } catch { /* keep going without it */ }
       hideSelection(true);
-      openDictionary(text);
+      openDictionary(text, { cfi: cfiRange, sentence });
     } else if (b.dataset.sel === 'quote') {
       const a = await store.addAnnotation(key, { kind: 'quote', cfi: cfiRange, text, color: 'sun', chapter: chapterLabel(lastLoc), percent: pct() });
       annotations.push(a); drawAnnotation(a);
@@ -725,7 +739,7 @@ async function renderEpub(root, item, file, close, route) {
   }
 
   // ---------- Dictionary (with voice lookup) ----------
-  function openDictionary(term) {
+  function openDictionary(term, found = {}) {
     const d = openDialog({
       title: 'Dictionary', variant: 'sheet', container: readerEl,
       body: html`<form class="searchbar" style="box-shadow:none" id="dict-form" role="search">
@@ -750,11 +764,29 @@ async function renderEpub(root, item, file, close, route) {
           out.querySelector('[data-retry]')?.addEventListener('click', () => look(word));
           return;
         }
-        out.innerHTML = String(html`${r.entries.map((en) => html`<div class="dict-entry">
-          <div><span class="dict-word">${en.word}</span> <span class="faint">${en.phonetic}</span></div>
-          ${en.meanings.map((m) => html`<div><div class="dict-pos">${m.partOfSpeech}</div><ol class="dict-def">${m.definitions.map((df) => html`<li>${df.definition}${df.example ? html`<span class="ex">“${df.example}”</span>` : ''}</li>`)}</ol>
+        const saved = await vocab.getWord(r.entries[0]?.word || word).catch(() => null);
+        out.innerHTML = String(html`${r.entries.map((en, ei) => html`<div class="dict-entry">
+          <div class="word-top"><div><span class="dict-word">${en.word}</span> <span class="faint">${en.phonetic}</span></div>
+            ${ttsSupported ? html`<button type="button" class="btn btn-sm btn-quiet" data-say="${en.word}">${icon('headphones', { size: 16 })} Hear it</button>` : ''}</div>
+          ${en.meanings.map((m, mi) => html`<div><div class="dict-pos">${m.partOfSpeech}</div><ol class="dict-def">${m.definitions.map((df, di) => html`<li>${df.definition}${df.example ? html`<span class="ex">“${df.example}”</span>` : ''}
+              <button type="button" class="dict-save" data-vsave="${ei}.${mi}.${di}" aria-label="Save “${en.word}” (${m.partOfSpeech}) to Word builder with this meaning">${saved && saved.word === vocab.wordKey(en.word) && saved.definition === df.definition ? html`${icon('check', { size: 14 })} Saved` : html`${icon('plus', { size: 14 })} Save word`}</button></li>`)}</ol>
             ${m.synonyms.length ? html`<p class="small faint" style="margin-top:4px">Similar: ${m.synonyms.join(', ')}</p>` : ''}</div>`)}
-        </div>`)}`);
+        </div>`)}
+        ${found.sentence ? html`<p class="small faint">Saved words keep this sentence: “${found.sentence}”</p>` : ''}`);
+        out.onclick = async (e) => {
+          const say = e.target.closest('[data-say]');
+          if (say) { speakWord(say.dataset.say, { lang }); return; }
+          const sv = e.target.closest('[data-vsave]');
+          if (!sv) return;
+          const [ei, mi, di] = sv.dataset.vsave.split('.').map(Number);
+          const en = r.entries[ei]; const m = en.meanings[mi]; const df = m.definitions[di];
+          try {
+            await vocab.saveWord({ word: en.word, form: normalizeTerm(word), definition: df.definition, partOfSpeech: m.partOfSpeech, phonetic: en.phonetic, sentence: found.sentence || '', bookKey: key, bookTitle: item.title, cfi: found.cfi || '' });
+            for (const b of out.querySelectorAll('[data-vsave]')) b.innerHTML = String(html`${icon('plus', { size: 14 })} Save word`);
+            sv.innerHTML = String(html`${icon('check', { size: 14 })} Saved`);
+            toast(`“${en.word}” is in your Word builder.`, { action: { label: 'Practice', run: () => { location.hash = '#/words'; } } });
+          } catch (err) { toast(err.message, { tone: 'error' }); }
+        };
       } catch (err) { if (err.name !== 'AbortError') out.innerHTML = String(html`<p class="muted">The dictionary couldn’t be reached.</p>`); }
     }
     d.body.querySelector('#dict-form').addEventListener('submit', (e) => { e.preventDefault(); if (input.value.trim()) look(input.value.trim()); });

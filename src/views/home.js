@@ -7,6 +7,8 @@ import { listen, voiceInputSupported } from '../lib/voice-input.js';
 import { recommendations } from '../lib/recommend.js';
 import { bibleCover } from '../components.js';
 import * as B from '../lib/bible.js';
+import { isKids } from '../lib/kids.js';
+import * as vocab from '../lib/vocab.js';
 
 // Well-known verses for the "verse of the day" (rotates by date).
 const DAILY = ['John.3.16', 'Ps.23.1', 'Prov.3.5', 'Isa.40.31', 'Phil.4.13', 'Rom.8.28', 'Jer.29.11', 'Josh.1.9', 'Matt.11.28', 'Ps.46.10', 'Rom.12.2', '1Cor.13.4', 'Heb.11.1', 'Gal.5.22', 'Ps.119.105', 'Matt.5.16', 'Isa.41.10', 'Mic.6.8', 'Lam.3.22', 'Eph.2.8', '2Tim.1.7', 'Ps.27.1', 'John.14.6', 'Rom.5.8', '1John.4.19', 'Ps.121.1', 'Prov.16.3', 'Col.3.23', 'Matt.6.33', 'Ps.37.4', 'John.16.33'];
@@ -21,19 +23,22 @@ const SHELVES = [
   { topic: 'science fiction', label: 'Science fiction' },
   { topic: 'gothic', label: 'Gothic & ghost stories' },
   { topic: 'poetry', label: 'Poetry' },
-  { topic: "children's literature", label: 'For young readers' },
+  { topic: 'juvenile', label: 'For young readers' },
   { topic: 'philosophy', label: 'Philosophy' },
   { topic: 'love stories', label: 'Love stories' },
 ];
 
 export const title = () => 'Discover';
 
-export async function render(root, _route, { navigate, token }) {
+export async function render(root, _route, ctx) {
+  if (isKids()) return (await import('./kids-home.js')).render(root, _route, ctx);
+  const { navigate, token } = ctx;
   const shelf = await store.listShelf().catch(() => []);
   const progress = await store.allProgress().catch(() => new Map());
   const reading = shelf
     .filter((b) => b.status === 'reading' && b.lastOpenedAt)
     .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
+  const ws = vocab.stats(await vocab.listWords().catch(() => []));
 
   root.innerHTML = String(html`
     <div class="page">
@@ -68,6 +73,11 @@ export async function render(root, _route, { navigate, token }) {
             })}
           </div>
         </section>` : ''}
+
+      ${ws.due ? html`<section class="section"><a class="kids-words" href="#/words/practice">
+        <span class="kids-words-icon" aria-hidden="true">Aa</span>
+        <span><b>${ws.due} word${ws.due === 1 ? '' : 's'} to practice today</b><span class="small muted">Word builder · ${ws.total} saved, ${ws.mastered} mastered</span></span>
+        ${icon('chevronR')}</a></section>` : ''}
 
       <section class="section" aria-labelledby="bible-h">
         <a class="bible-feature" href="#/bible">

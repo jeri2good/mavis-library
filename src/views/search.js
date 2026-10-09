@@ -2,6 +2,7 @@ import { html, icon, LANGS } from '../lib/ui.js';
 import { searchGutenberg, searchOpenLibrary } from '../lib/catalog.js';
 import { bookCard, skeletonGrid, stateBlock, sourceBadges } from '../components.js';
 import { listen, voiceInputSupported } from '../lib/voice-input.js';
+import { isKids, KIDS_TOPIC } from '../lib/kids.js';
 
 export const title = (route) => (route.params.get('q') ? `“${route.params.get('q')}”` : 'Search');
 
@@ -10,7 +11,9 @@ const LANG_CHOICES = ['en', 'fr', 'de', 'es', 'it', 'pt', 'nl', 'fi', 'sv', 'la'
 export async function render(root, route, { navigate, token }) {
   const p = route.params;
   const q = (p.get('q') || '').slice(0, 120);
-  const topic = (p.get('topic') || '').slice(0, 60);
+  // Kids mode only searches Project Gutenberg's children's books.
+  const kids = isKids();
+  const topic = kids ? KIDS_TOPIC : (p.get('topic') || '').slice(0, 60);
   const src = p.get('src') === 'all' && !topic ? 'all' : 'free';
   const lang = /^[a-z]{2}$/.test(p.get('lang') || '') ? p.get('lang') : '';
   const sort = ['popular', 'descending', 'ascending'].includes(p.get('sort')) ? p.get('sort') : 'popular';
@@ -27,7 +30,7 @@ export async function render(root, route, { navigate, token }) {
   root.innerHTML = String(html`
     <div class="page">
       <div class="search-head">
-        <h1 class="h-section" style="font-size:var(--step-3)">${topic ? html`Shelf: ${topic.replace(/\b\w/g, (c) => c.toUpperCase())}` : 'Find a book'}</h1>
+        <h1 class="h-section" style="font-size:var(--step-3)">${kids ? 'Find a story' : topic ? html`Shelf: ${topic.replace(/\b\w/g, (c) => c.toUpperCase())}` : 'Find a book'}</h1>
         <form class="searchbar" role="search" id="search-form">
           ${icon('search')}
           <label class="visually-hidden" for="q">Search by title or author</label>
@@ -36,11 +39,12 @@ export async function render(root, route, { navigate, token }) {
           <button type="submit" class="icon-btn go" aria-label="Search">${icon('chevronR')}</button>
         </form>
         ${fromVoice && q ? html`<p class="small muted">${icon('mic', { size: 16 })} Heard “${q}”. Not right? Edit the text above.</p>` : ''}
-        <div class="tabs" role="tablist" aria-label="Where to search">
+        ${kids ? html`<p class="small muted">Searching children’s books from Project Gutenberg.</p>` : ''}
+        <div class="tabs" role="tablist" aria-label="Where to search" ${kids ? 'hidden' : ''}>
           <button role="tab" type="button" aria-selected="${src === 'free'}" data-src="free">Free to read</button>
           <button role="tab" type="button" aria-selected="${src === 'all'}" data-src="all" ${topic ? 'disabled' : ''}>All books</button>
         </div>
-        <div class="toolbar">
+        <div class="toolbar" ${kids ? 'hidden' : ''}>
           <p class="small muted" style="max-width:60ch">${src === 'free'
             ? 'Public-domain ebooks from Project Gutenberg. Download and read them right here.'
             : 'Every book Open Library knows about. Borrow from your library or buy from a store; most are not free to read here.'}</p>

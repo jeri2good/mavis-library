@@ -4,11 +4,12 @@
 //   POST { task: 'characters', title, author, summaries, current }      → { characters: [...] }
 //   POST { task: 'cast', title, author, quotes: [{text, before, after}], known } → { speakers, lines }
 //   POST { task: 'picture', title, author, chapter, passage, style }    → { id }   (starts a picture)
+//   POST { task: 'word', word, form, sentence, definition, title }      → { meaning, example }
 //   GET  ?picture=<id>                                                  → { status, image?, revised?, error? }
 // Only the text the reader has reached is sent, so answers can't spoil what comes later.
 
 import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, clean } from '../lib/shared.mjs';
-import { complete, startImage, pollImage } from '../lib/llm.mjs';
+import { complete, startImage, pollImage, KIDS_RULES } from '../lib/llm.mjs';
 
 const STYLES = {
   painterly: 'a rich, painterly book illustration in oils, soft natural light',
@@ -25,34 +26,48 @@ function summariesBlock(list) {
   return (Array.isArray(list) ? list : []).slice(0, 200).map((s, i) => `${i + 1}. ${cut(s.chapter, 120)}: ${cut(s.summary, 900)}`).join('\n');
 }
 
+const KIDS_PICTURE = 'This picture is for a child: make it gentle, friendly, and bright, like a classic picture book. Nothing scary, violent, or upsetting.';
+const forKids = (system, kids) => (kids ? `${system}\n\n${KIDS_RULES}` : system);
+
 const tasks = {
-  async summarize(b) {
+  async word(b, { kids }) {
+    const word = clean(b.word, 60);
+    if (!word) throw Object.assign(new Error('No word given.'), { status: 400 });
+    const out = await complete({
+      system: forKids('You explain one English word to a reader in plain, simple words, the way a good teacher would. Return JSON only: {"meaning":"one short sentence (under 20 words) giving the meaning that fits the sentence the word came from","example":"one new, everyday example sentence using the word"}. If the dictionary meaning is given, keep to that sense. Never use the word itself in the meaning.', kids),
+      user: `Word: ${word}${b.form && b.form !== word ? ` (appears as “${clean(b.form, 60)}”)` : ''}\n${b.definition ? `Dictionary meaning: ${cut(b.definition, 400)}\n` : ''}${b.sentence ? `Sentence it came from${b.title ? ` (in ${about(b)})` : ''}: “${cut(b.sentence, 400)}”` : ''}`,
+      json: true, maxTokens: 220,
+    });
+    return { meaning: clean(out.meaning, 300), example: clean(out.example, 300) };
+  },
+
+  async summarize(b, { kids } = {}) {
     const text = cut(b.text, 30_000);
     if (text.length < 40) return { summary: '' };
     const summary = await complete({
-      system: 'You summarize one chapter of a book for a reader’s private notes. Write 2–4 plain sentences (under 90 words): what happens, who is involved, and any turning point. Never mention later events. No preamble. Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text.',
+      system: forKids('You summarize one chapter of a book for a reader’s private notes. Write 2–4 plain sentences (under 90 words): what happens, who is involved, and any turning point. Never mention later events. No preamble. Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text.', kids),
       user: `Book: ${about(b)}\nChapter: ${cut(b.chapter, 160)}\n\n"""${text}"""`,
       maxTokens: 260,
     });
     return { summary: cut(summary, 1200) };
   },
 
-  async recap(b) {
+  async recap(b, { kids } = {}) {
     const prior = summariesBlock(b.summaries);
     const cur = cut(b.current?.text, 12_000);
     const recap = await complete({
-      system: 'You are Mavis, a reading companion. Give a warm, spoken-style “story so far” recap for a reader returning to a book, in 120–180 words: main characters, what has happened, and where things stand at the reader’s exact point. Only use what you are given — it ends where the reader stopped; never hint at what happens next. No headings or lists; it will be read aloud. Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text.',
+      system: forKids('You are Mavis, a reading companion. Give a warm, spoken-style “story so far” recap for a reader returning to a book, in 120–180 words: main characters, what has happened, and where things stand at the reader’s exact point. Only use what you are given — it ends where the reader stopped; never hint at what happens next. No headings or lists; it will be read aloud. Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text.', kids),
       user: `Book: ${about(b)}\n\nChapter summaries so far:\n${prior || '(this is the first chapter)'}\n\nCurrent chapter: ${cut(b.current?.chapter, 160)}\nText of the current chapter up to where the reader stopped:\n"""${cur}"""`,
       maxTokens: 450,
     });
     return { recap: cut(recap, 3000) };
   },
 
-  async characters(b) {
+  async characters(b, { kids } = {}) {
     const prior = summariesBlock(b.summaries);
     const cur = cut(b.current?.text, 10_000);
     const out = await complete({
-      system: 'You build a character list for a reader, using only the text given (it ends where the reader stopped — never reveal later events). Return JSON: {"characters":[{"name":"","aka":[""],"role":"one short phrase","description":"1–2 sentences, spoiler-free","firstSeen":"chapter name","importance":1-3,"relations":[{"to":"other character name","relation":"short phrase"}]}]}. Include up to 16 characters, most important first (importance 3 = central). Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text. A character the text mentions without naming gets a descriptive name (for example, “the new tenant”).',
+      system: forKids('You build a character list for a reader, using only the text given (it ends where the reader stopped — never reveal later events). Return JSON: {"characters":[{"name":"","aka":[""],"role":"one short phrase","description":"1–2 sentences, spoiler-free","firstSeen":"chapter name","importance":1-3,"relations":[{"to":"other character name","relation":"short phrase"}]}]}. Include up to 16 characters, most important first (importance 3 = central). Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text. A character the text mentions without naming gets a descriptive name (for example, “the new tenant”).', kids),
       user: `Book: ${about(b)}\n\nChapter summaries so far:\n${prior || '(first chapter)'}\n\nCurrent chapter (${cut(b.current?.chapter, 160)}) up to the reader’s position:\n"""${cur}"""`,
       json: true, maxTokens: 1400,
     });
@@ -85,15 +100,16 @@ const tasks = {
     return { speakers, lines };
   },
 
-  async picture(b) {
+  async picture(b, { kids } = {}) {
     const passage = cut(b.passage, 3500);
     if (passage.length < 30) throw Object.assign(new Error('Choose a page or passage with a bit more text to draw.'), { status: 400 });
-    const style = STYLES[b.style] || STYLES.painterly;
+    const style = kids ? STYLES.storybook : STYLES[b.style] || STYLES.painterly;
     const prompt = [
       `Create one illustration of the scene in this passage from ${about(b)}${b.chapter ? ` (${cut(b.chapter, 120)})` : ''}.`,
       `Style: ${style}.`,
       'Show the setting, the people as the text describes them, the action, mood, and lighting, with period-appropriate clothing and objects.',
       'Absolutely no text, letters, captions, signatures, or watermarks in the image. Keep it tasteful: no gore.',
+      ...(kids ? [KIDS_PICTURE] : []),
       `Passage:\n"""${passage}"""`,
     ].join('\n');
     return { id: await startImage(prompt) };
@@ -116,7 +132,7 @@ export default async (req, context) => {
   const fn = body && Object.hasOwn(tasks, body.task) ? tasks[body.task] : null;
   if (!fn) return fail(400, 'bad_request', 'Unknown task.');
   try {
-    return json(await fn(body));
+    return json(await fn(body, { kids: req.headers.get('x-mavis-kids') === '1' }));
   } catch (err) {
     return fail(err.status || 502, 'study_failed', err.message || 'The AI request failed.');
   }

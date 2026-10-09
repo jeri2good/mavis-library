@@ -439,6 +439,45 @@ await test('features: reports what is on without exposing keys, and verifies the
   assert.equal(res.headers.get('cache-control'), 'no-store');
 });
 
+await test('catalog: a download count under the title is not mistaken for an author', async () => {
+  const { parseSearch } = await import('../../netlify/lib/gutenberg.mjs');
+  const xml = '<feed><entry><id>https://www.gutenberg.org/ebooks/16537.opds</id><title>Myths That Every Child Should Know</title><content type="text">867 downloads</content></entry><entry><id>https://www.gutenberg.org/ebooks/11.opds</id><title>Alice</title><content type="text">Lewis Carroll</content></entry></feed>';
+  assert.deepEqual(parseSearch(xml).results.map((b) => b.authors.map((a) => a.name)), [[], ['Lewis Carroll']]);
+});
+
+await test('kids mode: AI answers and pictures get child-safe rules only when the kids header is sent; simple word meanings', async () => {
+  const study = (await import('../../netlify/functions/study.mjs')).default;
+  const assistant = (await import('../../netlify/functions/assistant.mjs')).default;
+  process.env.LLM_PROVIDER = 'openai'; process.env.LLM_MODEL = 'gpt-5.6-luna';
+  const sent = [];
+  let images = [];
+  routes = [
+    [(u) => u === 'https://api.openai.com/v1/chat/completions', (u, o) => {
+      const b = JSON.parse(o.body); sent.push(b);
+      if (b.response_format) return respond({ choices: [{ message: { content: JSON.stringify({ meaning: 'Walked slowly and calmly.', example: 'We ambled to the park.' }) } }] });
+      return respond({ choices: [{ message: { content: 'Hello!' } }] });
+    }],
+    [(u) => u === 'https://api.openai.com/v1/responses', (u, o) => { images.push(JSON.parse(o.body)); return respond({ id: 'resp_kid123456789', status: 'queued' }); }],
+  ];
+  const H = { 'x-mavis-access': 'right-code' };
+  const K = { ...H, 'x-mavis-kids': '1' };
+  const ask = { messages: [{ role: 'user', content: 'Who is Alice?' }], context: { title: 'Alice' } };
+  await assistant(post('/api/assistant', ask, H), ctx('k1'));
+  await assistant(post('/api/assistant', ask, K), ctx('k2'));
+  assert.doesNotMatch(sent[0].messages[0].content, /kids mode/);
+  assert.match(sent[1].messages[0].content, /child \(about 6–12\) using kids mode/);
+  const r = await study(post('/api/study', { task: 'word', word: 'amble', form: 'ambled', sentence: 'She ambled down the lane.', definition: 'To walk slowly.', title: 'A Book' }, K), ctx('k3'));
+  assert.deepEqual(await r.json(), { meaning: 'Walked slowly and calmly.', example: 'We ambled to the park.' });
+  assert.match(sent[2].messages[0].content, /kids mode/);
+  assert.match(sent[2].messages[1].content, /appears as “ambled”/);
+  assert.equal((await study(post('/api/study', { task: 'word', word: '' }, H), ctx('k4'))).status, 400);
+  await study(post('/api/study', { task: 'picture', title: 'Alice', passage: 'Alice was beginning to get very tired of sitting by her sister on the bank.', style: 'pencil' }, K), ctx('k5'));
+  const prompt = JSON.stringify(images[0]);
+  assert.match(prompt, /classic storybook illustration/);
+  assert.match(prompt, /for a child/);
+  process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
+});
+
 await test('librivox: exact Gutenberg match first, solo readers ahead of groups, only archive.org audio', async () => {
   const lv = (await import('../../netlify/functions/librivox.mjs')).default;
   const sec = (id, n, reader, host = 'https://www.archive.org') => ({ section_number: String(n), title: `Chapter ${n}`, listen_url: `${host}/download/${id}/${n}.mp3`, playtime: '600', readers: [{ display_name: reader }] });

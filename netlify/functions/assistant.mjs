@@ -11,6 +11,7 @@
 // selected text) is sent, and only when they ask a question.
 
 import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { KIDS_RULES } from '../lib/llm.mjs';
 
 const DEFAULT_MODELS = { anthropic: 'claude-haiku-5-5', openai: 'gpt-4o-mini' };
 
@@ -36,7 +37,7 @@ export const TOOLS = [
 
 const cut = (s, n) => String(s || '').slice(0, n);
 
-export function systemPrompt(ctx) {
+export function systemPrompt(ctx, { kids = false } = {}) {
   const lines = [
     'You are Mavis, the reading companion inside the Mavis Library app.',
     'Help the reader understand and enjoy what they are reading: summaries, explanations of passages, characters, themes, historical context, word meanings, and discussion.',
@@ -44,6 +45,7 @@ export function systemPrompt(ctx) {
     'Base summaries on the passage provided. If the passage is not enough to answer, say what you can and note what is missing. Do not invent quotations.',
     'You can control the app with the provided tools (read aloud, stop, go to a chapter or Bible reference, car mode, define a word). Use a tool when the reader asks for that action, and also give a one-line reply saying what you did.',
   ];
+  if (kids) lines.push(KIDS_RULES);
   if (ctx.bible) lines.push('The reader is in the Bible. When discussing Scripture, cite references (Book chapter:verse), present differing Christian interpretations fairly when they exist, and do not claim certainty on contested doctrine.');
   lines.push('', `Book: ${cut(ctx.title, 300) || 'unknown'}${ctx.author ? ` by ${cut(ctx.author, 200)}` : ''}`);
   if (ctx.chapter) lines.push(`Current chapter/section: ${cut(ctx.chapter, 200)}`);
@@ -139,7 +141,7 @@ export default async (req, context) => {
   if (!messages.length) return fail(400, 'bad_request', 'Ask a question.');
   const ctx = body.context && typeof body.context === 'object' ? body.context : {};
   try {
-    const system = systemPrompt(ctx);
+    const system = systemPrompt(ctx, { kids: req.headers.get('x-mavis-kids') === '1' });
     const out = cfg.provider === 'openai' ? await callOpenAI(cfg, system, messages) : await callAnthropic(cfg, system, messages);
     const allowed = new Set(TOOLS.map((t) => t.name));
     out.actions = out.actions.filter((a) => allowed.has(a.name)).slice(0, 3);

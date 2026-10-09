@@ -1,8 +1,8 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 18:21 EDT · Chromium 141.0.7390.37 (headless, Linux) · 162s
+Run: 2026-10-09 18:44 EDT · Chromium 141.0.7390.37 (headless, Linux) · 180s
 
-**59 of 59 checks passed.**
+**61 of 61 checks passed.**
 
 | Result | Check |
 |---|---|
@@ -64,7 +64,9 @@ Run: 2026-10-09 18:21 EDT · Chromium 141.0.7390.37 (headless, Linux) · 162s
 | ✅ pass | LibriVox: find human-read recordings of a Gutenberg book, stream one, save it for offline, keep listening offline |
 | ✅ pass | Offline audiobook: save a whole book as audio, listen, keep playing with no network, resume where you stopped |
 | ✅ pass | Picked for you: recommendations from shelf genres, ranked by Jev when available |
+| ✅ pass | Word builder: save a word from the dictionary with its sentence, add one by typing, explain it simply, practice, and words move up |
 | ✅ pass | Phone at 360px: Bible, search, quotes, and settings fit without sideways scrolling |
+| ✅ pass | Kids mode: a grown-up turns it on with a PIN; children’s books only, no store links, kid-safe AI, grown-up screens need the PIN, PIN turns it off |
 
 ## Console and CSP problems seen during the run
 

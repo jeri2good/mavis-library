@@ -73,7 +73,9 @@ export function parseSearch(xml, { language = '' } = {}) {
   for (const e of entries(xml)) {
     const id = entryId(e);
     if (!id) continue; // facet entries ("Authors", "Subjects", …)
-    const author = text(tag(e, 'content'));
+    // The line under the title is the author — or, for books with no author, the download count.
+    const sub = text(tag(e, 'content'));
+    const author = /^\d[\d,.]*\s+downloads?$/i.test(sub) ? '' : sub;
     const t = splitLanguage(text(tag(e, 'title')));
     const book = listBook(id, t.title, author ? [author] : []);
     book.languages = language ? [language] : t.languages.length ? t.languages : ['en'];

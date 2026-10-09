@@ -52,7 +52,7 @@ export async function setAccessCode(code) {
 export async function ownerPost(path, body, { signal, as = 'json' } = {}) {
   const r = await fetch(path, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-mavis-access': accessCode() },
+    headers: { 'content-type': 'application/json', 'x-mavis-access': accessCode(), ...(getSetting('kidsMode', false) === true && { 'x-mavis-kids': '1' }) },
     body: JSON.stringify(body),
     signal,
   });

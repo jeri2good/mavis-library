@@ -1354,6 +1354,82 @@ def run_v2(browser):
         shot(page, '31-home-v2', full=True)
     _(page)
 
+    LANTERN = json.dumps([{'word': 'lantern', 'phonetic': '/ˈlæntən/', 'meanings': [{'partOfSpeech': 'noun', 'definitions': [{'definition': 'A lamp with a case that protects the flame.', 'example': 'The lantern glowed in the window.'}], 'synonyms': []}]}])
+
+    def answer_question(page, right=True):
+        # Work out the right answer from what the card shows, then pick it (or a wrong one).
+        card = page.locator('#p-card')
+        text = card.text_content()
+        opts = card.locator('[data-opt]')
+        ids = [opts.nth(i).get_attribute('data-opt') for i in range(opts.count())]
+        if 'What does' in text:
+            target = 'harbor' if 'What does harbor' in text else 'lantern'
+        elif 'Which word fits' in text:
+            target = 'lantern' if 'glowed' in text else 'harbor'
+        else:
+            target = 'lantern' if 'protects the flame' in text else 'harbor'
+        choice = target if right else next(i for i in ids if i != target)
+        card.locator(f'[data-opt="{choice}"]').click()
+        expect(card.locator('.practice-fb')).to_have_class(re.compile('ok' if right else 'miss'))
+        return target
+
+    @test('Word builder: save a word from the dictionary with its sentence, add one by typing, explain it simply, practice, and words move up')
+    def _(page):
+        page.goto(FEAT + '/#/read/gutenberg%3A1342')
+        wait_reader(page)
+        page.locator('[data-act="toc"]').click()
+        page.get_by_role('dialog', name='Contents').get_by_role('button', name='Fog Over the Harbor').click()
+        page.wait_for_timeout(500)
+        word = frame(page).locator('body').evaluate("""b => { const d = b.ownerDocument; const p = d.querySelectorAll('p')[1]; const t = p.firstChild;
+            const m = /[A-Za-z]{5,}/.exec(t.data); const r = d.createRange(); r.setStart(t, m.index); r.setEnd(t, m.index + m[0].length);
+            const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); return m[0]; }""")
+        expect(page.locator('#sel')).to_be_visible(timeout=4000)
+        page.get_by_role('button', name='Look up in dictionary').click()
+        dlg = page.get_by_role('dialog', name='Dictionary')
+        expect(dlg).to_contain_text('sheltered expanse')
+        expect(dlg).to_contain_text('Saved words keep this sentence')
+        dlg.get_by_role('button', name=re.compile('Save “harbor”')).click()
+        expect(page.locator('.toast').filter(has_text='Word builder')).to_be_visible()
+        expect(dlg.locator('[data-vsave]').first).to_contain_text('Saved')
+        shot(page, '48-dictionary-save-word')
+        page.keyboard.press('Escape')
+        page.locator('[data-act="close"]').first.click()
+
+        page.goto(FEAT + '/#/words')
+        card = page.locator('.word-card').filter(has_text='harbor')
+        expect(card).to_contain_text('sheltered expanse')
+        expect(card.locator('.word-sent')).to_contain_text(word)
+        expect(card.get_by_role('link', name=re.compile('Pride and Prejudice'))).to_have_attribute('href', re.compile(r'#/read/gutenberg%3A1342\?at='))
+        page.route('https://api.dictionaryapi.dev/**', lambda r: r.fulfill(status=200, content_type='application/json', body=LANTERN, headers={'access-control-allow-origin': '*'}))
+        page.fill('#w-new', 'lantern'); page.locator('#w-new').press('Enter')
+        page.locator('[data-addsave]').first.click()
+        expect(page.locator('.word-card')).to_have_count(2)
+        expect(page.locator('#w-stats div').nth(1).locator('b')).to_have_text('2')
+        card.get_by_role('button', name='Explain simply').click()
+        expect(card).to_contain_text('In simple words: A sheltered place where ships can stay.')
+        info = page.evaluate("fetch('/__test/openai').then(r => r.json())")
+        assert info['lastWord'] and word.lower() in info['lastWord']['user'], info
+        shot(page, '49-word-builder')
+
+        page.get_by_role('link', name=re.compile('Practice 2 words')).click()
+        expect(page.locator('#p-count')).to_have_text('1 of 2')
+        answer_question(page, right=True)
+        page.get_by_role('button', name='Next').click()
+        missed = answer_question(page, right=False)
+        expect(page.locator('.practice-fb')).to_contain_text(f'Not quite — it’s {missed}')
+        shot(page, '50-practice-miss')
+        page.get_by_role('button', name='Next').click()
+        expect(page.locator('#p-count')).to_have_text('3 of 3')  # the missed word comes back once
+        answer_question(page, right=True)
+        page.get_by_role('button', name='See how you did').click()
+        expect(page.locator('#p-card')).to_contain_text('1 of 2 right the first time')
+        page.get_by_role('link', name='Back to my words').click()
+        expect(page.locator('#w-stats div').nth(1).locator('b')).to_have_text('0')
+        expect(page.get_by_role('link', name=re.compile('Practice anyway'))).to_be_visible()
+        expect(page.locator('.word-card .word-dots span.on')).to_have_count(2)  # both words reached box 1
+        expect(page.locator('.word-card').first).to_contain_text('Next:')
+    _(page)
+
     ctx.close()
 
     c = new_context(browser, viewport={'width': 360, 'height': 760}, is_mobile=True, has_touch=True, device_scale_factor=2)
@@ -1373,6 +1449,73 @@ def run_v2(browser):
         p.mouse.move(box['x'] + box['width'] - 10, box['y'] + 60)
         p.touchscreen.tap(box['x'] + 10, box['y'] + 10)
     _(p)
+    c.close()
+
+    c = new_context(browser)
+    k = watch(c.new_page(), 'kids')
+    @test('Kids mode: a grown-up turns it on with a PIN; children’s books only, no store links, kid-safe AI, grown-up screens need the PIN, PIN turns it off')
+    def _(k):
+        k.goto(FEAT + '/#/book/gutenberg:345')
+        k.get_by_role('button', name='Want to read').click()
+        k.goto(FEAT + '/#/settings')
+        k.fill('#access-code', 'test-code'); k.get_by_role('button', name='Save code').click()
+        expect(k.locator('#code-msg')).to_contain_text('Code accepted')
+        k.fill('#kn', 'Ada'); k.fill('#kg', '10'); k.fill('#kp', '1234'); k.fill('#kp2', '4321')
+        k.get_by_role('button', name='Turn on kids mode').click()
+        expect(k.locator('#kids-msg')).to_contain_text('don’t match')
+        k.fill('#kp2', '1234')
+        k.get_by_role('button', name='Turn on kids mode').click()
+        expect(k.locator('h1')).to_have_text('Hi, Ada!')
+        expect(k.locator('.brand-name')).to_have_text('Ada’s Library')
+        expect(k.locator('.tabbar')).to_contain_text('My words')
+        expect(k.locator('.tabbar [data-nav="account"]')).to_have_count(0)
+        expect(k.locator('.goal-ring')).to_have_attribute('aria-label', '0 of 10 minutes read today')
+        expect(k.locator('#k-shelf')).to_contain_text("Alice's Adventures in Wonderland")
+        expect(k.locator('#k-shelf')).not_to_contain_text('Dracula')
+        expect(k.locator('.bible-stories')).to_contain_text('David and Goliath')
+        assert k.locator('.bible-stories a', has_text='David and Goliath').get_attribute('href') == '#/bible/1Sam/17'
+        shot(k, '51-kids-home', full=True)
+
+        with k.expect_request(lambda r: '/api/catalog' in r.url and 'topic=juvenile' in r.url):
+            k.goto(FEAT + '/#/search?q=pride')
+        expect(k.locator('h1')).to_have_text('Find a story')
+        expect(k.get_by_role('tab', name='All books')).to_be_hidden()
+
+        k.goto(FEAT + '/#/shelf')
+        expect(k.locator('.book-card', has_text='Dracula')).to_have_count(0)
+        k.goto(FEAT + '/#/book/gutenberg:11')
+        expect(k.locator('h1')).to_contain_text('Alice')
+        expect(k.get_by_text('Buy an ebook')).to_have_count(0)
+        k.get_by_role('button', name=re.compile('Download')).click()
+        k.wait_for_url(re.compile(r'#/read/'), timeout=15000)
+        wait_reader(k)
+        size = frame(k).locator('body').evaluate('b => parseFloat(getComputedStyle(b).fontSize)')
+        assert size >= 19, f'kids text should start bigger, got {size}px'
+        k.get_by_role('button', name='Ask Mavis about this book').click()
+        k.get_by_role('dialog', name='Before you ask').get_by_role('button', name='Got it').click()
+        d = k.get_by_role('dialog', name='Ask Mavis')
+        d.locator('#chat-q').fill('Who is the white rabbit?'); d.locator('#chat-q').press('Enter')
+        expect(d.locator('.msg-assistant')).to_have_text('Fixture answer about the book.')
+        assert 'kids mode' in k.evaluate("fetch('/__test/openai').then(r => r.json())")['lastSystem']
+        k.keyboard.press('Escape')
+        k.locator('[data-act="close"]').first.click()
+        k.goto(FEAT + '/#/shelf')
+        expect(k.locator('.book-card', has_text="Alice's Adventures")).to_have_count(1)
+        expect(k.locator('.book-card', has_text='Dracula')).to_have_count(0)
+
+        k.get_by_role('link', name=re.compile('Grown-ups')).click()
+        pin = k.get_by_role('dialog', name='Grown-ups only')
+        pin.locator('#pin-in').fill('0000'); pin.locator('#pin-in').press('Enter')
+        expect(pin.locator('#pin-err')).to_have_text('That PIN isn’t right.')
+        shot(k, '52-kids-pin')
+        pin.locator('#pin-in').fill('1234'); pin.locator('#pin-in').press('Enter')
+        expect(k.locator('#kids-panel')).to_contain_text('Kids mode is on')
+        k.fill('#kp-off', '1234'); k.get_by_role('button', name='Turn off kids mode').click()
+        expect(k.locator('.tabbar [data-nav="account"]')).to_have_count(1)
+        expect(k.locator('.brand-name')).to_have_text('Mavis Library')
+        k.goto(FEAT + '/#/shelf')
+        expect(k.locator('.book-card', has_text='Dracula')).to_have_count(1)
+    _(k)
     c.close()
 
 def download_first_classic_at(page, base):

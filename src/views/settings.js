@@ -6,6 +6,7 @@ import { voiceInputSupported } from '../lib/voice-input.js';
 import { authConfigured } from '../lib/auth.js';
 import { loadFeatures, setAccessCode, accessCode } from '../lib/features.js';
 import { icon } from '../lib/ui.js';
+import * as kids from '../lib/kids.js';
 
 export const title = () => 'Settings';
 
@@ -24,6 +25,7 @@ export async function render(root) {
         <div class="seg" role="group" aria-label="Motion">${[['system', 'Match device'], ['on', 'On'], ['off', 'Off']].map(([v, l]) => html`<button type="button" data-motion="${v}" aria-pressed="${motion === v}">${l}</button>`)}</div></div>
       <p class="hint">Reading themes, fonts, and page-turn style are in the Aa menu inside any book.</p>
     </div>
+    <div class="panel" id="kids-panel"></div>
     <div class="panel" id="owner-panel">
       <h2>Cloud voice and AI</h2>
       <p class="muted">These optional features use the site owner’s paid accounts, so they only work on devices that have the owner’s access code.</p>
@@ -58,6 +60,52 @@ export async function render(root) {
       <p class="muted">Mavis Library: your books, your library, your imagination. Free books come from Project Gutenberg’s own catalog. Book search beyond free titles comes from Open Library. Definitions come from the Free Dictionary API. Borrowing and buying happen on the provider’s own site or app.</p>
     </div>
   </div></div>`);
+  function paintKids() {
+    const el = root.querySelector('#kids-panel');
+    const on = kids.isKids();
+    el.innerHTML = String(on ? html`
+      <h2>Kids mode is on</h2>
+      <p class="muted">${kids.kidsName() ? `${kids.kidsName()} sees` : 'Young readers see'} children’s books only, bigger text, a reading goal with stars, and the word builder. Settings and accounts need your PIN.</p>
+      <form id="kids-goal" class="field"><label for="kg">Daily reading goal (minutes)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="input" id="kg" type="number" min="5" max="120" step="5" value="${kids.dailyGoal()}" style="width:120px" /><button class="btn" type="submit">Save goal</button></div></form>
+      <form id="kids-off" class="field" autocomplete="off"><label for="kp-off">PIN to turn kids mode off</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="input pin-input" id="kp-off" inputmode="numeric" maxlength="4" style="width:120px" /><button class="btn btn-primary" type="submit">Turn off kids mode</button></div>
+        <span class="hint" id="kids-msg"></span></form>`
+      : html`
+      <h2>Kids mode</h2>
+      <p class="muted">A simpler Mavis for young readers: only children’s books from Project Gutenberg, bigger text, no store links, a daily reading goal with stars, and word practice. AI answers (with the owner code) are kept simple and child-friendly.</p>
+      <form id="kids-on" class="field" autocomplete="off">
+        <label for="kn">Child’s first name (optional)</label><input class="input" id="kn" maxlength="30" autocomplete="off" />
+        <label for="kg">Daily reading goal (minutes)</label><input class="input" id="kg" type="number" min="5" max="120" step="5" value="15" style="width:120px" />
+        <label for="kp">Grown-up PIN (4 digits)</label><input class="input pin-input" id="kp" inputmode="numeric" maxlength="4" style="width:120px" />
+        <label for="kp2">Type the PIN again</label><input class="input pin-input" id="kp2" inputmode="numeric" maxlength="4" style="width:120px" />
+        <div><button class="btn btn-primary" type="submit">Turn on kids mode</button></div>
+        <span class="hint" id="kids-msg">The PIN is saved on this device only. It keeps little hands out of settings; it isn’t a security lock.</span>
+      </form>`);
+  }
+  paintKids();
+  root.addEventListener('submit', async (e) => {
+    const msg = () => root.querySelector('#kids-msg');
+    if (e.target.id === 'kids-on') {
+      e.preventDefault();
+      const pin = root.querySelector('#kp').value.trim();
+      if (!kids.validPin(pin)) { msg().textContent = 'Choose a PIN of exactly 4 digits.'; return; }
+      if (pin !== root.querySelector('#kp2').value.trim()) { msg().textContent = 'The two PINs don’t match.'; return; }
+      await kids.enterKids({ pin, name: root.querySelector('#kn').value, goal: root.querySelector('#kg').value });
+      toast('Kids mode is on.');
+    }
+    if (e.target.id === 'kids-off') {
+      e.preventDefault();
+      try { await kids.exitKids(root.querySelector('#kp-off').value.trim()); toast('Kids mode is off.'); }
+      catch (err) { msg().textContent = err.message; root.querySelector('#kp-off').value = ''; }
+    }
+    if (e.target.id === 'kids-goal') {
+      e.preventDefault();
+      const g = Math.min(120, Math.max(5, Number(root.querySelector('#kg').value) || 15));
+      await store.setSetting('kidsGoal', g);
+      toast(`Daily goal: ${g} minutes.`);
+    }
+  });
   async function paintFeatures() {
     const f = await loadFeatures({ force: true });
     const yes = (t) => html`<span class="badge badge-ok">${icon('check', { size: 14 })} ${t}</span>`;

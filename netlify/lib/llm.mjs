@@ -108,3 +108,6 @@ export async function pollImage(id) {
   const why = j.error?.message || j.incomplete_details?.reason || 'The picture couldn’t be made.';
   return { status: 'failed', error: /safety|moderation|policy/i.test(why) ? 'The picture service declined this scene. Try a different passage.' : why };
 }
+
+// Added to prompts when the request comes from kids mode.
+export const KIDS_RULES = 'The reader is a child (about 6–12) using kids mode. Use short sentences and everyday words a child knows. Be kind, encouraging, and calm. Keep everything suitable for children: if something in the book is frightening or sad, explain it gently and without graphic detail. Never discuss romance, violence, or other mature topics in detail; for questions that are not about the book or that a parent should answer, say kindly that it is a good question for a grown-up. Never ask for or repeat personal information such as their full name, address, school, or contact details.';

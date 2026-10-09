@@ -1,4 +1,5 @@
 import { listDownloaded, summarize } from '../lib/audiobook.js';
+import { isKids, kidsBook } from '../lib/kids.js';
 import { html, icon, toast, openDialog, confirmDialog, formatBytes, debounce, timeAgo } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import { bookCard, stateBlock } from '../components.js';
@@ -58,6 +59,7 @@ export async function render(root, route, { navigate, token }) {
           <h1>My shelf</h1>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <a class="btn" href="#/quotes">${icon('quote', { size: 20 })} Saved quotes</a>
+            <a class="btn" href="#/words">${icon('dict', { size: 20 })} Word builder</a>
             <label class="btn btn-primary" for="import-input" style="cursor:pointer">${icon('upload', { size: 20 })} Import a book</label>
             <input id="import-input" type="file" accept="${ACCEPT}" multiple class="visually-hidden" />
           </div>
@@ -116,7 +118,8 @@ export async function render(root, route, { navigate, token }) {
     if (painting) { again = true; return; }
     painting = true;
     try {
-      const [items, progress, files, audio] = await Promise.all([store.listShelf(), store.allProgress(), store.fileKeysForOwner(), listDownloaded()]);
+      const [all, progress, files, audio] = await Promise.all([store.listShelf(), store.allProgress(), store.fileKeysForOwner(), listDownloaded()]);
+      const items = isKids() ? all.filter((b) => b.key === 'bible' || kidsBook(b)) : all;
       // Saved audio (Mavis voice or LibriVox recording) → listen button on the book's card.
       const listenKey = new Map(audio.filter((m) => summarize(m).done > 0).map((m) => [m.bookKey.replace(/^lv:/, ''), m.bookKey]));
       const audioKeys = new Set(listenKey.keys());

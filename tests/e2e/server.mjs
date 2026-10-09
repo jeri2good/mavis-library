@@ -167,6 +167,10 @@ async function fixtureFetch(url, opts = {}) {
         const lines = Array.from({ length: n }, (_, i) => ({ i, speaker: i === 0 ? 'The Ferryman' : 'The Keeper' }));
         return say(JSON.stringify({ speakers: { 'The Ferryman': { gender: 'male', age: 'old' }, 'The Keeper': { gender: 'female', age: 'adult' } }, lines }));
       }
+      if (/explain one English word/i.test(sys)) {
+        globalThis.__lastWord = { system: sys, user: q };
+        return say(JSON.stringify({ meaning: /kids mode/.test(sys) ? 'A safe place by the sea where boats can stay.' : 'A sheltered place where ships can stay.', example: 'The boats rested in the harbor.' }));
+      }
       if (/character list/i.test(sys)) return say(JSON.stringify({ characters: [
         { name: 'The Keeper', aka: ['Mara'], role: 'Lighthouse keeper', description: 'Tends the lantern each night.', firstSeen: 'The Ninety-One Steps', importance: 3, relations: [{ to: 'The Ferryman', relation: 'old friend' }] },
         { name: 'The Ferryman', aka: [], role: 'Brings supplies', description: 'Crosses the harbor at dawn.', firstSeen: 'Fog Over the Harbor', importance: 2, relations: [{ to: 'The Keeper', relation: 'old friend' }] },
@@ -239,7 +243,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/__test/reset-failures') { failOnce = new Set(); res.end('ok'); return; }
     if (url.pathname === '/__test/silent.mp3') { res.writeHead(200, { 'content-type': 'audio/mpeg' }); res.end(SILENT_MP3); return; }
     if (url.pathname === '/__test/fish') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ voices: globalThis.__fishVoices || [], create: globalThis.__fishCreate || null })); return; }
-    if (url.pathname === '/__test/openai') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ calls: globalThis.__openaiCalls || 0, summaries: globalThis.__summaries || 0, imagePrompt: globalThis.__lastImagePrompt || '' })); return; }
+    if (url.pathname === '/__test/openai') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ calls: globalThis.__openaiCalls || 0, summaries: globalThis.__summaries || 0, imagePrompt: globalThis.__lastImagePrompt || '', lastSystem: globalThis.__lastAssistant?.system || '', lastWord: globalThis.__lastWord || null })); return; }
     if (url.pathname === '/__test/tts-calls') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(String(globalThis.__ttsCalls || 0)); return; }
     if (url.pathname === '/__test/sync-log') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(syncLog)); return; }
     const h = route(url.pathname);

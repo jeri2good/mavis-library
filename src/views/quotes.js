@@ -3,6 +3,7 @@ import { html, icon, toast, confirmDialog, timeAgo } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import { copyQuote, shareQuote } from '../lib/quotes.js';
 import { stateBlock } from '../components.js';
+import { isKids, kidsBook } from '../lib/kids.js';
 
 export const title = () => 'Saved quotes';
 
@@ -36,7 +37,8 @@ export async function render(root, route) {
   };
 
   async function paint() {
-    const all = await store.listAllAnnotations();
+    let all = await store.listAllAnnotations();
+    if (isKids()) all = all.filter((a) => a.bookKey === 'bible' || kidsBook(shelfTitles.get(a.bookKey)));
     const counts = Object.fromEntries(TABS.map(([k]) => [k, all.filter((a) => (k === 'note' ? a.note : a.kind === k)).length]));
     root.querySelector('#qtabs').innerHTML = String(html`${TABS.map(([k, v]) => html`<button role="tab" type="button" aria-selected="${k === tab}" data-tab="${k}">${v} <span class="faint num">${counts[k]}</span></button>`)}`);
     let list = all.filter((a) => (tab === 'note' ? a.note : a.kind === tab));

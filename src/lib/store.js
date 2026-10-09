@@ -86,6 +86,8 @@ export async function saveToShelf(book, { status = 'want' } = {}) {
     id: rid(book.key),
     owner,
     status: existing && !existing.deleted && !status ? existing.status : (status || 'want'),
+    // Books added in kids mode stay visible there (see kids.js kidsBook).
+    kids: !!(existing && !existing.deleted && existing.kids) || getSetting('kidsMode', false) === true,
     deleted: false,
     updatedAt: t,
     dirty: true,

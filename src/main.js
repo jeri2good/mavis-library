@@ -2,11 +2,12 @@ import './styles/app.css';
 import { installAppFonts } from './lib/fonts.js';
 import * as store from './lib/store.js';
 import { initAuth, onAuth, currentUser } from './lib/auth.js';
-import { startSync, stopSync, onSyncState, syncNow } from './lib/sync.js';
+import { startSync, stopSync, onSyncState, syncNow, syncState as syncStateNow } from './lib/sync.js';
 import { html, icon, toast, closeAllDialogs, $, confirmDialog } from './lib/ui.js';
 import { brandMark, installCoverFallback } from './components.js';
 import { enhanceCovers } from './lib/covers.js';
 import { StorageUnavailableError } from './lib/idb.js';
+import { isKids, applyKidsClass, onKids, grownUpUnlocked, askPin, kidsName } from './lib/kids.js';
 
 const routes = {
   '': () => import('./views/home.js'),
@@ -20,6 +21,7 @@ const routes = {
   quotes: () => import('./views/quotes.js'),
   listen: () => import('./views/listen.js'),
   settings: () => import('./views/settings.js'),
+  words: () => import('./views/words.js'),
 };
 
 const NAV = [
@@ -29,6 +31,15 @@ const NAV = [
   { id: 'shelf', label: 'My shelf', icon: 'shelf', href: '#/shelf' },
   { id: 'account', label: 'Account', icon: 'user', href: '#/account' },
 ];
+// Kids mode swaps Account for the word builder; grown-up screens need the PIN.
+const KIDS_NAV = [
+  { id: 'discover', label: 'Home', icon: 'home', href: '#/' },
+  { id: 'search', label: 'Find books', icon: 'search', href: '#/search' },
+  { id: 'words', label: 'My words', icon: 'dict', href: '#/words' },
+  { id: 'bible', label: 'Bible', icon: 'cross', href: '#/bible' },
+  { id: 'shelf', label: 'My books', icon: 'shelf', href: '#/shelf' },
+];
+const GROWN_UP = new Set(['settings', 'account']);
 
 export function parseRoute(hash = location.hash) {
   const raw = hash.replace(/^#\/?/, '');
@@ -58,13 +69,15 @@ function renderShell() {
   app.innerHTML = String(html`
     <div class="shell">
       <header class="topbar" id="topbar">
-        <a class="brand" href="#/" aria-label="Mavis Library home">${brandMark()}<span class="brand-name">Mavis Library</span></a>
+        <a class="brand" href="#/" aria-label="Mavis Library home">${brandMark()}<span class="brand-name">${isKids() ? (kidsName() ? `${kidsName()}’s Library` : 'Mavis Kids') : 'Mavis Library'}</span></a>
         <span class="spacer"></span>
         <span id="sync-pill"></span>
-        <a class="icon-btn" href="#/settings" aria-label="Settings">${icon('settings')}</a>
+        ${isKids()
+          ? html`<a class="btn btn-sm btn-quiet grownups" href="#/settings" aria-label="Grown-ups: settings (PIN needed)">${icon('settings', { size: 18 })} Grown-ups</a>`
+          : html`<a class="icon-btn" href="#/settings" aria-label="Settings">${icon('settings')}</a>`}
       </header>
       <nav class="tabbar" aria-label="Main">
-        ${NAV.map((n) => html`<a class="tab" data-nav="${n.id}" href="${n.href}">${icon(n.icon)}<span>${n.label}</span></a>`)}
+        ${(isKids() ? KIDS_NAV : NAV).map((n) => html`<a class="tab" data-nav="${n.id}" href="${n.href}">${icon(n.icon)}<span>${n.label}</span></a>`)}
       </nav>
       <main class="main" id="main" tabindex="-1">
         <div id="offline" class="offline-banner" hidden>${icon('wifiOff', { size: 18 })}<span>You're offline. Books saved on this device still open.</span></div>
@@ -72,15 +85,18 @@ function renderShell() {
       </main>
     </div>
     <div id="reader-root"></div>`);
-  const topbar = $('#topbar');
-  window.addEventListener('scroll', () => topbar.classList.toggle('scrolled', window.scrollY > 4), { passive: true });
-  const off = $('#offline');
-  const setOnline = () => { off.hidden = navigator.onLine; };
+  setOnline();
+  renderSyncPill(syncStateNow());
+  if (shellWired) return;
+  // Window listeners are added once; the shell can be redrawn (kids mode on/off).
+  shellWired = true;
+  window.addEventListener('scroll', () => $('#topbar')?.classList.toggle('scrolled', window.scrollY > 4), { passive: true });
   window.addEventListener('online', () => { setOnline(); toast('Back online.'); });
   window.addEventListener('offline', setOnline);
-  setOnline();
   onSyncState(renderSyncPill);
 }
+let shellWired = false;
+function setOnline() { const off = $('#offline'); if (off) off.hidden = navigator.onLine; }
 
 function renderSyncPill(s) {
   const el = $('#sync-pill');
@@ -110,9 +126,14 @@ export async function renderRoute() {
   closeAllDialogs();
   const loader = routes[route.name];
   if (!loader) { navigate('/', { replace: true }); return; }
+  if (isKids() && GROWN_UP.has(route.name) && !grownUpUnlocked()) {
+    const ok = await askPin({ message: 'Settings and accounts are for grown-ups. Enter the 4-digit PIN to continue.' });
+    if (token !== current.token) return;
+    if (!ok) { if (current.name) history.back(); else navigate('/', { replace: true }); return; }
+  }
 
   for (const a of document.querySelectorAll('[data-nav]')) {
-    const active = a.dataset.nav === (route.name || 'discover') || (route.name === 'book' && a.dataset.nav === 'search') || ((route.name === 'quotes' || route.name === 'listen') && a.dataset.nav === 'shelf');
+    const active = a.dataset.nav === (route.name || 'discover') || (route.name === 'book' && a.dataset.nav === 'search') || ((route.name === 'quotes' || route.name === 'listen') && a.dataset.nav === 'shelf') || (route.name === 'words' && a.dataset.nav === 'shelf' && !isKids());
     if (active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
 
@@ -196,7 +217,9 @@ async function boot() {
   try { await store.loadSettings(); }
   catch (err) { console.warn(err); }
   applyAppTheme();
+  applyKidsClass();
   renderShell();
+  onKids(() => { renderShell(); navigate('/', { replace: true }); });
 
   window.addEventListener('error', (e) => {
     if (e.message && !/ResizeObserver/.test(e.message)) console.error(e.error || e.message);

@@ -427,12 +427,12 @@ def run_public(browser):
         spoken = page.evaluate('window.__utter')
         assert sum('quiet close' in s for s in spoken) == 1, 'chapter end read more than once'
         expect(page.locator('#tts-line')).to_have_text('Reached the end of the book.', timeout=10000)
-        # The fixture chapter reuses ~15 sentences across 44 lines, so check for a stuck loop directly:
-        # every line of the chapter at most once more than it appears (a sentence split by a page
-        # break, or the one repeated on resume), and never the same sentence three times running.
+        # The fixture chapter reuses ~15 sentences across 44 lines, so check for a stuck loop directly.
         lines = frame(page).locator('body').evaluate("""b => [...b.ownerDocument.querySelectorAll('h1, p')].map(e => e.textContent)""")
         total = sum(len(re.findall(r'[^.!?”]+[.!?]+[”]?', l)) or 1 for l in lines)
-        assert len(spoken) <= total + 8, f'spoke {len(spoken)} lines for a {total}-sentence chapter: {spoken[-8:]}'
+        # Each page turn re-reads the sentence split across it, so allow for that; a stuck loop
+        # at this speed would produce hundreds of lines.
+        assert len(spoken) <= total * 1.5, f'spoke {len(spoken)} lines for a {total}-sentence chapter: {spoken[-8:]}'
         runs = max((len(list(g)) for _, g in __import__('itertools').groupby(spoken)), default=0)
         assert runs <= 2, f'the same sentence was read {runs} times in a row: {spoken[-8:]}'
     _(page)

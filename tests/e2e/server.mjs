@@ -160,7 +160,7 @@ async function fixtureFetch(url, opts = {}) {
       const sys = req.messages[0].content;
       const q = req.messages[req.messages.length - 1].content.toLowerCase();
       const say = (content, extra = {}) => json({ choices: [{ message: { content, ...extra }, finish_reason: 'stop' }] });
-      if (/summarize one chapter/i.test(sys)) { globalThis.__summaries = (globalThis.__summaries || 0) + 1; return say('Fixture chapter summary: the keeper climbs the steps and finds a letter.'); }
+      if (/summarize one chapter/i.test(sys)) { globalThis.__summaries = (globalThis.__summaries || 0) + 1; return say('The keeper climbs the steps and finds a letter.'); }
       if (/story so far/i.test(sys)) return say('So far, the lantern keeper has climbed the ninety-one steps and found an old letter in the fog.');
       if (/attribute lines of dialogue/i.test(sys)) {
         const n = (q.match(/^#\d+ /gm) || []).length;

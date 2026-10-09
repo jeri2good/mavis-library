@@ -10,6 +10,7 @@
 
 import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, clean } from '../lib/shared.mjs';
 import { complete, startImage, pollImage, KIDS_RULES } from '../lib/llm.mjs';
+import { vocabulary, dropUnseen, supportedName } from '../lib/textcheck.mjs';
 
 const STYLES = {
   painterly: 'a rich, painterly book illustration in oils, soft natural light',
@@ -28,6 +29,9 @@ function summariesBlock(list) {
 
 const KIDS_PICTURE = 'This picture is for a child: make it gentle, friendly, and bright, like a classic picture book. Nothing scary, violent, or upsetting.';
 const forKids = (system, kids) => (kids ? `${system}\n\n${KIDS_RULES}` : system);
+
+// Words from chapters the reader has already finished (only those), sent by the app.
+const seenNames = (b) => (Array.isArray(b.seen) ? b.seen : []).slice(0, 12000).map((w) => cut(w, 32)).join(' ');
 
 const tasks = {
   async word(b, { kids }) {
@@ -49,7 +53,8 @@ const tasks = {
       user: `Book: ${about(b)}\nChapter: ${cut(b.chapter, 160)}\n\n"""${text}"""`,
       maxTokens: 260,
     });
-    return { summary: cut(summary, 1200) };
+    // Spoiler guard: drop any sentence naming someone this chapter doesn't mention.
+    return { summary: cut(dropUnseen(summary, vocabulary(text)), 1200) };
   },
 
   async recap(b, { kids } = {}) {
@@ -60,23 +65,40 @@ const tasks = {
       user: `Book: ${about(b)}\n\nChapter summaries so far:\n${prior || '(this is the first chapter)'}\n\nCurrent chapter: ${cut(b.current?.chapter, 160)}\nText of the current chapter up to where the reader stopped:\n"""${cur}"""`,
       maxTokens: 450,
     });
-    return { recap: cut(recap, 3000) };
+    return { recap: cut(dropUnseen(recap, vocabulary(prior, cur, seenNames(b))), 3000) };
   },
 
   async characters(b, { kids } = {}) {
     const prior = summariesBlock(b.summaries);
     const cur = cut(b.current?.text, 10_000);
     const out = await complete({
-      system: forKids('You build a character list for a reader, using only the text given (it ends where the reader stopped — never reveal later events). Return JSON: {"characters":[{"name":"","aka":[""],"role":"one short phrase","description":"1–2 sentences, spoiler-free","firstSeen":"chapter name","importance":1-3,"relations":[{"to":"other character name","relation":"short phrase"}]}]}. Include up to 16 characters, most important first (importance 3 = central). Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text. A character the text mentions without naming gets a descriptive name (for example, “the new tenant”).', kids),
+      system: forKids('You build a character list for a reader, using only the text given (it ends where the reader stopped — never reveal later events). Return JSON: {"characters":[{"name":"","aka":[""],"role":"one short phrase","description":"1–2 sentences, spoiler-free","firstSeen":"chapter name","importance":1-3,"relations":[{"to":"other character name","relation":"short phrase"}]}]}. Include up to 16 characters, most important first (importance 3 = central). Use ONLY the text provided here. Even if you recognize this book, do not use anything you know about it from elsewhere — no names, events, or outcomes that aren’t in the given text. A character the text mentions without naming gets a descriptive name (for example, “the new tenant”, or “the narrator” for an unnamed “I”). Every name you write must appear in the text above.', kids),
       user: `Book: ${about(b)}\n\nChapter summaries so far:\n${prior || '(first chapter)'}\n\nCurrent chapter (${cut(b.current?.chapter, 160)}) up to the reader’s position:\n"""${cur}"""`,
       json: true, maxTokens: 1400,
     });
-    const characters = (Array.isArray(out.characters) ? out.characters : []).slice(0, 16).map((c) => ({
+    const raw = (Array.isArray(out.characters) ? out.characters : []).slice(0, 16).map((c) => ({
       name: clean(c.name, 80), aka: (Array.isArray(c.aka) ? c.aka : []).map((a) => clean(a, 60)).filter(Boolean).slice(0, 4),
       role: clean(c.role, 120), description: clean(c.description, 400), firstSeen: clean(c.firstSeen, 120),
       importance: Math.min(3, Math.max(1, Number(c.importance) || 1)),
       relations: (Array.isArray(c.relations) ? c.relations : []).slice(0, 8).map((r) => ({ to: clean(r.to, 80), relation: clean(r.relation, 80) })).filter((r) => r.to),
     })).filter((c) => c.name);
+    // Spoiler guard: every name must appear in what the reader has read. Names are trimmed
+    // to the part the text supports; characters the text doesn't name at all are dropped.
+    const source = `${prior}\n${cur}`;
+    const vocab = vocabulary(source, seenNames(b));
+    const renamed = new Map();
+    const kept = [];
+    for (const c of raw) {
+      const name = supportedName(c.name, c.aka, source, vocab);
+      if (!name) continue;
+      renamed.set(c.name, name);
+      kept.push({ ...c, name, aka: c.aka.filter((a) => supportedName(a, [], source, vocab) === a && a !== name) });
+    }
+    const characters = kept.map((c) => ({
+      ...c,
+      role: dropUnseen(c.role, vocab, { phrase: true }), description: dropUnseen(c.description, vocab),
+      relations: c.relations.map((r) => ({ ...r, to: renamed.get(r.to) || supportedName(r.to, [], source, vocab) })).filter((r) => r.to && dropUnseen(r.relation, vocab, { phrase: true }) === r.relation),
+    }));
     return { characters };
   },
 
@@ -128,7 +150,7 @@ export default async (req, context) => {
   if (bad) return bad;
   if (softLimit(`study:${clientKey(req, context)}`, { limit: 40 })) return fail(429, 'rate_limited', 'Too many requests in a short time. Wait a minute.');
   let body;
-  try { body = await readJson(req, 200_000); } catch (err) { return fail(err.status || 400, 'bad_request', err.message); }
+  try { body = await readJson(req, 400_000); } catch (err) { return fail(err.status || 400, 'bad_request', err.message); }
   const fn = body && Object.hasOwn(tasks, body.task) ? tasks[body.task] : null;
   if (!fn) return fail(400, 'bad_request', 'Unknown task.');
   try {

@@ -366,7 +366,7 @@ await test('study: chapter summaries, spoiler-safe recap, cleaned character JSON
   assert.equal((await r.json()).recap, 'A short summary.');
   assert.match(sent[1].messages[0].content, /never hint at what happens next/);
   assert.match(sent[1].messages[1].content, /Emma meets Harriet/);
-  r = await study(post('/api/study', { task: 'characters', title: 'Emma', summaries: [], current: { text: 'Emma.' } }, H), ctx('s3'));
+  r = await study(post('/api/study', { task: 'characters', title: 'Emma', summaries: [], current: { text: 'Emma talked with Mr. Knightley.' } }, H), ctx('s3'));
   const { characters } = await r.json();
   assert.equal(characters.length, 1, 'nameless entries dropped');
   assert.equal(characters[0].importance, 3, 'importance clamped');
@@ -415,6 +415,35 @@ await test('voices: licensed library, private cloning only with consent, deletes
   await tts(post('/api/tts', { text: 'Hello', voice: 'not a voice; drop table' }, H), ctx('v9'));
   assert.equal(ttsBodies[0].reference_id, 'c'.repeat(32));
   assert.equal(ttsBodies[1].reference_id, process.env.FISH_AUDIO_VOICE_ID, 'invalid voice ids fall back to the default');
+});
+
+await test('study spoiler guard: names the reader hasn’t met are trimmed or removed from character maps, summaries, and recaps', async () => {
+  const study = (await import('../../netlify/functions/study.mjs')).default;
+  process.env.LLM_PROVIDER = 'openai'; process.env.LLM_MODEL = 'gpt-5.6-luna';
+  const TEXT = 'To Mrs. Saville, England. You will rejoice to hear that I arrived here yesterday, and my first task is to assure my dear sister of my welfare.';
+  // What the live model actually returned for this passage: names from its own knowledge of the book.
+  routes = [[(u) => u === 'https://api.openai.com/v1/chat/completions', (u, o) => {
+    const b = JSON.parse(o.body);
+    if (b.response_format) return respond({ choices: [{ message: { content: JSON.stringify({ characters: [
+      { name: 'Robert Walton', aka: ['Walton'], role: 'Leads an Arctic expedition', description: 'He writes to his sister. Walton dreams of the pole.', importance: 3, relations: [{ to: 'Margaret Saville', relation: 'sister' }] },
+      { name: 'Margaret Saville', aka: [], role: 'His sister', description: 'She receives the letters. Robert loves her.', importance: 2, relations: [{ to: 'Robert Walton', relation: 'brother' }] },
+      { name: 'Victor Frankenstein', aka: [], role: 'A scientist', description: 'Creates life.', importance: 3, relations: [] },
+      { name: 'the narrator', aka: [], role: 'Writes the letter', description: 'Arrived yesterday.', importance: 3, relations: [{ to: 'Mrs. Saville', relation: 'her brother' }] },
+    ] }) } }] });
+    return respond({ choices: [{ message: { content: 'He arrives safely and writes to his sister. Walton is thrilled about the Arctic. He feels confident.' } }] });
+  }]];
+  const H = { 'x-mavis-access': 'right-code' };
+  const r = await study(post('/api/study', { task: 'characters', title: 'Frankenstein', summaries: [], current: { chapter: 'Letter 1', text: TEXT } }, H), ctx('sg1'));
+  const { characters } = await r.json();
+  assert.deepEqual(characters.map((c) => c.name), ['Mrs. Saville', 'the narrator'], 'Walton and Victor are dropped; Margaret Saville is trimmed to what the text says');
+  assert.equal(characters[0].description, 'She receives the letters.');
+  assert.equal(characters[0].role, 'His sister');
+  assert.deepEqual(characters[1].relations, [{ to: 'Mrs. Saville', relation: 'her brother' }]);
+  const rec = await (await study(post('/api/study', { task: 'recap', title: 'Frankenstein', summaries: [], current: { chapter: 'Letter 1', text: TEXT } }, H), ctx('sg2'))).json();
+  assert.equal(rec.recap, 'He arrives safely and writes to his sister. He feels confident.');
+  const sum = await (await study(post('/api/study', { task: 'summarize', title: 'Frankenstein', chapter: 'Letter 1', text: TEXT.repeat(2) }, H), ctx('sg3'))).json();
+  assert.equal(sum.summary, 'He arrives safely and writes to his sister. He feels confident.');
+  process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
 });
 
 await test('study cast: speaker lines are cleaned and indexed', async () => {

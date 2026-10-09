@@ -63,7 +63,7 @@ export async function ensureSummaries(ctx, { onProgress, signal } = {}) {
   const todo = [];
   for (let i = 0; i < sections.length; i++) {
     const cached = await store.getCache(sumKey(ctx.key, sections[i].index));
-    if (cached) out[i] = { chapter: sections[i].label, summary: cached };
+    if (cached != null) out[i] = { chapter: sections[i].label, summary: cached };
     else todo.push(i);
   }
   let done = sections.length - todo.length;
@@ -74,13 +74,20 @@ export async function ensureSummaries(ctx, { onProgress, signal } = {}) {
       const i = todo.shift();
       const s = sections[i];
       const { summary } = await ownerPost('/api/study', { task: 'summarize', title: ctx.title, author: ctx.author, chapter: s.label, text: s.text }, { signal });
-      if (summary) await store.setCache(sumKey(ctx.key, s.index), summary);
+      // Cache empty answers too (a very short section, or one the spoiler guard blanked) so they aren't asked for again.
+      await store.setCache(sumKey(ctx.key, s.index), summary || '');
       out[i] = { chapter: s.label, summary: summary || '' };
       onProgress?.(++done, sections.length);
     }
   };
   await Promise.all([worker(), worker(), worker()]);
-  return out.filter((x) => x?.summary);
+  const list = out.filter((x) => x?.summary);
+  // The words of the chapters already read, so the server's spoiler guard knows
+  // who the reader has met even when a summary leaves them out.
+  const seen = new Set();
+  for (const s of sections) for (const w of String(s.text || '').match(/\p{L}[\p{L}'’-]{2,30}/gu) || []) { if (seen.size >= 12000) break; seen.add(w.toLowerCase()); }
+  list.seen = [...seen];
+  return list;
 }
 
 // ---------- the panel ----------
@@ -195,7 +202,7 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
     try {
       const summaries = await ensureSummaries(ctx, { signal: ctl.signal, onProgress: (n, t) => { const el = body.querySelector('#cp-prog'); if (el && t) el.textContent = `Making chapter notes… ${n} of ${t}`; } });
       const el = body.querySelector('#cp-prog'); if (el) el.textContent = 'Writing your recap…';
-      const { recap } = await ownerPost('/api/study', { task: 'recap', title: ctx.title, author: ctx.author, summaries, current: { chapter: ctx.chapter(), text: ctx.textSoFar() } }, { signal: ctl.signal });
+      const { recap } = await ownerPost('/api/study', { task: 'recap', title: ctx.title, author: ctx.author, summaries, seen: summaries.seen, current: { chapter: ctx.chapter(), text: ctx.textSoFar() } }, { signal: ctl.signal });
       out.innerHTML = String(html`<div class="recap">${recap.split(/\n+/).map((p) => html`<p>${p}</p>`)}</div>
         <div class="dialog-actions" style="justify-content:flex-start"><button type="button" class="btn btn-sm btn-primary" data-cp="speak">${icon('play', { size: 18 })} Listen</button><button type="button" class="btn btn-sm btn-quiet" data-cp="hush" hidden>${icon('stop', { size: 18 })} Stop</button></div>`);
       out.dataset.recap = recap;
@@ -260,7 +267,7 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
     try {
       const summaries = await ensureSummaries(ctx, { signal: ctl.signal, onProgress: (n, t) => { const el = body.querySelector('#cp-prog'); if (el && t) el.textContent = `Making chapter notes… ${n} of ${t}`; } });
       const el = body.querySelector('#cp-prog'); if (el) el.textContent = 'Finding the characters…';
-      const res = await ownerPost('/api/study', { task: 'characters', title: ctx.title, author: ctx.author, summaries, current: { chapter: ctx.chapter(), text: ctx.textSoFar() } }, { signal: ctl.signal });
+      const res = await ownerPost('/api/study', { task: 'characters', title: ctx.title, author: ctx.author, summaries, seen: summaries.seen, current: { chapter: ctx.chapter(), text: ctx.textSoFar() } }, { signal: ctl.signal });
       const data = { characters: res.characters || [], chapter: ctx.chapter(), at: Date.now() };
       await store.setCache(`chars|${store.getOwner()}|${ctx.key}`, data);
       paintPeople(data);

@@ -6,6 +6,7 @@
 // Reply: { scores: { [id]: 0..1 }, model }
 
 import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 
 const EDEN_URL = 'https://api.edenai.run/v3/alpha/decisions';
 const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
@@ -43,7 +44,7 @@ export function readScores(data, candidates) {
   return scores;
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const bad = onlyPost(req) || await requireOwner(req);
   if (bad) return bad;
   const jev = jevProvider();
@@ -68,8 +69,10 @@ export default async (req, context) => {
   }
 };
 
+export default withCors(handler);
+
 export const config = {
   path: '/api/rank',
-  method: 'POST',
+  method: ['POST', 'OPTIONS'],
   rateLimit: { windowLimit: 30, windowSize: 60, aggregateBy: ['ip', 'domain'] },
 };

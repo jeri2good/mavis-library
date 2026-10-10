@@ -2,6 +2,7 @@
 // Reports names only; never keys.
 
 import { json, onlyGet, env, requireOwner } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 import { ttsProvider } from './tts.mjs';
 import { llmConfig } from './assistant.mjs';
 import { jevProvider } from './rank.mjs';
@@ -9,7 +10,7 @@ import { accountsEnabled } from '../lib/accounts.mjs';
 import { imageConfig } from '../lib/llm.mjs';
 import { motionConfig } from '../lib/motion.mjs';
 
-export default async (req) => {
+const handler = async (req) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   const llm = llmConfig();
@@ -27,5 +28,7 @@ export default async (req) => {
     motion: Boolean(motionConfig()),
   }, { cache: checking ? 'no-store' : 'public, max-age=60' });
 };
+
+export default withCors(handler);
 
 export const config = { path: '/api/features' };

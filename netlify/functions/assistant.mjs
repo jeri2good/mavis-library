@@ -11,6 +11,7 @@
 // selected text) is sent, and only when they ask a question.
 
 import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 import { KIDS_RULES } from '../lib/llm.mjs';
 
 const DEFAULT_MODELS = { anthropic: 'claude-haiku-5-5', openai: 'gpt-4o-mini' };
@@ -129,7 +130,7 @@ async function callOpenAI(cfg, system, messages) {
   return { reply, actions };
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const bad = onlyPost(req) || await requireOwner(req);
   if (bad) return bad;
   const cfg = llmConfig();
@@ -151,8 +152,10 @@ export default async (req, context) => {
   }
 };
 
+export default withCors(handler);
+
 export const config = {
   path: '/api/assistant',
-  method: 'POST',
+  method: ['POST', 'OPTIONS'],
   rateLimit: { windowLimit: 30, windowSize: 60, aggregateBy: ['ip', 'domain'] },
 };

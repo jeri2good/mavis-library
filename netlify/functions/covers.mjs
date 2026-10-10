@@ -3,6 +3,7 @@
 // { cover, source } or { cover: null }. Answers are cached on Netlify's CDN.
 
 import { json, fail, onlyGet, upstream, softLimit, clientKey, clean, env } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 
 export const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 export const shortTitle = (t) => clean(String(t || '').split(/[;:(\[]|, or,? /i)[0], 120);
@@ -62,7 +63,7 @@ async function googleBooks(title, author, isbn, ms, st) {
   } catch { st.failed = true; return null; }
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   if (softLimit(`cov:${clientKey(req, context)}`, { limit: 240 })) return fail(429, 'rate_limited', 'Too many cover lookups. Try again in a minute.');
@@ -85,6 +86,8 @@ export default async (req, context) => {
     cdn: cover ? 'public, s-maxage=2592000, stale-while-revalidate=2592000' : st.failed ? 'public, s-maxage=600' : 'public, s-maxage=604800',
   });
 };
+
+export default withCors(handler);
 
 export const config = {
   path: '/api/covers',

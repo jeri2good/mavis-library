@@ -5,6 +5,7 @@
 // It never implies the book is free or available.
 
 import { json, fail, onlyGet, upstream, softLimit, clientKey, clean } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 
 const BASE = 'https://openlibrary.org';
 const PAGE_SIZE = 20;
@@ -27,7 +28,7 @@ export function shapeDoc(d) {
   };
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   if (softLimit(`ol:${clientKey(req, context)}`, { limit: 60 })) return fail(429, 'rate_limited', 'Too many search requests. Wait a minute and try again.');
@@ -72,6 +73,8 @@ export default async (req, context) => {
       timeout ? 'Open Library took too long to answer.' : 'Could not reach Open Library.');
   }
 };
+
+export default withCors(handler);
 
 export const config = {
   path: '/api/openlibrary',

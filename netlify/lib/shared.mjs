@@ -2,6 +2,8 @@
 // deliberately narrow: they accept a small set of validated parameters and
 // only ever contact fixed upstream hosts. They are not general proxies.
 
+import { isAllowedOrigin } from './cors.mjs';
+
 export const UA = 'MavisLibrary/0.2 (+https://mavis-library.netlify.app; reading app; one request per user action)';
 
 export function json(body, { status = 200, cache = 'no-store', cdn = null } = {}) {
@@ -84,13 +86,15 @@ export function onlyPost(req) {
   const ct = req.headers.get('content-type') || '';
   if (!ct.includes('application/json')) return fail(415, 'unsupported_media_type', 'Send JSON.');
   // Same-origin check for browser requests (defense against cross-site use).
-  const origin = req.headers.get('origin');
-  if (origin) {
-    try {
-      if (new URL(origin).host !== new URL(req.url).host) return fail(403, 'cross_origin', 'Cross-site requests are not allowed.');
-    } catch { return fail(403, 'cross_origin', 'Cross-site requests are not allowed.'); }
-  }
+  if (!sameOrigin(req)) return fail(403, 'cross_origin', 'Cross-site requests are not allowed.');
   return null;
+}
+
+/** No Origin header, the site's own origin, or one of the two CORS-allowed app origins. */
+export function sameOrigin(req) {
+  const origin = req.headers.get('origin');
+  if (!origin || isAllowedOrigin(origin)) return true;
+  try { return new URL(origin).host === new URL(req.url).host; } catch { return false; }
 }
 
 export async function readJson(req, maxBytes = 200_000) {

@@ -23,6 +23,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { json, fail, onlyPost, readJson, softLimit, clientKey, clean, requireOwner } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 import { kv, requireUser } from '../lib/accounts.mjs';
 import { complete, KIDS_RULES } from '../lib/llm.mjs';
 
@@ -291,7 +292,7 @@ const actions = {
   },
 };
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const bad = onlyPost(req);
   if (bad) return bad;
   const a = await requireUser(req);
@@ -309,8 +310,10 @@ export default async (req, context) => {
   }
 };
 
+export default withCors(handler);
+
 export const config = {
   path: '/api/groups',
-  method: 'POST',
+  method: ['POST', 'OPTIONS'],
   rateLimit: { windowLimit: 120, windowSize: 60, aggregateBy: ['ip', 'domain'] },
 };

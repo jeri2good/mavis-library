@@ -7,6 +7,7 @@
 //   ?cm=matthew-henry&b=John&c=3 → { intro, sections: [{ v, text }] }
 
 import { json, fail, onlyGet, upstream, softLimit, clientKey, clean } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 
 const BASE = 'https://bible.helloao.org/api';
 
@@ -93,7 +94,7 @@ export function normalizeCommentary(j) {
   return { intro: intro || undefined, sections };
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   if (softLimit(`bx:${clientKey(req, context)}`, { limit: 240 })) return fail(429, 'rate_limited', 'Too many requests. Wait a minute.');
@@ -124,6 +125,8 @@ export default async (req, context) => {
     return fail(err?.name === 'AbortError' ? 504 : 502, 'upstream_unreachable', 'The Bible service didn’t answer. Try again in a moment.');
   }
 };
+
+export default withCors(handler);
 
 export const config = {
   path: '/api/bible-ext',

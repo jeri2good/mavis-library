@@ -14,6 +14,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { json, fail, onlyPost, readJson, softLimit, clientKey } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 import { kv, requireUser } from '../lib/accounts.mjs';
 
 export const TABLES = ['shelf', 'progress', 'annotations', 'vocab', 'plans', 'prefs'];
@@ -113,7 +114,7 @@ async function compact(store, prefix, batches, snaps) {
   return true;
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const bad = onlyPost(req);
   if (bad) return bad;
   const a = await requireUser(req);
@@ -148,8 +149,10 @@ export default async (req, context) => {
   return json({ cursors, rows, more });
 };
 
+export default withCors(handler);
+
 export const config = {
   path: '/api/sync',
-  method: 'POST',
+  method: ['POST', 'OPTIONS'],
   rateLimit: { windowLimit: 90, windowSize: 60, aggregateBy: ['ip', 'domain'] },
 };

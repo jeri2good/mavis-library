@@ -7,6 +7,7 @@
 // www.gutenberg.org.
 
 import { json, fail, onlyGet, softLimit, clientKey, clean } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 import { fetchSearch, fetchBook, buildQuery, OPDS_PAGE_SIZE } from '../lib/gutenberg.mjs';
 
 export function parseListParams(sp) {
@@ -25,7 +26,7 @@ export function parseListParams(sp) {
 
 const LIST_CACHE = { cache: 'public, max-age=300', cdn: 'public, s-maxage=3600, stale-while-revalidate=86400' };
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   if (softLimit(`cat:${clientKey(req, context)}`, { limit: 90 })) return fail(429, 'rate_limited', 'Too many catalog requests. Wait a minute and try again.');
@@ -69,6 +70,8 @@ export default async (req, context) => {
       timeout ? 'The Gutenberg catalog took too long to answer.' : 'Could not reach the Gutenberg catalog.');
   }
 };
+
+export default withCors(handler);
 
 export const config = {
   path: '/api/catalog',

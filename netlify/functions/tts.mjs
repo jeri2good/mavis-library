@@ -7,6 +7,7 @@
 // Requires the owner access code (see shared.requireOwner).
 
 import { fail, onlyPost, requireOwner, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 
 export const MAX_CHARS = 1800;
 
@@ -59,7 +60,7 @@ async function google(text, speed) {
   return Uint8Array.from(Buffer.from(j.audioContent || '', 'base64'));
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const bad = onlyPost(req) || await requireOwner(req);
   if (bad) return bad;
   const provider = ttsProvider();
@@ -80,8 +81,10 @@ export default async (req, context) => {
   }
 };
 
+export default withCors(handler);
+
 export const config = {
   path: '/api/tts',
-  method: 'POST',
+  method: ['POST', 'OPTIONS'],
   rateLimit: { windowLimit: 120, windowSize: 60, aggregateBy: ['ip', 'domain'] },
 };

@@ -5,7 +5,8 @@
 //   DELETE ?id=<voice id>                                                   → deletes one of the owner's cloned voices
 // Cloned voices are private to the owner's Fish Audio account.
 
-import { json, fail, requireOwner, softLimit, clientKey, env, clean } from '../lib/shared.mjs';
+import { json, fail, requireOwner, softLimit, clientKey, env, clean, sameOrigin } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 import { validVoiceId } from './tts.mjs';
 
 const F = 'https://api.fish.audio';
@@ -19,13 +20,7 @@ const shape = (m) => ({
   state: m.state, mine: false,
 });
 
-function sameOrigin(req) {
-  const origin = req.headers.get('origin');
-  if (!origin) return true;
-  try { return new URL(origin).host === new URL(req.url).host; } catch { return false; }
-}
-
-export default async (req, context) => {
+const handler = async (req, context) => {
   const bad = await requireOwner(req);
   if (bad) return bad;
   if (!env('FISH_AUDIO_API_KEY')) return fail(503, 'not_configured', 'Voices need a Fish Audio key (FISH_AUDIO_API_KEY).');
@@ -92,6 +87,8 @@ export default async (req, context) => {
     return fail(502, 'upstream_unreachable', 'Fish Audio didn’t answer. Try again in a moment.');
   }
 };
+
+export default withCors(handler, { methods: 'GET, POST, DELETE, OPTIONS' });
 
 export const config = {
   path: '/api/voices',

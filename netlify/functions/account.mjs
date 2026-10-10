@@ -10,6 +10,7 @@
 // Requires AUTH_SECRET (32+ characters) in the site's environment.
 
 import { json, fail, onlyPost, readJson, softLimit, clientKey } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 import {
   accountsEnabled, validEmail, passwordProblem, createUser, findByEmail, verifySecret, hashSecret,
   signToken, requireUser, updateUser, deleteUser, newRecoveryCode, normRecovery, publicUser,
@@ -120,7 +121,7 @@ const actions = {
   },
 };
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   if (!accountsEnabled()) return fail(503, 'accounts_off', 'Accounts are not switched on for this site.');
   const action = context?.params?.action || new URL(req.url).pathname.split('/').pop();
   const fn = Object.hasOwn(actions, action) ? actions[action] : null;
@@ -136,6 +137,8 @@ export default async (req, context) => {
     return fail(err.status || 500, 'account_error', err.status ? err.message : 'Something went wrong. Try again.');
   }
 };
+
+export default withCors(handler);
 
 export const config = {
   path: '/api/account/:action',

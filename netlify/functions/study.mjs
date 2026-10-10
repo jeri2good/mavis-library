@@ -12,6 +12,7 @@
 // Only the text the reader has reached is sent, so answers can't spoil what comes later.
 
 import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, clean } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 import { complete, startImage, pollImage, KIDS_RULES } from '../lib/llm.mjs';
 import { vocabulary, dropUnseen, supportedName } from '../lib/textcheck.mjs';
 import { startMotion, pollMotion } from '../lib/motion.mjs';
@@ -189,7 +190,7 @@ Make exactly ${want} shots. "from" is the number of the sentence where the shot 
   },
 };
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   if (req.method === 'GET') {
     const bad = await requireOwner(req);
     if (bad) return bad;
@@ -216,6 +217,8 @@ export default async (req, context) => {
     return fail(err.status || 502, 'study_failed', err.message || 'The AI request failed.');
   }
 };
+
+export default withCors(handler);
 
 export const config = {
   path: '/api/study',

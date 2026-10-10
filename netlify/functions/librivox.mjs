@@ -5,6 +5,7 @@
 //   → { versions: [{ id, title, readers, totalSecs, url, sections: [{ n, title, url, secs, reader }] }] }
 
 import { json, fail, onlyGet, upstream, softLimit, clientKey, clean } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 const shortTitle = (t) => String(t || '').split(/[;:(\[]|, or,? /i)[0].trim();
@@ -42,7 +43,7 @@ export function shapeVersion(b) {
   };
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   if (softLimit(`lv:${clientKey(req, context)}`, { limit: 60 })) return fail(429, 'rate_limited', 'Too many requests. Wait a minute.');
@@ -69,6 +70,8 @@ export default async (req, context) => {
     return fail(err?.name === 'AbortError' ? 504 : 502, 'upstream_unreachable', 'LibriVox didn’t answer. Try again in a moment.');
   }
 };
+
+export default withCors(handler);
 
 export const config = {
   path: '/api/librivox',

@@ -11,6 +11,7 @@
 //    are answered from Netlify's CDN cache so Gutenberg is not hit again.
 
 import { fail, onlyGet, upstream, softLimit, clientKey, UA } from '../lib/shared.mjs';
+import { withCors } from '../lib/cors.mjs';
 import { fetchBook } from '../lib/gutenberg.mjs';
 
 const MIRROR = process.env.GUTENBERG_MIRROR || ''; // e.g. https://mirror.example.org (must contain /cache/epub/)
@@ -49,7 +50,7 @@ function capStream(body, max) {
   }));
 }
 
-export default async (req, context) => {
+const handler = async (req, context) => {
   const pre = onlyGet(req);
   if (pre) return pre;
   if (softLimit(`epub:${clientKey(req, context)}`, { limit: 12 })) {
@@ -103,6 +104,8 @@ export default async (req, context) => {
   }
   return fail(502, 'download_failed', `${lastProblem} You can open the book on Project Gutenberg and import the EPUB instead.`);
 };
+
+export default withCors(handler);
 
 export const config = {
   path: '/api/epub',

@@ -148,8 +148,8 @@ class WebHost(private val activity: ComponentActivity) {
                 assetLoader.shouldInterceptRequest(request.url)
         })
         ServiceWorkerControllerCompat.getInstance().serviceWorkerWebSettings.apply {
-            allowFileAccess = false
-            allowContentAccess = false
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_FILE_ACCESS)) allowFileAccess = false
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_CONTENT_ACCESS)) allowContentAccess = false
         }
     }
 

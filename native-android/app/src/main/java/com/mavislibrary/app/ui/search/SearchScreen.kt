@@ -2,7 +2,7 @@ package com.mavislibrary.app.ui.search
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -282,7 +282,7 @@ private fun BookDetailSheet(book: Book, onShelf: Boolean, onToggleShelf: () -> U
             book.sourceUrl?.let { url ->
                 TextButton(onClick = {
                     try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addCategory(Intent.CATEGORY_BROWSABLE))
                     } catch (_: ActivityNotFoundException) { }
                 }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.OpenInBrowser, contentDescription = null)

@@ -2,7 +2,7 @@ package com.mavislibrary.app.ui.settings
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -107,7 +107,7 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = {
                 try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_URL)).addCategory(Intent.CATEGORY_BROWSABLE))
+                    context.startActivity(Intent(Intent.ACTION_VIEW, PRIVACY_URL.toUri()).addCategory(Intent.CATEGORY_BROWSABLE))
                 } catch (_: ActivityNotFoundException) { }
             }) { Text("Privacy policy") }
         }

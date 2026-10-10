@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
  * derived from their contents. Only same-origin app-shell files are listed:
  * no API responses, no user data, no auth traffic.
  */
-function serviceWorkerPrecache() {
+function serviceWorkerPrecache(apiBase) {
   let outDir = 'dist';
   let precache = { files: [], version: 'dev' };
   return {
@@ -38,7 +38,8 @@ function serviceWorkerPrecache() {
       const template = readFileSync(resolve('src/sw-template.js'), 'utf8');
       const out = template
         .replace('__PRECACHE_LIST__', JSON.stringify(list))
-        .replace('__BUILD_VERSION__', JSON.stringify(version));
+        .replace('__BUILD_VERSION__', JSON.stringify(version))
+        .replace('__API_ORIGIN__', JSON.stringify(apiBase ? new URL(apiBase).origin : null));
       writeFileSync(resolve(outDir, 'sw.js'), out);
     },
   };
@@ -77,16 +78,19 @@ function androidCspMeta(mode, env) {
   };
 }
 
-export default defineConfig(({ mode }) => ({
-  plugins: [serviceWorkerPrecache(), androidCspMeta(mode, loadEnv(mode, process.cwd(), 'VITE_'))],
-  build: {
-    target: ['es2020', 'chrome80', 'safari14', 'firefox80'],
-    sourcemap: false,
-    chunkSizeWarningLimit: 900,
-  },
-  server: {
-    // `netlify dev` serves functions on :8888 and proxies Vite; when running
-    // plain `vite`, forward /api to a running `netlify functions:serve`.
-    proxy: { '/api': { target: 'http://localhost:9999', changeOrigin: true } },
-  },
-}));
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
+  return {
+    plugins: [serviceWorkerPrecache(env.VITE_API_BASE), androidCspMeta(mode, env)],
+    build: {
+      target: ['es2020', 'chrome80', 'safari14', 'firefox80'],
+      sourcemap: false,
+      chunkSizeWarningLimit: 900,
+    },
+    server: {
+      // `netlify dev` serves functions on :8888 and proxies Vite; when running
+      // plain `vite`, forward /api to a running `netlify functions:serve`.
+      proxy: { '/api': { target: 'http://localhost:9999', changeOrigin: true } },
+    },
+  };
+});

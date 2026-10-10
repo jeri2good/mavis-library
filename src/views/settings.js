@@ -7,6 +7,7 @@ import { authConfigured } from '../lib/auth.js';
 import { loadFeatures, setAccessCode, accessCode } from '../lib/features.js';
 import { icon } from '../lib/ui.js';
 import * as kids from '../lib/kids.js';
+import { isNativeApp } from '../lib/native.js';
 
 export const title = () => 'Settings';
 
@@ -48,7 +49,7 @@ export async function render(root) {
       <h2>This device</h2>
       <dl class="kv">
         <dt>Storage</dt><dd>${est ? html`${formatBytes(est.usage)} used${est.quota ? html` of about ${formatBytes(est.quota)}` : ''}${est.persisted ? ' · protected from cleanup' : ''}` : 'Not reported by this browser'}</dd>
-        <dt>Installed app</dt><dd>${standalone ? 'Yes, running as an installed app' : 'No. Use your browser’s “Install app” or “Add to Home screen” option.'}</dd>
+        <dt>Installed app</dt><dd>${isNativeApp() ? 'Yes, the Android app' : standalone ? 'Yes, running as an installed app' : 'No. Use your browser’s “Install app” or “Add to Home screen” option.'}</dd>
         <dt>Read aloud</dt><dd>${ttsSupported ? 'Available' : 'Not supported in this browser'}</dd>
         <dt>Voice search</dt><dd>${voiceInputSupported ? 'Available (speech may be processed by your browser’s provider)' : 'Not supported in this browser; type instead'}</dd>
         <dt>Accounts</dt><dd>${authConfigured ? 'Available' : 'Not connected on this deployment (guest mode)'}</dd>

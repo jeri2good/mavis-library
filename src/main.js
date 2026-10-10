@@ -9,6 +9,7 @@ import { enhanceCovers } from './lib/covers.js';
 import { StorageUnavailableError } from './lib/idb.js';
 import { isKids, applyKidsClass, onKids, grownUpUnlocked, askPin, kidsName } from './lib/kids.js';
 import { watchProgress, forgetCache as forgetGroups } from './lib/groups.js';
+import { isNativeApp } from './lib/native.js';
 
 const routes = {
   '': () => import('./views/home.js'),
@@ -254,7 +255,7 @@ async function boot() {
       reg.addEventListener('updatefound', () => {
         const w = reg.installing;
         w?.addEventListener('statechange', () => {
-          if (w.state === 'installed' && navigator.serviceWorker.controller) {
+          if (w.state === 'installed' && navigator.serviceWorker.controller && !isNativeApp()) {
             toast('A new version of Mavis is ready.', {
               action: {
                 label: 'Refresh',

@@ -11,6 +11,7 @@
  */
 const VERSION = __BUILD_VERSION__;
 const PRECACHE = __PRECACHE_LIST__;
+const API_ORIGIN = __API_ORIGIN__; // null on the web (same origin); the public site in the Android build
 const SHELL = `mavis-shell-${VERSION}`;
 const CATALOG = 'mavis-catalog-v1';
 const COVERS = 'mavis-covers-v1';
@@ -60,7 +61,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.origin === self.location.origin) {
+  // The Android app calls the public site's functions (API_ORIGIN); the web app calls its own origin.
+  const api = url.pathname.startsWith('/api/') && (url.origin === self.location.origin || url.origin === API_ORIGIN);
+  if (api) {
     if (url.pathname.startsWith('/api/epub')) return; // stored in IndexedDB by the app
     if (url.pathname.startsWith('/api/catalog') || url.pathname.startsWith('/api/openlibrary')) {
       event.respondWith((async () => {
@@ -89,7 +92,10 @@ self.addEventListener('fetch', (event) => {
       })());
       return;
     }
-    if (url.pathname.startsWith('/api/')) return; // accounts, sync, features, paid services: always live
+    return; // accounts, sync, features, paid services: always live
+  }
+
+  if (url.origin === self.location.origin) {
     if (url.pathname.startsWith('/bible/')) {
       // Bible text, lexicon, and cross-references: cache first, kept offline.
       event.respondWith((async () => {

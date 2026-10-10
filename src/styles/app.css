@@ -147,6 +147,12 @@ p { margin: 0; }
   .topbar { grid-column: 2; }
 }
 
+/* Inside the Kotlin Android shell the native bottom bar is the only navigation. */
+html.in-native-shell { --tabbar: 0px; }
+.in-native-shell .tabbar { display: none; }
+.in-native-shell .shell { grid-template-columns: 1fr; }
+.in-native-shell .main, .in-native-shell .topbar { grid-column: 1; }
+
 .offline-banner {
   display: flex; align-items: center; gap: 10px; justify-content: center;
   padding: 8px var(--gutter); background: var(--accent-soft); color: var(--ink); font-size: var(--step--1);
@@ -1047,3 +1053,24 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 3px; paddi
 .sf-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; margin: 10px 0; }
 .sf-thumbs img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 8px; animation: card-in .45s var(--ease) both; }
 .sf-canvas { width: 100%; max-height: 50vh; object-fit: contain; border-radius: 12px; background: #000; display: block; margin: 8px 0; }
+
+/* ---- Page flip + cover page turns (reader) ---- */
+.reader-stage { perspective: 1400px; perspective-origin: 50% 50%; overflow: hidden; }
+.reader-view { transform-style: preserve-3d; backface-visibility: hidden; will-change: transform, opacity; }
+/* Flip: the page hinges on its spine edge, folds away with a darkening shadow, next page swings in from the opposite side */
+.reader-view.flip-out-next { transform-origin: 0% 50%; animation: flip-out-n .24s cubic-bezier(.45,0,.85,.55) forwards; }
+.reader-view.flip-out-prev { transform-origin: 100% 50%; animation: flip-out-p .24s cubic-bezier(.45,0,.85,.55) forwards; }
+.reader-view.flip-in-next { transform-origin: 100% 50%; animation: flip-in-n .36s cubic-bezier(.2,.7,.2,1); }
+.reader-view.flip-in-prev { transform-origin: 0% 50%; animation: flip-in-p .36s cubic-bezier(.2,.7,.2,1); }
+@keyframes flip-out-n { 0% { transform: rotateY(0); } 100% { transform: rotateY(-88deg); filter: brightness(.5); box-shadow: inset -60px 0 60px -30px rgba(0,0,0,.55); opacity: .35; } }
+@keyframes flip-out-p { 0% { transform: rotateY(0); } 100% { transform: rotateY(88deg); filter: brightness(.5); box-shadow: inset 60px 0 60px -30px rgba(0,0,0,.55); opacity: .35; } }
+@keyframes flip-in-n { 0% { transform: rotateY(80deg); filter: brightness(.55); box-shadow: inset 60px 0 60px -30px rgba(0,0,0,.5); opacity: .35; } 100% { transform: rotateY(0); } }
+@keyframes flip-in-p { 0% { transform: rotateY(-80deg); filter: brightness(.55); box-shadow: inset -60px 0 60px -30px rgba(0,0,0,.5); opacity: .35; } 100% { transform: rotateY(0); } }
+/* Cover: the old page stays put and dims while the new page slides over it, throwing a shadow on its leading edge */
+.reader-view.cover-out-next, .reader-view.cover-out-prev { animation: cover-out .2s ease-in forwards; }
+.reader-view.cover-in-next { animation: cover-in-n .32s cubic-bezier(.2,.75,.2,1); }
+.reader-view.cover-in-prev { animation: cover-in-p .32s cubic-bezier(.2,.75,.2,1); }
+@keyframes cover-out { to { transform: scale(.94); filter: brightness(.6); opacity: .25; } }
+@keyframes cover-in-n { from { transform: translateX(105%); box-shadow: -40px 0 50px rgba(0,0,0,.45); } to { transform: translateX(0); box-shadow: -0 0 0 rgba(0,0,0,0); } }
+@keyframes cover-in-p { from { transform: translateX(-105%); box-shadow: 40px 0 50px rgba(0,0,0,.45); } to { transform: translateX(0); box-shadow: 0 0 0 rgba(0,0,0,0); } }
+@media (prefers-reduced-motion: reduce) { .reader-view[class*="flip-"], .reader-view[class*="cover-"] { animation: none !important; } }

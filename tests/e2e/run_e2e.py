@@ -389,7 +389,7 @@ def run_public(browser):
         page.keyboard.press('ArrowRight')
         expect(page.locator('#r-page')).not_to_have_text(p)
         classes = ' '.join(page.evaluate('window.__anim'))
-        assert 'anim-out-next' in classes and 'anim-in-next' in classes, classes
+        assert ('flip-out-next' in classes and 'flip-in-next' in classes) or ('anim-out-next' in classes and 'anim-in-next' in classes), classes
     _(page)
 
     @test('Read-aloud (simulated speech engine): reads the visible page, turns pages, pause/resume/stop')

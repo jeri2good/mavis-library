@@ -27,7 +27,7 @@ const THEMES = {
   sepia: { label: 'Sepia', bg: '#f3e7cf', fg: '#3b2f20', link: '#6b4a1c' },
   dark: { label: 'Night', bg: '#151916', fg: '#d9d3c4', link: '#9fd0b1' },
 };
-const DEFAULTS = { theme: 'light', font: 'literata', size: 100, lineHeight: 1.6, margin: 'normal', justify: false, motion: 'slide', spread: 'auto' };
+const DEFAULTS = { theme: 'light', font: 'literata', size: 100, lineHeight: 1.6, margin: 'normal', justify: false, motion: 'curl', spread: 'auto' };
 const MARGINS = { narrow: '2%', normal: '7%', wide: '14%' };
 
 // Kids mode keeps its own reader settings, starting bigger and airier.
@@ -501,12 +501,15 @@ async function renderEpub(root, item, file, close, route) {
     turning = true;
     hideSelection(true);
     const mode = motionMode();
-    const outCls = mode === 'slide' ? `anim-out-${dir}` : 'fade-out';
-    const inCls = mode === 'slide' ? `anim-in-${dir}` : 'fade-in';
+    const outCls = mode === 'slide' ? `anim-out-${dir}` : mode === 'curl' ? `flip-out-${dir}` : mode === 'cover' ? `cover-out-${dir}` : 'fade-out';
+    const inCls = mode === 'slide' ? `anim-in-${dir}` : mode === 'curl' ? `flip-in-${dir}` : mode === 'cover' ? `cover-in-${dir}` : 'fade-in';
+    const outMs = mode === 'curl' ? 230 : mode === 'cover' ? 190 : 150;
+    const inMs = mode === 'curl' ? 340 : mode === 'cover' ? 300 : 260;
+    stage.dataset.turn = mode === 'curl' || mode === 'cover' ? dir : '';
     try {
       if (mode !== 'none') {
         viewer.classList.add(outCls);
-        await wait(150);
+        await wait(outMs);
         // epub.js measures the page geometry right after turning; keep the
         // view untransformed (just invisible) while it does.
         viewer.style.opacity = '0';
@@ -517,7 +520,8 @@ async function renderEpub(root, item, file, close, route) {
     } catch (err) { console.warn(err); }
     viewer.classList.remove(outCls);
     viewer.style.opacity = '';
-    if (mode !== 'none') { viewer.classList.add(inCls); setTimeout(() => viewer.classList.remove(inCls), 260); }
+    if (mode !== 'none') { viewer.classList.add(inCls); setTimeout(() => { viewer.classList.remove(inCls); stage.dataset.turn = ''; }, inMs); }
+    if (mode !== 'none') { try { window.MavisNative?.haptic?.('tick'); navigator.vibrate?.(8); } catch { /* optional */ } }
     turning = false;
   }
   function motionMode() {
@@ -728,7 +732,7 @@ async function renderEpub(root, item, file, close, route) {
         <div class="opt-group"><span class="label">Pages on wide screens</span><div class="seg" role="group" aria-label="Pages on wide screens">
           <button type="button" data-spread="auto" aria-pressed="${prefs.spread !== 'none'}">Two pages</button><button type="button" data-spread="none" aria-pressed="${prefs.spread === 'none'}">One page</button></div></div>
         <div class="opt-group"><span class="label">Page turn</span><div class="seg" role="group" aria-label="Page turn animation">
-          ${[['slide', 'Slide'], ['fade', 'Fade'], ['none', 'None']].map(([v, l]) => html`<button type="button" data-motion="${v}" aria-pressed="${prefs.motion === v}">${l}</button>`)}</div>
+          ${[['curl', 'Page flip'], ['cover', 'Cover'], ['slide', 'Slide'], ['fade', 'Fade'], ['none', 'None']].map(([v, l]) => html`<button type="button" data-motion="${v}" aria-pressed="${prefs.motion === v}">${l}</button>`)}</div>
           ${reduced ? html`<p class="hint">Your device asks for reduced motion, so pages turn without animation.</p>` : ''}</div>
         <p class="hint">These settings are saved on this device.</p>`,
     });

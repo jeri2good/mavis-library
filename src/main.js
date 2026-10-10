@@ -9,7 +9,7 @@ import { enhanceCovers } from './lib/covers.js';
 import { StorageUnavailableError } from './lib/idb.js';
 import { isKids, applyKidsClass, onKids, grownUpUnlocked, askPin, kidsName } from './lib/kids.js';
 import { watchProgress, forgetCache as forgetGroups } from './lib/groups.js';
-import { isNativeApp } from './lib/native.js';
+import { isNativeApp, isNativeShell } from './lib/native.js';
 import { installReportHandler } from './lib/report.js';
 
 const routes = {
@@ -70,6 +70,7 @@ export function applyAppTheme(pref = store.getSetting('appTheme', 'system')) {
 // ---------- Shell ----------
 function renderShell() {
   const app = document.getElementById('app');
+  document.documentElement.classList.toggle('in-native-shell', isNativeShell());
   app.innerHTML = String(html`
     <div class="shell">
       <header class="topbar" id="topbar">

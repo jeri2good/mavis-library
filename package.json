@@ -3,7 +3,7 @@
   "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Mavis Library \u2014 a calm, installable reading app for Android tablets, phones, and desktop browsers.",
+  "description": "Mavis Library — a calm, installable reading app for Android tablets, phones, and desktop browsers.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -17,6 +17,14 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "@fontsource-variable/atkinson-hyperlegible-next": "5.2.6",
     "@fontsource-variable/fraunces": "5.2.8",
     "@fontsource-variable/literata": "5.2.8",
@@ -26,6 +34,7 @@
     "jszip": "3.10.2"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "vite": "8.3.1"
   },
   "overrides": {

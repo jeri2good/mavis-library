@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mavis Library</string>
+    <string name="title_activity_main">Mavis Library</string>
+    <string name="package_name">com.mavislibrary.app</string>
+    <string name="custom_url_scheme">com.mavislibrary.app</string>
+</resources>

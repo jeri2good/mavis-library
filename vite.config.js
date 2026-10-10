@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -44,8 +44,41 @@ function serviceWorkerPrecache() {
   };
 }
 
-export default defineConfig({
-  plugins: [serviceWorkerPrecache()],
+/**
+ * Android build only: the APK can't read netlify.toml headers, so put the
+ * same Content-Security-Policy in a <meta> tag. Derived from netlify.toml so
+ * there is one policy to edit. The API origin is added where the app loads
+ * from it; frame-ancestors and upgrade-insecure-requests are dropped because
+ * they don't work in a meta tag. 'self' is https://localhost inside the app.
+ */
+export function androidCsp(apiBase) {
+  const toml = readFileSync(resolve('netlify.toml'), 'utf8');
+  const policy = /Content-Security-Policy = "([^"]+)"/.exec(toml)[1];
+  const api = new URL(apiBase).origin;
+  return policy.split(';').map((d) => d.trim()).filter(Boolean)
+    .filter((d) => !/^(frame-ancestors|upgrade-insecure-requests)\b/.test(d))
+    .map((d) => (/^(connect-src|img-src|media-src)\s/.test(d) ? `${d} ${api}` : d))
+    .join('; ');
+}
+
+function androidCspMeta(mode, env) {
+  return {
+    name: 'mavis-android-csp',
+    apply: 'build',
+    transformIndexHtml(html) {
+      if (mode !== 'android') return html;
+      if (!env.VITE_API_BASE) throw new Error('Android build needs VITE_API_BASE (see .env.android).');
+      const meta = `<meta http-equiv="Content-Security-Policy" content="${androidCsp(env.VITE_API_BASE)}" />`;
+      // Right after the charset, before any script or stylesheet.
+      const out = html.replace(/(<meta charset="utf-8" \/>)/, `$1\n    ${meta}`);
+      if (out === html) throw new Error('index.html: charset meta not found for the Android CSP.');
+      return out;
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => ({
+  plugins: [serviceWorkerPrecache(), androidCspMeta(mode, loadEnv(mode, process.cwd(), 'VITE_'))],
   build: {
     target: ['es2020', 'chrome80', 'safari14', 'firefox80'],
     sourcemap: false,
@@ -56,4 +89,4 @@ export default defineConfig({
     // plain `vite`, forward /api to a running `netlify functions:serve`.
     proxy: { '/api': { target: 'http://localhost:9999', changeOrigin: true } },
   },
-});
+}));

@@ -19,8 +19,12 @@ export default async (req) => {
     fd.set('prompt', 'A slow cinematic dolly shot up a spiral stone staircase inside an old lighthouse at dusk, a woman in a wool shawl carrying an oil lantern, warm lamplight on whitewashed walls, fog beyond a small window. Painterly, period setting, no text.');
     fd.set('seconds', '4');
     fd.set('size', '1280x720');
-    const r = await fetch(`${cfg.base}/videos`, { method: 'POST', headers: H, body: fd });
-    return json({ status: r.status, body: await r.json().catch(() => null) });
+    const asJson = u.searchParams.get('json') === '1';
+    const r = asJson
+      ? await fetch(`${cfg.base}/videos`, { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify(Object.fromEntries(fd)) })
+      : await fetch(`${cfg.base}/videos`, { method: 'POST', headers: H, body: fd });
+    const text = await r.text();
+    return json({ status: r.status, base: cfg.base, ctype: r.headers.get('content-type'), text: text.slice(0, 600) });
   }
   if (step === 'poll') {
     const r = await fetch(`${cfg.base}/videos/${encodeURIComponent(u.searchParams.get('id'))}`, { headers: H });

@@ -7,7 +7,7 @@
 import { sessionToken, currentUser, sessionExpired } from './auth.js';
 import * as store from './store.js';
 import { accessCode } from './features.js';
-import { apiUrl } from './api.js';
+import { apiUrl, PUBLIC_ORIGIN } from './api.js';
 
 export class GroupError extends Error {
   constructor(message, status, code) { super(message); this.status = status; this.code = code; }
@@ -115,7 +115,7 @@ export function isAhead(post, myPercent) {
 }
 
 export function inviteLink(code) {
-  return `${location.origin}/#/groups/join?code=${encodeURIComponent(code)}`;
+  return `${PUBLIC_ORIGIN}/#/groups/join?code=${encodeURIComponent(code)}`;
 }
 
 export const defaultDisplayName = () => {

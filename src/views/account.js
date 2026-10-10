@@ -2,6 +2,8 @@ import { html, icon, toast, timeAgo, confirmDialog } from '../lib/ui.js';
 import * as auth from '../lib/auth.js';
 import { syncNow, onSyncState, flushBeforeSignOut, stopSync } from '../lib/sync.js';
 import * as store from '../lib/store.js';
+import { PUBLIC_ORIGIN } from '../lib/api.js';
+import { isNativeApp } from '../lib/native.js';
 
 export const title = () => 'Account';
 
@@ -105,7 +107,7 @@ export async function render(root, route) {
     });
     root.querySelector('[data-save]').addEventListener('click', () => {
       const user = auth.currentUser();
-      const text = `Mavis Library recovery code\n\nAccount: ${user?.email || ''}\nRecovery code: ${code}\nSite: ${location.origin}\n\nUse this on the sign-in page (Forgot your password?) to choose a new password.\n`;
+      const text = `Mavis Library recovery code\n\nAccount: ${user?.email || ''}\nRecovery code: ${code}\nSite: ${isNativeApp() ? PUBLIC_ORIGIN : location.origin}\n\nUse this on the sign-in page (Forgot your password?) to choose a new password.\n`;
       const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: 'mavis-recovery-code.txt' });
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);

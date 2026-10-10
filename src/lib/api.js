@@ -9,3 +9,6 @@ export function apiUrl(path) {
   if (!BASE || typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')) return path;
   return BASE + path;
 }
+
+/** The public site. Links people share (invites) always point here, in the web app and the Android app. */
+export const PUBLIC_ORIGIN = 'https://mavis-library.netlify.app';

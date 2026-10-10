@@ -10,6 +10,7 @@ import * as store from './store.js';
 import { loadFeatures, can, features, ownerPost, accessCode } from './features.js';
 import { makePicture, savePicture, STYLES } from './companion.js';
 import { videoSupported } from './video.js';
+import { apiUrl } from './api.js';
 
 const SHAPES = {
   wide: { label: 'Wide 16:9 (TV, YouTube, computer)', w: 1920, h: 1080, pic: 'wide' },
@@ -347,12 +348,12 @@ export async function renderFilm({ shots, shape = 'wide', title = '', subtitle =
 // ---------- Motion (fal.ai) ----------
 
 async function animateShot(image, prompt, { signal, onState } = {}) {
-  const { job } = await ownerPost('/api/study', { task: 'motion', image: toJpegDataUri(image), prompt, seconds: 5 }, { signal });
+  const { job } = await ownerPost(apiUrl('/api/study'), { task: 'motion', image: toJpegDataUri(image), prompt, seconds: 5 }, { signal });
   const t0 = Date.now();
   for (;;) {
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
     await new Promise((r) => setTimeout(r, 4000));
-    const r = await fetch(`/api/study?motion=${encodeURIComponent(job)}`, { headers: { 'x-mavis-access': accessCode() }, signal, cache: 'no-store' });
+    const r = await fetch(apiUrl(`/api/study?motion=${encodeURIComponent(job)}`), { headers: { 'x-mavis-access': accessCode() }, signal, cache: 'no-store' });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.message || `The video service answered ${r.status}.`);
     onState?.(j);
@@ -438,7 +439,7 @@ export async function openSceneFilm(opts) {
     const ac = new (window.AudioContext || window.webkitAudioContext)();
     try {
       set('plan', { note: '' });
-      const board = await ownerPost('/api/study', { task: 'storyboard', title: opts.title, author: opts.author, chapter: opts.chapter, sentences, shots: Number($('#sf-shots').value) || undefined }, { signal });
+      const board = await ownerPost(apiUrl('/api/study'), { task: 'storyboard', title: opts.title, author: opts.author, chapter: opts.chapter, sentences, shots: Number($('#sf-shots').value) || undefined }, { signal });
       const texts = shotTexts(sentences, board.shots);
       set('plan', { done: true, note: `${board.shots.length} shots` });
 
@@ -452,7 +453,7 @@ export async function openSceneFilm(opts) {
         return { img, blob };
       }));
       const narration = wantVoice ? Promise.all(texts.map(async (t) => {
-        const b = await ownerPost('/api/tts', { text: t.slice(0, 1700), speed: 0.95, voice: store.getSetting('narratorVoice', null)?.id || undefined }, { as: 'blob', signal });
+        const b = await ownerPost(apiUrl('/api/tts'), { text: t.slice(0, 1700), speed: 0.95, voice: store.getSetting('narratorVoice', null)?.id || undefined }, { as: 'blob', signal });
         return ac.decodeAudioData(await b.arrayBuffer());
       })).then((x) => { set('voice', { done: true }); return x; }) : Promise.resolve(texts.map(() => null));
       if (wantVoice) set('voice', { note: '' });

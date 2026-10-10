@@ -7,6 +7,7 @@ import { html, icon, toast, openDialog } from './ui.js';
 import * as store from './store.js';
 import { loadFeatures, can, features, ownerPost } from './features.js';
 import { makePicture, listPictures } from './companion.js';
+import { apiUrl } from './api.js';
 
 const FORMATS = {
   story: { label: 'Vertical (Stories, Reels, Status)', w: 1080, h: 1920 },
@@ -249,7 +250,7 @@ export async function openVideoMaker({ text, citation, bookKey = '', title = '',
       if ($('#vm-voice').checked) {
         step('Recording the narration…');
         const spoken = `${short.replace(/…$/, '')}. ${citation.replace(/\(([^)]+)\)$/, '').replace(/:/g, ', ').trim()}.`;
-        narration = await ownerPost('/api/tts', { text: spoken.slice(0, 1700), speed: 0.95, voice: store.getSetting('narratorVoice', null)?.id || undefined }, { as: 'blob', signal: ctl.signal });
+        narration = await ownerPost(apiUrl('/api/tts'), { text: spoken.slice(0, 1700), speed: 0.95, voice: store.getSetting('narratorVoice', null)?.id || undefined }, { as: 'blob', signal: ctl.signal });
       }
       step('Making your video…', 0);
       const theme = bg.startsWith('theme:') ? bg.slice(6) : 'night';

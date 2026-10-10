@@ -5,6 +5,7 @@
 // sign-up is how a forgotten password is reset.
 
 import { loadFeatures } from './features.js';
+import { apiUrl } from './api.js';
 
 const SESSION_KEY = 'mavis-session';
 const AVAILABLE_KEY = 'mavis-accounts-available';
@@ -38,7 +39,7 @@ export class AuthError extends Error {
 async function call(action, { method = 'POST', body, token } = {}) {
   let r;
   try {
-    r = await fetch(`/api/account/${action}`, {
+    r = await fetch(apiUrl(`/api/account/${action}`), {
       method,
       headers: { accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
       body: body ? JSON.stringify(body) : undefined,

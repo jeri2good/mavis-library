@@ -8,6 +8,7 @@ import * as store from './store.js';
 import { loadFeatures, can, features, ownerPost, accessCode } from './features.js';
 import { Narrator, sentences } from './speech.js';
 import { ttsSupported, whenVoicesReady } from './tts.js';
+import { apiUrl } from './api.js';
 
 export const STYLES = [['painterly', 'Painterly'], ['watercolor', 'Watercolor'], ['pencil', 'Pencil sketch'], ['storybook', 'Storybook'], ['stained glass', 'Stained glass']];
 
@@ -38,13 +39,13 @@ function b64ToBlob(b64, type = 'image/webp') {
 
 /** Start a picture and wait for it (polling), reporting progress. */
 export async function makePicture({ title, author, chapter, passage, style, scene, look, shape }, { onTick, signal } = {}) {
-  const { id } = await ownerPost('/api/study', { task: 'picture', title, author, chapter, passage, style, scene, look, shape }, { signal });
+  const { id } = await ownerPost(apiUrl('/api/study'), { task: 'picture', title, author, chapter, passage, style, scene, look, shape }, { signal });
   const started = Date.now();
   for (;;) {
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
     await new Promise((r) => setTimeout(r, 2500));
     onTick?.(Math.round((Date.now() - started) / 1000));
-    const r = await fetch(`/api/study?picture=${encodeURIComponent(id)}`, { headers: { 'x-mavis-access': accessCode() }, signal, cache: 'no-store' });
+    const r = await fetch(apiUrl(`/api/study?picture=${encodeURIComponent(id)}`), { headers: { 'x-mavis-access': accessCode() }, signal, cache: 'no-store' });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.message || `The picture service answered ${r.status}.`);
     if (j.status === 'done') return { blob: b64ToBlob(j.image), revised: j.revised };
@@ -73,7 +74,7 @@ export async function ensureSummaries(ctx, { onProgress, signal } = {}) {
       if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
       const i = todo.shift();
       const s = sections[i];
-      const { summary } = await ownerPost('/api/study', { task: 'summarize', title: ctx.title, author: ctx.author, chapter: s.label, text: s.text }, { signal });
+      const { summary } = await ownerPost(apiUrl('/api/study'), { task: 'summarize', title: ctx.title, author: ctx.author, chapter: s.label, text: s.text }, { signal });
       // Cache empty answers too (a very short section, or one the spoiler guard blanked) so they aren't asked for again.
       await store.setCache(sumKey(ctx.key, s.index), summary || '');
       out[i] = { chapter: s.label, summary: summary || '' };
@@ -204,7 +205,7 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
     try {
       const summaries = await ensureSummaries(ctx, { signal: ctl.signal, onProgress: (n, t) => { const el = body.querySelector('#cp-prog'); if (el && t) el.textContent = `Making chapter notes… ${n} of ${t}`; } });
       const el = body.querySelector('#cp-prog'); if (el) el.textContent = 'Writing your recap…';
-      const { recap } = await ownerPost('/api/study', { task: 'recap', title: ctx.title, author: ctx.author, summaries, seen: summaries.seen, current: { chapter: ctx.chapter(), text: ctx.textSoFar() } }, { signal: ctl.signal });
+      const { recap } = await ownerPost(apiUrl('/api/study'), { task: 'recap', title: ctx.title, author: ctx.author, summaries, seen: summaries.seen, current: { chapter: ctx.chapter(), text: ctx.textSoFar() } }, { signal: ctl.signal });
       out.innerHTML = String(html`<div class="recap">${recap.split(/\n+/).map((p) => html`<p>${p}</p>`)}</div>
         <div class="dialog-actions" style="justify-content:flex-start"><button type="button" class="btn btn-sm btn-primary" data-cp="speak">${icon('play', { size: 18 })} Listen</button><button type="button" class="btn btn-sm btn-quiet" data-cp="hush" hidden>${icon('stop', { size: 18 })} Stop</button></div>`);
       out.dataset.recap = recap;
@@ -269,7 +270,7 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
     try {
       const summaries = await ensureSummaries(ctx, { signal: ctl.signal, onProgress: (n, t) => { const el = body.querySelector('#cp-prog'); if (el && t) el.textContent = `Making chapter notes… ${n} of ${t}`; } });
       const el = body.querySelector('#cp-prog'); if (el) el.textContent = 'Finding the characters…';
-      const res = await ownerPost('/api/study', { task: 'characters', title: ctx.title, author: ctx.author, summaries, seen: summaries.seen, current: { chapter: ctx.chapter(), text: ctx.textSoFar() } }, { signal: ctl.signal });
+      const res = await ownerPost(apiUrl('/api/study'), { task: 'characters', title: ctx.title, author: ctx.author, summaries, seen: summaries.seen, current: { chapter: ctx.chapter(), text: ctx.textSoFar() } }, { signal: ctl.signal });
       const data = { characters: res.characters || [], chapter: ctx.chapter(), at: Date.now() };
       await store.setCache(`chars|${store.getOwner()}|${ctx.key}`, data);
       paintPeople(data);

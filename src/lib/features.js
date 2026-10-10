@@ -2,6 +2,7 @@
 // assistant, Jev ranking), plus the owner access code stored on this device.
 
 import { getSetting, setSetting } from './store.js';
+import { apiUrl } from './api.js';
 
 let cache = null;
 let inflight = null;
@@ -18,7 +19,7 @@ export async function loadFeatures({ force = false } = {}) {
     const code = accessCode();
     if (code) headers['x-mavis-access'] = code;
     try {
-      const r = await fetch('/api/features', { headers, cache: 'no-store' });
+      const r = await fetch(apiUrl('/api/features'), { headers, cache: 'no-store' });
       const j = r.ok ? await r.json() : {};
       cache = { ...EMPTY, ...j, reachable: r.ok };
     } catch {

@@ -10,6 +10,7 @@ import { speakWord, ttsSupported } from '../lib/tts.js';
 import { isKids, kidsName } from '../lib/kids.js';
 import { loadFeatures, can, ownerPost } from '../lib/features.js';
 import { stateBlock } from '../components.js';
+import { apiUrl } from '../lib/api.js';
 
 export const title = (route) => (route.segs[0] === 'practice' ? 'Practice words' : 'Word builder');
 
@@ -149,7 +150,7 @@ export async function render(root, route, { navigate }) {
 
 /** Owner-only: a short kid-friendly meaning for a word as used in its sentence. */
 export async function explainSimply(r) {
-  const out = await ownerPost('/api/study', { task: 'word', word: r.word, form: r.form, sentence: r.sentence, definition: r.definition, title: r.bookTitle });
+  const out = await ownerPost(apiUrl('/api/study'), { task: 'word', word: r.word, form: r.form, sentence: r.sentence, definition: r.definition, title: r.bookTitle });
   if (!out.meaning) throw new Error('No explanation came back. Try again.');
   return out;
 }

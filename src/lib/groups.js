@@ -7,6 +7,7 @@
 import { sessionToken, currentUser, sessionExpired } from './auth.js';
 import * as store from './store.js';
 import { accessCode } from './features.js';
+import { apiUrl } from './api.js';
 
 export class GroupError extends Error {
   constructor(message, status, code) { super(message); this.status = status; this.code = code; }
@@ -17,7 +18,7 @@ export async function api(action, body = {}, { owner = false } = {}) {
   if (!token || !currentUser()) throw new GroupError('Sign in to use groups.', 401, 'signed_out');
   let r;
   try {
-    r = await fetch('/api/groups', {
+    r = await fetch(apiUrl('/api/groups'), {
       method: 'POST',
       headers: {
         'content-type': 'application/json', authorization: `Bearer ${token}`,

@@ -3,6 +3,7 @@
 
 import { getSetting, setSetting } from './store.js';
 import { accessCode } from './features.js';
+import { apiUrl } from './api.js';
 
 async function call(path, init = {}) {
   let r;
@@ -18,10 +19,10 @@ export function libraryVoices({ gender = '', age = '', q = '', page = 1 } = {}) 
   if (gender) p.set('gender', gender);
   if (age) p.set('age', age);
   if (q) p.set('q', q);
-  return call(`/api/voices?${p}`);
+  return call(apiUrl(`/api/voices?${p}`));
 }
 
-export function myVoices() { return call('/api/voices?list=mine'); }
+export function myVoices() { return call(apiUrl('/api/voices?list=mine')); }
 
 export async function cloneMyVoice({ blob, title, text }) {
   const fd = new FormData();
@@ -30,11 +31,11 @@ export async function cloneMyVoice({ blob, title, text }) {
   if (text) fd.append('text', text);
   const ext = /mp4|m4a|aac/.test(blob.type) ? 'm4a' : /mpeg|mp3/.test(blob.type) ? 'mp3' : /wav/.test(blob.type) ? 'wav' : /ogg/.test(blob.type) ? 'ogg' : 'webm';
   fd.append('audio', blob, `my-voice.${ext}`);
-  const { voice } = await call('/api/voices', { method: 'POST', body: fd });
+  const { voice } = await call(apiUrl('/api/voices'), { method: 'POST', body: fd });
   return voice;
 }
 
-export function deleteVoice(id) { return call(`/api/voices?id=${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+export function deleteVoice(id) { return call(apiUrl(`/api/voices?id=${encodeURIComponent(id)}`), { method: 'DELETE' }); }
 
 /** The narrator voice chosen on this device ({ id, title } or null = the site's default voice). */
 export const narratorVoice = () => getSetting('narratorVoice', null);

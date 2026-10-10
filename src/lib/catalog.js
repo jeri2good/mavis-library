@@ -1,5 +1,7 @@
 // Client for Mavis's own /api endpoints (Gutendex + Open Library adapters).
 
+import { apiUrl } from './api.js';
+
 export class ApiError extends Error {
   constructor(message, { status = 0, code = 'network', retryable = true } = {}) {
     super(message);
@@ -104,23 +106,23 @@ export async function searchGutenberg({ search = '', topic = '', languages = '',
   if (ids) p.set('ids', ids);
   if (sort !== 'popular') p.set('sort', sort);
   if (page > 1) p.set('page', String(page));
-  const data = await getJSON(`/api/catalog?${p}`, opts);
+  const data = await getJSON(apiUrl(`/api/catalog?${p}`), opts);
   return { ...data, results: data.results.map(fromGutenberg) };
 }
 
 export async function getGutenbergBook(id, opts) {
-  const data = await getJSON(`/api/catalog?id=${encodeURIComponent(id)}`, opts);
+  const data = await getJSON(apiUrl(`/api/catalog?id=${encodeURIComponent(id)}`), opts);
   return fromGutenberg(data.book);
 }
 
 export async function searchOpenLibrary({ q, page = 1 }, opts) {
   const p = new URLSearchParams({ q, page: String(page) });
-  const data = await getJSON(`/api/openlibrary?${p}`, opts);
+  const data = await getJSON(apiUrl(`/api/openlibrary?${p}`), opts);
   return { ...data, results: data.results.map(fromOpenLibrary) };
 }
 
 export async function getOpenLibraryWork(id, opts) {
-  const data = await getJSON(`/api/openlibrary?work=${encodeURIComponent(id)}`, opts);
+  const data = await getJSON(apiUrl(`/api/openlibrary?work=${encodeURIComponent(id)}`), opts);
   return data.work;
 }
 
@@ -132,7 +134,7 @@ export async function downloadGutenbergEpub(id, { onProgress, signal } = {}) {
   if (!navigator.onLine) throw new ApiError("You're offline. Connect to download this book.", { code: 'offline' });
   let res;
   try {
-    res = await fetch(`/api/epub?id=${encodeURIComponent(id)}`, { signal });
+    res = await fetch(apiUrl(`/api/epub?id=${encodeURIComponent(id)}`), { signal });
   } catch (err) {
     if (signal?.aborted) throw err;
     throw new ApiError('The download could not start. Check your connection and try again.');

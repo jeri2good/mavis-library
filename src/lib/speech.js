@@ -14,6 +14,7 @@
 import { ttsSupported } from './tts.js';
 import { ownerPost } from './features.js';
 import { getSetting } from './store.js';
+import { apiUrl } from './api.js';
 
 const CHUNK = 1400; // characters per cloud request
 
@@ -122,7 +123,7 @@ export class Narrator {
 
   async synthesize(chunk) {
     const voice = chunk.voice || getSetting('narratorVoice', null)?.id || undefined;
-    const blob = await ownerPost('/api/tts', { text: chunk.text, speed: this.rate(), voice }, { as: 'blob' });
+    const blob = await ownerPost(apiUrl('/api/tts'), { text: chunk.text, speed: this.rate(), voice }, { as: 'blob' });
     chunk.url = URL.createObjectURL(blob);
     return chunk;
   }

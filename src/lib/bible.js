@@ -2,6 +2,8 @@
 // OpenBible cross-references, reference parsing ("1 Cor 13:4-7"), and
 // concordance search. Files live in /bible/ and are cached for offline use.
 
+import { apiUrl } from './api.js';
+
 const BASE = '/bible';
 let indexP = null;
 const books = new Map(); // `${tr}/${id}` → Promise<{chapters}>
@@ -60,12 +62,12 @@ export async function loadChapter(tr, book, chapter) {
     return { tr: info.id, verses: info.id === 'kjv' ? raw.map(plain) : raw.slice(), raw: info.id === 'kjv' ? raw : null, headings: {}, notes: {} };
   }
   // f = text format version: bump it when the server's text clean-up changes, so CDN and offline copies refresh.
-  const j = await getRemote(`/api/bible-ext?tr=${encodeURIComponent(info.id)}&b=${encodeURIComponent(book)}&c=${chapter}&f=2`);
+  const j = await getRemote(apiUrl(`/api/bible-ext?tr=${encodeURIComponent(info.id)}&b=${encodeURIComponent(book)}&c=${chapter}&f=2`));
   return { tr: info.id, verses: j.verses || [], raw: null, headings: j.headings || {}, notes: j.notes || {}, subtitle: j.subtitle, missing: j.missing };
 }
 
 export function loadCommentary(id, book, chapter) {
-  return getRemote(`/api/bible-ext?cm=${encodeURIComponent(id)}&b=${encodeURIComponent(book)}&c=${chapter}`);
+  return getRemote(apiUrl(`/api/bible-ext?cm=${encodeURIComponent(id)}&b=${encodeURIComponent(book)}&c=${chapter}`));
 }
 
 const il = new Map();

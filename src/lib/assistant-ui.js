@@ -2,6 +2,7 @@
 import { html, icon, openDialog, toast } from './ui.js';
 import { features, can, ownerPost, loadFeatures } from './features.js';
 import { getSetting, setSetting } from './store.js';
+import { apiUrl } from './api.js';
 
 const SUGGESTIONS = {
   book: ['Summarize this chapter', 'Who are the main characters so far?', 'Explain the selected passage', 'Read this chapter to me'],
@@ -56,7 +57,7 @@ export async function openAssistant({ container, getContext, actions = {}, initi
     wait.classList.add('pending');
     send.disabled = true;
     try {
-      const out = await ownerPost('/api/assistant', { messages: history, context: getContext() });
+      const out = await ownerPost(apiUrl('/api/assistant'), { messages: history, context: getContext() });
       const reply = out.reply || (out.actions?.length ? 'Done.' : 'I don’t have an answer for that.');
       wait.textContent = reply;
       wait.classList.remove('pending');

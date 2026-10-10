@@ -6,6 +6,7 @@
 import * as store from './store.js';
 import { ownerPost } from './features.js';
 import { assignVoices } from './voices.js';
+import { apiUrl } from './api.js';
 
 const OPEN = '“"';
 const CLOSE = { '“': '”', '"': '"' };
@@ -60,7 +61,7 @@ export async function castSection({ key, title, author, sectionIndex, blocks }) 
     const cast = await getCast(key);
     for (let i = 0; i < quotes.length; i += 60) {
       const part = quotes.slice(i, i + 60);
-      const res = await ownerPost('/api/study', {
+      const res = await ownerPost(apiUrl('/api/study'), {
         task: 'cast', title, author,
         quotes: part.map((q) => ({ text: q.text, before: q.before, after: q.after })),
         known: [...new Set([...Object.keys(cast), ...Object.keys(speakers)])],

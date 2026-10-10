@@ -5,6 +5,7 @@
 import * as store from './store.js';
 import { searchGutenberg } from './catalog.js';
 import { can, ownerPost, loadFeatures } from './features.js';
+import { apiUrl } from './api.js';
 
 const STOP = new Set(['fiction', 'juvenile fiction', 'literature', 'english', 'american', 'texts', 'novels', 'short stories', 'bible', 'christianity', 'scripture', 'test fixtures']);
 const WEIGHT = { finished: 3, reading: 2, want: 1 };
@@ -70,7 +71,7 @@ export async function recommendations({ signal } = {}) {
   await loadFeatures();
   if (can('jev') && items.length > 2) {
     try {
-      const { scores } = await ownerPost('/api/rank', {
+      const { scores } = await ownerPost(apiUrl('/api/rank'), {
         profile: { genres: profile.genres.slice(0, 10).map((g) => g[0]), recent: profile.recent },
         candidates: items.map((i) => ({ id: i.book.key, title: i.book.title, authors: i.book.authors, subjects: i.book.subjects })),
       }, { signal });

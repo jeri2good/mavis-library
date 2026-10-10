@@ -8,6 +8,7 @@ import { html, icon, toast, formatBytes, confirmDialog } from './ui.js';
 import * as idb from './idb.js';
 import * as store from './store.js';
 import * as ab from './audiobook.js';
+import { apiUrl } from './api.js';
 
 export const lvKey = (bookKey) => `lv:${bookKey}`;
 const mid = (key) => `${store.getOwner()}|${key}`;
@@ -18,7 +19,7 @@ export async function findVersions(book) {
   const a = (book.authors || [])[0];
   if (a) p.set('author', typeof a === 'string' ? a : a.name || '');
   let r;
-  try { r = await fetch(`/api/librivox?${p}`); } catch { throw new Error('Couldn’t reach LibriVox. Check your connection.'); }
+  try { r = await fetch(apiUrl(`/api/librivox?${p}`)); } catch { throw new Error('Couldn’t reach LibriVox. Check your connection.'); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.message || `LibriVox answered ${r.status}.`);
   return j.versions || [];

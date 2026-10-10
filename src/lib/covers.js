@@ -3,6 +3,7 @@
 // screen, and are remembered on the device.
 
 import { getCache, setCache } from './store.js';
+import { apiUrl } from './api.js';
 
 const MISS_TTL = 7 * 24 * 3600e3;
 const mem = new Map();
@@ -36,7 +37,7 @@ function pump() {
         if (job.title) q.set('title', job.title);
         if (job.author) q.set('author', job.author);
         if (job.isbn) q.set('isbn', job.isbn);
-        const r = await fetch(`/api/covers?${q}`);
+        const r = await fetch(apiUrl(`/api/covers?${q}`));
         if (r.ok) url = (await r.json()).cover || null;
         await setCache(cacheId(job.key), { url, at: Date.now() });
       } catch { /* leave uncached so it retries later */ }

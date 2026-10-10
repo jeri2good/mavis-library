@@ -10,6 +10,7 @@
 import { sessionToken, sessionExpired } from './auth.js';
 import * as store from './store.js';
 import { debounce } from './ui.js';
+import { apiUrl } from './api.js';
 
 export const SYNCED = store.SYNCED_STORES;
 
@@ -40,7 +41,7 @@ async function exchange(changes) {
   const cursors = store.getSetting(cursorKey, {});
   let r;
   try {
-    r = await fetch('/api/sync', {
+    r = await fetch(apiUrl('/api/sync'), {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken()}` },
       body: JSON.stringify({ changes, cursors }),

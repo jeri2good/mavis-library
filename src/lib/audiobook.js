@@ -15,6 +15,7 @@ import * as idb from './idb.js';
 import * as store from './store.js';
 import { sentences } from './speech.js';
 import { ownerPost } from './features.js';
+import { apiUrl } from './api.js';
 
 const CHUNK_CHARS = 1500;
 const PARALLEL = 3;
@@ -144,7 +145,7 @@ export function download(key, { title = '', from = 0, upTo = Infinity, voice = '
         let blob = null;
         for (let attempt = 0; attempt < 4 && !cancelled; attempt++) {
           try {
-            blob = await ownerPost('/api/tts', { text: job2.k.text, speed: 1, voice: m.voiceId || undefined }, { as: 'blob' });
+            blob = await ownerPost(apiUrl('/api/tts'), { text: job2.k.text, speed: 1, voice: m.voiceId || undefined }, { as: 'blob' });
             if (!blob || blob.size < 200) throw new Error('The voice service sent an empty file.');
             break;
           } catch (err) {

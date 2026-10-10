@@ -36,3 +36,12 @@
   [headers.values]
     Content-Type = "application/manifest+json"
     Cache-Control = "public, max-age=3600"
+
+# Android App Links verification for com.mavislibrary.app. Replace the two
+# placeholder fingerprints with the real Play App Signing and upload key SHA-256
+# values before the first Play release.
+[[headers]]
+  for = "/.well-known/assetlinks.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=3600"

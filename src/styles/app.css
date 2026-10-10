@@ -149,7 +149,7 @@ p { margin: 0; }
 
 /* Inside the Kotlin Android shell the native bottom bar is the only navigation. */
 html.in-native-shell { --tabbar: 0px; }
-.in-native-shell .tabbar { display: none; }
+.in-native-shell .tabbar, .in-native-shell .topbar { display: none; }
 .in-native-shell .shell { grid-template-columns: 1fr; }
 .in-native-shell .main, .in-native-shell .topbar { grid-column: 1; }
 

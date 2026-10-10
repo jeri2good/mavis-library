@@ -13,6 +13,7 @@ An installable reading app (Progressive Web App) for Android phones and tablets 
 **Listening**
 - **Read-aloud** with the device voice, or a **cloud voice** (Fish Audio or Google) that keeps reading with the screen off and answers car and Bluetooth buttons. **Car mode** has huge controls.
 - **Whole books as audio**, saved on the device for offline listening, with chapter skip, speed, and sleep timer.
+- **Scene film:** select a passage (or use the current page, a Bible verse, or a saved quote) and Mavis plans 2–5 shots, paints them, narrates them, and records a captioned video on your device. Optional real motion per shot comes from fal.ai (about $0.21 per 5-second shot); without it the shots are still pictures with camera moves.
 - **Voices:** pick a narrator from Fish Audio's licensed library, or make a private copy of your own voice (with consent). **Full cast:** each character gets a fitting voice.
 - **LibriVox:** human-read public-domain audiobooks, streamed from the Internet Archive or saved for offline, in the same player.
 
@@ -62,6 +63,7 @@ Set these in Netlify under **Project configuration → Environment variables**. 
 | `AUTH_SECRET` | Turns on accounts, sync, and groups. A long random string; changing it signs everyone out. |
 | `MAVIS_ACCESS_CODE` | Passphrase that unlocks the paid features on a device (enter it in Settings). Without it, paid features stay off. |
 | `TTS_PROVIDER` | `fish` or `google` for the cloud voice. |
+| `FAL_KEY` | fal.ai key for moving shots in scene films. Optional: `FAL_VIDEO_MODEL` (default Kling 2.5 Turbo image-to-video). Off without the key. |
 | `FISH_AUDIO_API_KEY` | Fish Audio key (cloud voice, voice library, voice copies). Optional: `FISH_AUDIO_VOICE_ID`, `FISH_AUDIO_MODEL`. |
 | `GOOGLE_TTS_API_KEY` | Google Text-to-Speech key, if `TTS_PROVIDER=google`. Optional: `GOOGLE_TTS_VOICE`. |
 | `LLM_PROVIDER` | `anthropic` or `openai` (any OpenAI-compatible API). |
@@ -80,7 +82,7 @@ npm run build
 npm run test:e2e         # 64 browser checks (Python Playwright + Chromium); writes docs/test-evidence/
 ```
 
-The browser suite serves the built app with the production security headers and runs the real function code, with fixtures standing in for Gutenberg, HelloAO, LibriVox, OpenAI, and Fish Audio. Accounts, sync, and groups run against `@netlify/blobs`' own local server.
+The browser suite serves the built app with the production security headers and runs the real function code, with fixtures standing in for Gutenberg, HelloAO, LibriVox, OpenAI, and Fish Audio, and fal.ai. Accounts, sync, and groups run against `@netlify/blobs`' own local server.
 
 ## Path to an Android app
 

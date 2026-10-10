@@ -3,8 +3,8 @@
 Live at **https://mavis-library.netlify.app** (Netlify, deployed from `main`).
 
 **How each status was established**
-- **Live** — exercised against the deployed site and the real outside services (Gutenberg, HelloAO, LibriVox, Open Library, OpenAI, Fish Audio, Netlify Blobs). Calls that need an account or a POST were checked with temporary, access-code-protected probe functions, which were deleted afterwards.
-- **Browser** — covered by the 64-check Playwright suite in headless Chromium, with the production security headers and the real function code. Fixtures stand in for the outside services ([report](test-evidence/e2e-report.md), [screenshots](test-evidence/screenshots/)).
+- **Live** — exercised against the deployed site and the real outside services (Gutenberg, HelloAO, LibriVox, Open Library, OpenAI, Fish Audio, fal.ai, Netlify Blobs). Calls that need an account or a POST were checked with temporary, access-code-protected probe functions, which were deleted afterwards.
+- **Browser** — covered by the 65-check Playwright suite in headless Chromium, with the production security headers and the real function code. Fixtures stand in for the outside services ([report](test-evidence/e2e-report.md), [screenshots](test-evidence/screenshots/)).
 - **Function** — covered by the 65 Node checks (`npm run test:functions`). Accounts, sync, and groups run against `@netlify/blobs`' own local server.
 - **Not verified** — needs a real phone, car, or long-term use.
 
@@ -27,6 +27,7 @@ Live at **https://mavis-library.netlify.app** (Netlify, deployed from `main`).
 | Area | Status | Notes |
 |---|---|---|
 | Device read-aloud with page turns, sleep timer, media controls | Browser (simulated voice) | Real device voices not verified. |
+| Scene film (selection, page, verses, quotes) | Browser · Function · Live (motion) | Storyboard, painted shots, narration, captions and recording are covered with fixtures. fal.ai was checked live: it accepted a JPEG data URI and returned a real clip. The full real-OpenAI storyboard-to-film run and recording on a real phone were not checked. OpenAI's Sora video API was shut down on 2026-09-24, so motion uses fal.ai. |
 | Cloud voice (Fish Audio) and car mode | Browser · Function | Same Fish Audio account as the voice library, which was checked live; cloud read-aloud audio itself wasn't re-checked live. Screen-off playback and steering-wheel buttons in a real car: not verified. |
 | Whole book saved as audio for offline listening | Browser | Real-phone storage limits on long books: not verified. |
 | Voice library and private own-voice copy | Live (list, clone, delete) · Browser · Function | The quality of a cloned voice depends on the recording. |

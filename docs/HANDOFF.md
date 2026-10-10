@@ -88,7 +88,7 @@ Errors are always `{ error, message }` with a suitable status code.
 
 ## 5. Security
 
-- **Content Security Policy** (`netlify.toml`): scripts from the app's own origin only. Network access is limited to the app itself, the dictionary, and archive.org; media to self, blob:, Fish Audio, and archive.org. No frames from other sites.
+- **Content Security Policy** (`netlify.toml`): scripts from the app's own origin only. Network access is limited to the app itself, the dictionary, and archive.org; media to self, blob:, Fish Audio, and archive.org; finished motion clips are fetched from `*.fal.media`. No frames from other sites.
 - **EPUBs:** shown in a sandboxed frame with no scripts; script tags and inline handlers are stripped, and outbound links ask first.
 - **Imports:** checked by their actual file contents and size-limited; DRM-encrypted EPUBs are refused.
 - **Server input:**
@@ -111,7 +111,7 @@ Errors are always `{ error, message }` with a suitable status code.
   - paid features on fixtures;
   - accounts with paid features (for groups).
 - Two timing-sensitive checks were hardened this release, and the suite passed twice in a row.
-- The fixture server (`tests/e2e/server.mjs`) imitates Gutenberg OPDS, HelloAO, LibriVox, OpenAI chat and image responses, and Fish Audio. `/__test/*` endpoints expose what was called.
+- The fixture server (`tests/e2e/server.mjs`) imitates Gutenberg OPDS, HelloAO, LibriVox, OpenAI chat and image responses, Fish Audio, and the fal.ai queue. `/__test/*` endpoints expose what was called.
 
 ## 7. Known issues and next steps
 
@@ -126,3 +126,8 @@ Errors are always `{ error, message }` with a suitable status code.
 4. **Screen-reader audit** (TalkBack, VoiceOver).
 5. **Spoiler guard limits:** it checks names, not events. A model could still paraphrase a later plot point without naming anyone. The prompts forbid it and only earlier text is sent, but it isn't mechanically checked.
 6. Reader display settings are per device (not synced).
+
+## Scene films
+- Client: `src/lib/scenefilm.js` (maker dialog + canvas/MediaRecorder renderer). Server: `study.mjs` tasks `storyboard`, `picture` (scene/look/shape) and `motion`; `GET ?motion=<job>` polls. `netlify/lib/motion.mjs` wraps the fal.ai queue; job tokens only point at queue.fal.run, results only at `*.fal.media`.
+- Motion needs `FAL_KEY` (set in Netlify). Without it the checkbox is disabled and shots are still pictures with camera moves. Cost is about $0.21 per 5 s shot.
+- Failed or declined shots fall back to the still picture.

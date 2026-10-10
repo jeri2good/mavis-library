@@ -1,8 +1,8 @@
 # Mavis Library end-to-end results
 
-Run: 2026-10-09 19:51 EDT · Chromium 141.0.7390.37 (headless, Linux) · 199s
+Run: 2026-10-09 22:05 EDT · Chromium 141.0.7390.37 (headless, Linux) · 220s
 
-**64 of 64 checks passed.**
+**65 of 65 checks passed.**
 
 | Result | Check |
 |---|---|
@@ -65,6 +65,7 @@ Run: 2026-10-09 19:51 EDT · Chromium 141.0.7390.37 (headless, Linux) · 199s
 | ✅ pass | Offline audiobook: save a whole book as audio, listen, keep playing with no network, resume where you stopped |
 | ✅ pass | Picked for you: recommendations from shelf genres, ranked by Jev when available |
 | ✅ pass | Word builder: save a word from the dictionary with its sentence, add one by typing, explain it simply, practice, and words move up |
+| ✅ pass | Scene film: a selected passage becomes a narrated film — planned shots, painted stills, real motion from fal.ai, recorded on the device |
 | ✅ pass | Phone at 360px: Bible, search, quotes, and settings fit without sideways scrolling |
 | ✅ pass | Kids mode: a grown-up turns it on with a PIN; children’s books only, no store links, kid-safe AI, grown-up screens need the PIN, PIN turns it off |
 | ✅ pass | Book club: start a club from a book page, share a passage and AI discussion questions from the reader |

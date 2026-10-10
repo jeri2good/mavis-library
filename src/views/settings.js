@@ -8,6 +8,7 @@ import { loadFeatures, setAccessCode, accessCode } from '../lib/features.js';
 import { icon } from '../lib/ui.js';
 import * as kids from '../lib/kids.js';
 import { isNativeApp } from '../lib/native.js';
+import { versionLabel } from '../lib/version.js';
 
 export const title = () => 'Settings';
 
@@ -59,6 +60,7 @@ export async function render(root) {
     <div class="panel">
       <h2>About</h2>
       <p class="muted">Mavis Library: your books, your library, your imagination. Free books come from Project Gutenberg’s own catalog. Book search beyond free titles comes from Open Library. Definitions come from the Free Dictionary API. Borrowing and buying happen on the provider’s own site or app.</p>
+      <p class="small faint" id="app-version">${versionLabel()} · <a href="/privacy.html">Privacy policy</a></p>
     </div>
   </div></div>`);
   function paintKids() {

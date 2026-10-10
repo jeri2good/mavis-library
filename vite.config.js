@@ -83,7 +83,11 @@ export default defineConfig(({ mode }) => {
   const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
   return {
     plugins: [serviceWorkerPrecache(env.VITE_API_BASE), androidCspMeta(mode, env)],
-    define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      // Web builds show the version only; the Android build adds the CI build number.
+      __APP_BUILD__: JSON.stringify(mode === 'android' ? process.env.MAVIS_BUILD_NUMBER || 'local' : ''),
+    },
     build: {
       target: ['es2020', 'chrome80', 'safari14', 'firefox80'],
       sourcemap: false,

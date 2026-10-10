@@ -4,7 +4,7 @@
 
 import { html, openDialog, toast } from './ui.js';
 import { apiUrl } from './api.js';
-import { APP_VERSION } from './version.js';
+import { APP_VERSION, APP_BUILD } from './version.js';
 
 const WHAT = { answer: 'AI answer', picture: 'AI picture', summary: 'AI summary', film: 'scene film' };
 
@@ -18,7 +18,7 @@ export async function sendReport({ what, ref = '', text = '' }) {
     r = await fetch(apiUrl('/api/report'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ what, ref, text, version: APP_VERSION }),
+      body: JSON.stringify({ what, ref, text, version: APP_BUILD ? `${APP_VERSION}+${APP_BUILD}` : APP_VERSION }),
     });
   } catch { throw new Error('Couldn’t reach Mavis. Check your connection and try again.'); }
   const j = await r.json().catch(() => ({}));

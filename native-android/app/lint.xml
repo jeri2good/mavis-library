@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Private sideload app (docs/NATIVE-PLAN.md: not on Google Play). targetSdk 35 is the approved M1 target. -->
+    <issue id="OldTargetApi" severity="ignore" />
+    <issue id="ExpiredTargetSdkVersion" severity="warning" />
+    <!-- Version catalog pins are deliberate: compileSdk 35 caps the newest AndroidX releases. -->
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="NewerVersionAvailable" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+</lint>

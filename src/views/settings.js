@@ -52,7 +52,7 @@ export async function render(root) {
         <dt>Installed app</dt><dd>${isNativeApp() ? 'Yes, the Android app' : standalone ? 'Yes, running as an installed app' : 'No. Use your browser’s “Install app” or “Add to Home screen” option.'}</dd>
         <dt>Read aloud</dt><dd>${ttsSupported ? 'Available' : 'Not supported in this browser'}</dd>
         <dt>Voice search</dt><dd>${voiceInputSupported ? 'Available (speech may be processed by your browser’s provider)' : 'Not supported in this browser; type instead'}</dd>
-        <dt>Accounts</dt><dd>${authConfigured ? 'Available' : 'Not connected on this deployment (guest mode)'}</dd>
+        <dt>Accounts</dt><dd>${authConfigured ? html`Available · <a href="#/account">Account</a> (sign in, sync, delete account)` : 'Not connected on this deployment (guest mode)'}</dd>
       </dl>
       <div><button type="button" class="btn btn-sm" data-persist>Keep my downloads safe from cleanup</button></div>
     </div>

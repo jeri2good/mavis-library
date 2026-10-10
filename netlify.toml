@@ -12,6 +12,17 @@
 # Routes are hash-based (#/shelf, #/read/...), so no SPA rewrite is needed.
 # Function routes are declared in each function's `config.path` (/api/*).
 
+# Public policy pages (static files in public/).
+[[redirects]]
+  from = "/privacy"
+  to = "/privacy.html"
+  status = 200
+
+[[redirects]]
+  from = "/delete-account"
+  to = "/delete-account.html"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]

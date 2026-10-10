@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Privacy policy · Mavis Library</title>
+    <meta name="description" content="What Mavis Library stores, which outside services receive data, and how to delete your account." />
+    <meta name="theme-color" content="#1f4a37" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#101613" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <style>
+      :root { --paper: #f4efe3; --raised: #fbf8f0; --ink: #1c2620; --soft: #46544b; --line: #d8cfba; --brand: #1f4a37; --link: #1f4a37; }
+      @media (prefers-color-scheme: dark) { :root { --paper: #111714; --raised: #182019; --ink: #ebe5d5; --soft: #b9bcae; --line: #2a332d; --brand: #9fd0b1; --link: #9fd0b1; } }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.6 Georgia, "Iowan Old Style", "Source Serif 4", serif; }
+      header { background: #1f4a37; color: #f4efe3; padding: 18px 20px; }
+      header a { color: inherit; text-decoration: none; font: 600 20px/1.2 system-ui, sans-serif; }
+      main { max-width: 760px; margin: 0 auto; padding: 24px 20px 64px; }
+      h1 { font-size: 2rem; line-height: 1.2; margin: 8px 0 4px; }
+      h2 { font: 650 1.15rem/1.3 system-ui, sans-serif; margin: 32px 0 8px; color: var(--brand); }
+      p, li { color: var(--ink); }
+      .muted { color: var(--soft); font-size: 0.95rem; }
+      .panel { background: var(--raised); border: 1px solid var(--line); border-radius: 14px; padding: 4px 20px; margin: 16px 0; }
+      table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+      th, td { text-align: left; vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); }
+      th { font: 650 0.9rem/1.3 system-ui, sans-serif; }
+      a { color: var(--link); }
+      code { font-size: 0.9em; }
+    </style>
+  </head>
+  <body>
+    <header><a href="/">Mavis Library</a></header>
+    <main>
+      <h1>Privacy policy</h1>
+      <p class="muted">Applies to the Mavis Library website (mavis-library.netlify.app) and the Mavis Library Android app. Both run the same code.</p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>You can use Mavis Library without an account. Then your books, reading progress and notes stay on your device.</li>
+        <li>If you create an account, the server keeps your email address, a salted hash of your password, and the reading data you sync.</li>
+        <li>Everything sent between the app and the server travels over HTTPS (encrypted in transit).</li>
+        <li>You can delete your account and its synced data at any time, in the app or as described on the <a href="/delete-account">delete account page</a>.</li>
+        <li>There are no ads, no analytics and no tracking cookies.</li>
+      </ul>
+
+      <h2>What stays on your device</h2>
+      <p>Book files you download or import, saved audiobook audio, settings, the owner access code (if entered) and the kids mode PIN (stored as a salted hash) are kept in your browser or app storage on this device. They are not uploaded. Removing the app or clearing site data removes them.</p>
+
+      <h2>Accounts and sync</h2>
+      <p>Accounts are optional. When you create one, Mavis stores on its server (Netlify Blobs):</p>
+      <ul>
+        <li>your email address;</li>
+        <li>your password and recovery code as salted hashes (scrypt), never the plain text;</li>
+        <li>the data you sync: your shelf (book details, not the book files), reading progress, notes, highlights and quotes, reading plans, and word builder vocabulary.</li>
+      </ul>
+      <p>Book clubs and Bible study groups store the group name, the display name you choose, your reading position in the group's book or plan, and the posts you write. Other members see your display name, position and posts, never your email address.</p>
+
+      <h2>Outside services that receive data</h2>
+      <p>Some features send data to other companies. The AI, cloud voice and scene film features only work on devices where the site owner's access code has been entered; without it, nothing is sent to those services.</p>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Service</th><th>Used for</th><th>What it receives</th></tr></thead>
+          <tbody>
+            <tr><td>OpenAI</td><td>AI text (Ask Mavis, summaries, recaps, character maps, word explanations, discussion questions, full-cast casting) and AI pictures</td><td>Your question and the passage or book text you are working with, up to your reading position, plus the book's title and author. For pictures, a description of the scene.</td></tr>
+            <tr><td>fal.ai</td><td>Scene film motion (optional)</td><td>An AI picture made for the film and a short description of the movement.</td></tr>
+            <tr><td>Fish Audio</td><td>Cloud read-aloud and voices</td><td>The text being read aloud. If you make a copy of your own voice, your voice recording, stored as a private voice on the owner's Fish Audio account. Voice samples play directly from Fish Audio.</td></tr>
+            <tr><td>Project Gutenberg</td><td>Free book catalog, book downloads and covers</td><td>Public requests: search words, book numbers. Covers load directly from gutenberg.org.</td></tr>
+            <tr><td>Open Library</td><td>Book search and covers</td><td>Public requests: search words, titles and authors. Covers load directly from covers.openlibrary.org.</td></tr>
+            <tr><td>LibriVox</td><td>Audiobook listings</td><td>Public requests: book titles and authors.</td></tr>
+            <tr><td>Internet Archive</td><td>LibriVox audiobook audio</td><td>Public requests for the audio files, which stream directly from archive.org.</td></tr>
+            <tr><td>Netlify</td><td>Hosting the app and its server functions; storing accounts, synced data, groups and reports (Netlify Blobs)</td><td>Every request to the site, including your IP address (used for delivery and rate limits), and the account data described above.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Other public sources the app uses: the Free Dictionary API (dictionaryapi.dev, the word you look up, sent from your device), Google Books (titles and authors when looking for a cover), and the HelloAO Bible API (which Bible chapter is requested, through Mavis's server).</p>
+      <p>Optional services the site owner can switch on instead of, or as well as, the ones above: Anthropic (AI text), Google Cloud Text-to-Speech (cloud read-aloud), and TypeSafe AI or Eden AI (ranking "Picked for you" suggestions, which receives the genres you like and the titles you read recently).</p>
+      <p>Voice search and asking Mavis by voice use your device's speech recognition. Your browser or phone maker may process that audio under its own policy. Microphone audio is only used for voice features and is only recorded when you start one.</p>
+
+      <h2>Reports about AI content</h2>
+      <p>If you use "Report this" on an AI answer, picture, summary or scene film, Mavis stores a short note on its server (Netlify Blobs): what kind of content it was, which book or passage, any text you add, the time and the app version. It is not linked to your account. The site owner reads these notes to fix problems.</p>
+
+      <h2>Kids mode</h2>
+      <p>Kids mode is a setting a parent turns on with a PIN on one device. It hides grown-up books and asks the AI to keep answers child-friendly. It does not create a separate account; AI requests only carry an extra flag asking for child-safe answers. Mavis Library is meant for people aged 13 and over; children should use it with a parent.</p>
+
+      <h2>Deleting your data</h2>
+      <p>In the app: open <strong>Settings</strong>, then <strong>Account</strong>, then <strong>Delete account</strong>, and confirm with your password. This permanently removes your email address, password hash, and every synced shelf, progress, note, plan and vocabulary record from the server. Book club and study group records are not removed automatically: leave each group first (this removes your membership, display name and reading position) and delete any posts you want gone, because posts stay in the group. Copies on your own devices stay until you sign out with "also remove from this device" or clear the app's data. See the <a href="/delete-account">delete account page</a> if you can't sign in.</p>
+
+      <h2>Contact</h2>
+      <p>Questions about this policy: CONTACT_EMAIL_PLACEHOLDER</p>
+    </main>
+  </body>
+</html>

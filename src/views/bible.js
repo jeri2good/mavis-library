@@ -230,6 +230,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         ${single ? html`<button type="button" class="vb-btn" data-vb="topics">${icon('library', { size: 20 })}<span>Topics</span></button>` : ''}
         <button type="button" class="vb-btn" data-vb="picture">${icon('present', { size: 20 })}<span>Picture</span></button>
         <button type="button" class="vb-btn" data-vb="video">${icon('play', { size: 20 })}<span>Video</span></button>
+        <button type="button" class="vb-btn" data-vb="film">${icon('present', { size: 20 })}<span>Scene film</span></button>
         <button type="button" class="vb-btn" data-vb="listen">${icon('headphones', { size: 20 })}<span>Listen</span></button>
         <button type="button" class="vb-btn" data-vb="present">${icon('present', { size: 20 })}<span>Display</span></button>
         <button type="button" class="vb-btn" data-vb="ask">${icon('spark', { size: 20 })}<span>Ask</span></button>
@@ -627,6 +628,9 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       if (vb === 'note') editNote(null);
       if (vb === 'copy') copyQuote(selText(), citation(r));
       if (vb === 'share') shareQuote(selText(), citation(r));
+      if (vb === 'film') {
+        import('../lib/scenefilm.js').then(({ openSceneFilm }) => openSceneFilm({ text: selText(), source: 'verses', title: B.labelSync(idx, r), author: '', chapter: '', citation: citation(r), bookKey: KEY, defaultStyle: 'painterly' }));
+      }
       if (vb === 'group') {
         const { openShareToGroup } = await import('../lib/groups-ui.js');
         openShareToGroup({ groups: bibleGroups(), quote: selText().slice(0, 1200), cite: citation(r), ref: { kind: 'bible', osis: B.osis(r) }, chapter: B.labelSync(idx, { book: r.book, chapter: r.chapter }) });

@@ -1437,6 +1437,48 @@ def run_v2(browser):
         expect(page.locator('.word-card').first).to_contain_text('Next:')
     _(page)
 
+    @test('Scene film: a selected passage becomes a narrated film — planned shots, painted stills, real motion from fal.ai, recorded on the device')
+    def _(page):
+        shot_webm = (ROOT / 'tests' / 'fixtures' / 'shot.webm').read_bytes()
+        page.route('https://v3b.fal.media/**', lambda r: r.fulfill(status=200, content_type='video/webm', body=shot_webm, headers={'access-control-allow-origin': '*'}))
+        page.goto(FEAT + '/#/read/gutenberg%3A1342')
+        wait_reader(page)
+        page.locator('[data-act="toc"]').click()
+        page.get_by_role('dialog', name='Contents').get_by_role('button', name='Fog Over the Harbor').click()
+        page.wait_for_timeout(500)
+        frame(page).locator('body').evaluate("""b => { const d = b.ownerDocument; const p = d.querySelectorAll('p')[1]; const r = d.createRange(); r.selectNodeContents(p); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); }""")
+        expect(page.locator('#sel')).to_be_visible(timeout=4000)
+        page.get_by_role('button', name='Make a scene film of this passage').click()
+        d = page.get_by_role('dialog', name='Scene film')
+        expect(d).to_contain_text('The passage you selected')
+        expect(d.locator('#sf-motion')).to_be_checked()
+        d.locator('#sf-shape').select_option('wide')
+        d.get_by_role('button', name='Make the film').click()
+        expect(d.locator('.sf-thumbs img')).to_have_count(2, timeout=30000)
+        expect(d.locator('.sf-canvas')).to_be_visible(timeout=40000)
+        page.wait_for_timeout(3500)
+        shot(page, '57-scene-film-filming')
+        expect(d.locator('.vm-preview')).to_be_visible(timeout=60000)
+        expect(d).to_contain_text('2 shots (2 moving)')
+        wait_until(page, "document.querySelector('video.vm-preview').readyState >= 1", timeout=10000)
+        dims = page.evaluate("(() => { const v = document.querySelector('video.vm-preview'); return [v.videoWidth, v.videoHeight, v.duration]; })()")
+        assert dims[0] == 1920 and dims[1] == 1080, dims
+        fal = page.evaluate("fetch('/__test/fal').then(r => r.json())")
+        assert fal['submits'] == 2 and all(x.startswith('data:image/jpeg;base64,') for x in fal['images']), fal
+        assert '0. ' in fal['storyboard'] and 'Fog Over the Harbor' in fal['storyboard'], fal['storyboard'][:300]
+        info = page.evaluate("fetch('/__test/openai').then(r => r.json())")
+        assert 'film still' in info['imagePrompt'] and 'grey wool shawl' in info['imagePrompt'], info['imagePrompt'][:300]
+        shot(page, '58-scene-film-done')
+        page.keyboard.press('Escape')
+        # "Film this page" from the reading companion opens the same maker for the visible page.
+        page.locator('[data-act="companion"]').click()
+        cp = page.get_by_role('dialog', name=re.compile('Reading companion'))
+        cp.get_by_role('button', name='Film this page').click()
+        expect(page.get_by_role('dialog', name='Scene film')).to_contain_text('This page')
+        page.keyboard.press('Escape')
+        page.unroute('https://v3b.fal.media/**')
+    _(page)
+
     ctx.close()
 
     c = new_context(browser, viewport={'width': 360, 'height': 760}, is_mobile=True, has_touch=True, device_scale_factor=2)
@@ -1682,7 +1724,7 @@ def main():
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4321'], cwd=ROOT),
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4322', '--accounts'], cwd=ROOT),
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4323'], cwd=ROOT,
-                         env={**os.environ, 'MAVIS_ACCESS_CODE': 'test-code', 'TTS_PROVIDER': 'fish', 'FISH_AUDIO_API_KEY': 'fixture', 'LLM_PROVIDER': 'openai', 'LLM_MODEL': 'gpt-5.6-luna', 'LLM_API_KEY': 'fixture', 'EDENAI_API_KEY': 'fixture'}),
+                         env={**os.environ, 'MAVIS_ACCESS_CODE': 'test-code', 'TTS_PROVIDER': 'fish', 'FISH_AUDIO_API_KEY': 'fixture', 'LLM_PROVIDER': 'openai', 'LLM_MODEL': 'gpt-5.6-luna', 'LLM_API_KEY': 'fixture', 'EDENAI_API_KEY': 'fixture', 'FAL_KEY': 'fixture'}),
         subprocess.Popen(['node', 'tests/e2e/server.mjs', '--dist', 'dist', '--port', '4324', '--accounts'], cwd=ROOT,
                          env={**os.environ, 'MAVIS_ACCESS_CODE': 'test-code', 'LLM_PROVIDER': 'openai', 'LLM_MODEL': 'gpt-5.6-luna', 'LLM_API_KEY': 'fixture'}),
     ]

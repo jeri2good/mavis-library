@@ -349,6 +349,7 @@ async function renderEpub(root, item, file, close, route) {
       <button type="button" class="icon-btn" data-sel="quote" aria-label="Save as a quote">${icon('star', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="share" aria-label="Share quote">${icon('share', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="picture" aria-label="Picture this passage">${icon('present', { size: 20 })}</button>
+      <button type="button" class="icon-btn" data-sel="film" aria-label="Make a scene film of this passage">${icon('play', { size: 20 })}</button>
       ${groupsForBook(key).length ? html`<button type="button" class="icon-btn" data-sel="club" aria-label="Share to book club">${icon('user', { size: 20 })}</button>` : ''}
       <button type="button" class="icon-btn" data-sel="copy" aria-label="Copy text">${icon('copy', { size: 20 })}</button>
       <button type="button" class="icon-btn" data-sel="close" aria-label="Close">${icon('close', { size: 18 })}</button>`);
@@ -394,6 +395,10 @@ async function renderEpub(root, item, file, close, route) {
       const { openShareToGroup } = await import('../lib/groups-ui.js');
       hideSelection(true);
       openShareToGroup({ groups: groupsForBook(key), quote: text.slice(0, 1200), cite: citeHere(), ref: { kind: 'book', key, cfi: cfiRange }, chapter: chapterLabel(lastLoc), percent: pct(), container: readerEl });
+    } else if (b.dataset.sel === 'film') {
+      hideSelection(true);
+      const { openSceneFilm } = await import('../lib/scenefilm.js');
+      openSceneFilm({ text, source: 'selection', title: item.title, author: (item.authors || []).join(', '), chapter: chapterLabel(lastLoc), citation: citeHere(), bookKey: key, container: readerEl });
     } else if (b.dataset.sel === 'picture') {
       openReadingCompanion('picture');
     } else if (b.dataset.sel === 'share') {

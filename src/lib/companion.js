@@ -9,7 +9,7 @@ import { loadFeatures, can, features, ownerPost, accessCode } from './features.j
 import { Narrator, sentences } from './speech.js';
 import { ttsSupported, whenVoicesReady } from './tts.js';
 
-const STYLES = [['painterly', 'Painterly'], ['watercolor', 'Watercolor'], ['pencil', 'Pencil sketch'], ['storybook', 'Storybook'], ['stained glass', 'Stained glass']];
+export const STYLES = [['painterly', 'Painterly'], ['watercolor', 'Watercolor'], ['pencil', 'Pencil sketch'], ['storybook', 'Storybook'], ['stained glass', 'Stained glass']];
 
 // ---------- pictures ----------
 const picKey = (bookKey) => `pics|${store.getOwner()}|${bookKey}`;
@@ -18,7 +18,7 @@ export async function listPictures(bookKey) {
   return (await store.getCache(picKey(bookKey))) || [];
 }
 
-async function savePicture(bookKey, pic) {
+export async function savePicture(bookKey, pic) {
   const list = await listPictures(bookKey);
   list.unshift(pic);
   await store.setCache(picKey(bookKey), list.slice(0, 60));
@@ -37,8 +37,8 @@ function b64ToBlob(b64, type = 'image/webp') {
 }
 
 /** Start a picture and wait for it (polling), reporting progress. */
-export async function makePicture({ title, author, chapter, passage, style }, { onTick, signal } = {}) {
-  const { id } = await ownerPost('/api/study', { task: 'picture', title, author, chapter, passage, style }, { signal });
+export async function makePicture({ title, author, chapter, passage, style, scene, look, shape }, { onTick, signal } = {}) {
+  const { id } = await ownerPost('/api/study', { task: 'picture', title, author, chapter, passage, style, scene, look, shape }, { signal });
   const started = Date.now();
   for (;;) {
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
@@ -125,7 +125,9 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
       ${!ready ? notReady() : !pics ? html`<p class="muted">Pictures need an OpenAI key on the server (the AI provider here is ${f.assistant?.provider || 'not set'}).</p>` : html`
         <p class="muted small">Mavis paints the ${sel ? 'passage you selected' : 'page you’re on'} as an illustration. It takes about half a minute and uses a little of the site owner’s OpenAI credit.</p>
         <div class="field"><label for="cp-style">Style</label><select class="select" id="cp-style">${STYLES.map(([v, l]) => html`<option value="${v}" ${(defaultStyle || store.getSetting('pictureStyle', 'painterly')) === v ? 'selected' : ''}>${l}</option>`)}</select></div>
-        <button type="button" class="btn btn-primary" data-cp="draw">${icon('spark', { size: 18 })} Picture this ${sel ? 'passage' : 'page'}</button>
+        <div class="ab-actions"><button type="button" class="btn btn-primary" data-cp="draw">${icon('spark', { size: 18 })} Picture this ${sel ? 'passage' : 'page'}</button>
+          <button type="button" class="btn" data-cp="film">${icon('play', { size: 18 })} Film this ${sel ? 'passage' : 'page'}</button></div>
+        <p class="small faint">A scene film paints a few shots that follow the text and narrates it, as a video you can save or share.</p>
         <div id="cp-out" aria-live="polite"></div>`}
       ${gallery.length ? html`<h3 class="h-section" style="margin-top:18px">Your pictures from this book</h3>
         <ul class="pic-grid">${gallery.map((p) => html`<li><button type="button" class="pic-thumb" data-pic="${p.id}" aria-label="${p.chapter || 'Picture'}"><img alt="" data-blob="${p.id}" /></button></li>`)}</ul>` : ''}`);
@@ -291,6 +293,14 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
     if (pic) { const p = (await listPictures(ctx.key)).find((x) => x.id === pic.dataset.pic); if (p) showImage(p); return; }
     const a = e.target.closest('[data-cp]')?.dataset.cp;
     if (a === 'draw') draw();
+    if (a === 'film') {
+      const sel = ctx.selectionText();
+      const text = sel || ctx.pageText();
+      const chapter = ctx.chapter();
+      d.close();
+      const { openSceneFilm } = await import('./scenefilm.js');
+      openSceneFilm({ text, source: sel ? 'selection' : 'page', title: ctx.title, author: ctx.author, chapter, citation: `${ctx.title}${ctx.author ? `, ${ctx.author}` : ''}${chapter ? ` · ${chapter}` : ''}`, bookKey: ctx.key, container: ctx.container, defaultStyle: store.getSetting('pictureStyle', 'painterly') });
+    }
     if (a === 'stop') cancel();
     if (a === 'recap') runRecap();
     if (a === 'speak') speakRecap();

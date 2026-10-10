@@ -5,12 +5,16 @@
 //   POST { task: 'cast', title, author, quotes: [{text, before, after}], known } → { speakers, lines }
 //   POST { task: 'picture', title, author, chapter, passage, style }    → { id }   (starts a picture)
 //   POST { task: 'word', word, form, sentence, definition, title }      → { meaning, example }
+//   POST { task: 'storyboard', title, author, chapter, sentences: [..], shots? } → { look, shots: [{ from, visual, camera, effect, motion }] }
+//   POST { task: 'motion', image: dataURI, prompt, seconds }           → { job }  (fal.ai image-to-video)
+//   GET  ?motion=<job>                                                  → { status, url?, error? }
 //   GET  ?picture=<id>                                                  → { status, image?, revised?, error? }
 // Only the text the reader has reached is sent, so answers can't spoil what comes later.
 
 import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, clean } from '../lib/shared.mjs';
 import { complete, startImage, pollImage, KIDS_RULES } from '../lib/llm.mjs';
 import { vocabulary, dropUnseen, supportedName } from '../lib/textcheck.mjs';
+import { startMotion, pollMotion } from '../lib/motion.mjs';
 
 const STYLES = {
   painterly: 'a rich, painterly book illustration in oils, soft natural light',
@@ -21,6 +25,7 @@ const STYLES = {
 };
 
 const cut = (s, n) => String(s || '').slice(0, n);
+const SHAPES = { wide: '1536x1024', tall: '1024x1536', square: '1024x1024' };
 const about = (b) => `“${cut(b.title, 200) || 'this book'}”${b.author ? ` by ${cut(b.author, 120)}` : ''}`;
 
 function summariesBlock(list) {
@@ -124,9 +129,20 @@ const tasks = {
 
   async picture(b, { kids } = {}) {
     const passage = cut(b.passage, 3500);
-    if (passage.length < 30) throw Object.assign(new Error('Choose a page or passage with a bit more text to draw.'), { status: 400 });
+    const scene = cut(b.scene, 1200);
+    if (passage.length < 30 && scene.length < 20) throw Object.assign(new Error('Choose a page or passage with a bit more text to draw.'), { status: 400 });
     const style = kids ? STYLES.storybook : STYLES[b.style] || STYLES.painterly;
-    const prompt = [
+    const size = SHAPES[b.shape] || '1024x1536';
+    const prompt = scene ? [
+      // One shot of a scene film: a single frame, consistent with the other shots.
+      `Create one ${b.shape === 'tall' ? 'vertical' : b.shape === 'square' ? 'square' : 'wide, cinematic'} film still for a scene from ${about(b)}${b.chapter ? ` (${cut(b.chapter, 120)})` : ''}.`,
+      `This shot shows: ${scene}`,
+      b.look ? `Keep the look consistent with the rest of the film: ${cut(b.look, 800)}` : '',
+      `Style: ${style}. Cinematic composition and lighting, as a frame from a beautifully art-directed film.`,
+      'Absolutely no text, letters, captions, signatures, or watermarks in the image. Keep it tasteful: no gore.',
+      ...(kids ? [KIDS_PICTURE] : []),
+      passage ? `For reference, the passage:\n"""${cut(passage, 1500)}"""` : '',
+    ].filter(Boolean).join('\n') : [
       `Create one illustration of the scene in this passage from ${about(b)}${b.chapter ? ` (${cut(b.chapter, 120)})` : ''}.`,
       `Style: ${style}.`,
       'Show the setting, the people as the text describes them, the action, mood, and lighting, with period-appropriate clothing and objects.',
@@ -134,7 +150,42 @@ const tasks = {
       ...(kids ? [KIDS_PICTURE] : []),
       `Passage:\n"""${passage}"""`,
     ].join('\n');
-    return { id: await startImage(prompt) };
+    return { id: await startImage(prompt, { size }) };
+  },
+
+  // A scene film's shot list: the passage split into a few shots, each with what
+  // we see, a camera move, an atmosphere effect, and a short motion description.
+  async storyboard(b, { kids } = {}) {
+    const sentences = (Array.isArray(b.sentences) ? b.sentences : []).slice(0, 80).map((x) => cut(x, 600)).filter((x) => x.trim());
+    const total = sentences.join(' ').length;
+    if (total < 40) throw Object.assign(new Error('Choose a passage with a bit more text to film.'), { status: 400 });
+    const want = Math.min(5, Math.max(2, Number(b.shots) || (total > 900 ? 4 : total > 350 ? 3 : 2)));
+    const out = await complete({
+      system: forKids(`You are a film director planning a short, faithful film of one passage from a book, shot by shot. Use ONLY the passage: show what it describes, in its own period and setting, and nothing that happens later. Return JSON only:
+{"look":"one paragraph that keeps every shot consistent: each character's appearance exactly as the text describes (or plausible and unremarkable if it doesn't), clothing, setting, era, colour palette, light and weather",
+ "shots":[{"from":0,"visual":"what the camera sees in this shot, 1–2 sentences, concrete and visual","camera":"push-in|pull-out|pan-left|pan-right|rise|drift","effect":"none|fog|mist|rain|snow|embers|dust|sparkle|leaves","motion":"what moves in the shot, under 20 words (e.g. 'waves roll in; her shawl lifts in the wind')"}]}
+Make exactly ${want} shots. "from" is the number of the sentence where the shot begins; the first shot begins at 0 and each shot begins later than the one before. Never put words, signs, or writing in a shot. Do not name real people or invent characters the passage doesn't have.`, kids),
+      user: `Book: ${about(b)}${b.chapter ? `\nSection: ${cut(b.chapter, 160)}` : ''}\n\nPassage, by sentence:\n${sentences.map((x, i) => `${i}. ${x}`).join('\n')}`,
+      json: true, maxTokens: 1400,
+    });
+    const CAMERAS = ['push-in', 'pull-out', 'pan-left', 'pan-right', 'rise', 'drift'];
+    const EFFECTS = ['none', 'fog', 'mist', 'rain', 'snow', 'embers', 'dust', 'sparkle', 'leaves'];
+    let shots = (Array.isArray(out.shots) ? out.shots : []).slice(0, 6).map((x, i) => ({
+      from: Number.isInteger(Number(x.from)) ? Math.max(0, Math.min(sentences.length - 1, Number(x.from))) : null,
+      visual: clean(x.visual, 600), motion: clean(x.motion, 160),
+      camera: CAMERAS.includes(x.camera) ? x.camera : CAMERAS[i % CAMERAS.length],
+      effect: EFFECTS.includes(x.effect) ? x.effect : 'none',
+    })).filter((x) => x.visual);
+    if (!shots.length) throw Object.assign(new Error('The director came back empty-handed. Try again.'), { status: 502 });
+    // Shots must start at 0 and move forward through the passage; otherwise spread them evenly.
+    const ordered = shots.every((x, i) => x.from != null && (i === 0 ? x.from === 0 : x.from > shots[i - 1].from));
+    if (!ordered) shots = shots.map((x, i) => ({ ...x, from: Math.floor((i * sentences.length) / shots.length) }));
+    shots = shots.filter((x, i) => i === 0 || x.from > shots[i - 1].from);
+    return { look: clean(out.look, 900), shots };
+  },
+
+  async motion(b) {
+    return { job: await startMotion({ image: b.image, prompt: b.prompt, seconds: b.seconds }) };
   },
 };
 
@@ -142,7 +193,13 @@ export default async (req, context) => {
   if (req.method === 'GET') {
     const bad = await requireOwner(req);
     if (bad) return bad;
-    const id = new URL(req.url).searchParams.get('picture') || '';
+    const sp = new URL(req.url).searchParams;
+    if (sp.has('motion')) {
+      const job = sp.get('motion') || '';
+      if (!/^[A-Za-z0-9_-]{20,2000}$/.test(job)) return fail(400, 'bad_request', 'Unknown video job.');
+      try { return json(await pollMotion(job)); } catch (err) { return fail(err.status || 502, 'motion_failed', err.message); }
+    }
+    const id = sp.get('picture') || '';
     if (!/^resp_[A-Za-z0-9]{10,100}$/.test(id)) return fail(400, 'bad_request', 'Unknown picture.');
     try { return json(await pollImage(id)); } catch (err) { return fail(err.status || 502, 'picture_failed', err.message); }
   }

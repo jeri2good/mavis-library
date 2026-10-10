@@ -7,6 +7,7 @@ import { llmConfig } from './assistant.mjs';
 import { jevProvider } from './rank.mjs';
 import { accountsEnabled } from '../lib/accounts.mjs';
 import { imageConfig } from '../lib/llm.mjs';
+import { motionConfig } from '../lib/motion.mjs';
 
 export default async (req) => {
   const pre = onlyGet(req);
@@ -23,6 +24,7 @@ export default async (req) => {
     googleBooksKey: Boolean(env('GOOGLE_BOOKS_API_KEY')),
     accounts: accountsEnabled(),
     pictures: Boolean(imageConfig()),
+    motion: Boolean(motionConfig()),
   }, { cache: checking ? 'no-store' : 'public, max-age=60' });
 };
 

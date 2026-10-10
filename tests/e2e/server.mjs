@@ -167,6 +167,13 @@ async function fixtureFetch(url, opts = {}) {
         const lines = Array.from({ length: n }, (_, i) => ({ i, speaker: i === 0 ? 'The Ferryman' : 'The Keeper' }));
         return say(JSON.stringify({ speakers: { 'The Ferryman': { gender: 'male', age: 'old' }, 'The Keeper': { gender: 'female', age: 'adult' } }, lines }));
       }
+      if (/film director planning/i.test(sys)) {
+        globalThis.__storyboard = req.messages[1].content;
+        return say(JSON.stringify({ look: 'A keeper in a grey wool shawl; a whitewashed stone lighthouse; blue dusk and fog.', shots: [
+          { from: 0, visual: 'A harbor under fog at dusk, boats drifting home.', camera: 'pan-right', effect: 'fog', motion: 'fog drifts; boats rock gently' },
+          { from: 1, visual: 'The keeper at the lighthouse window watching the water.', camera: 'push-in', effect: 'dust', motion: 'lamplight flickers' },
+        ] }));
+      }
       if (/write discussion questions/i.test(sys)) return say(JSON.stringify({ questions: ['Why do you think the keeper writes in the margins?', 'Which note surprised you most, and why?', 'What would you have written back?'] }));
       if (/explain one English word/i.test(sys)) {
         globalThis.__lastWord = { system: sys, user: q };
@@ -181,6 +188,18 @@ async function fixtureFetch(url, opts = {}) {
       return say(`Fixture answer about ${sys.includes('Holy Bible') ? 'the Bible' : 'the book'}.`);
     }
     return json({ error: { message: `fixture: no route ${u.pathname}` } }, 404);
+  }
+  if (u.host === 'queue.fal.run') {
+    globalThis.__fal ||= { submits: 0, images: [] };
+    if (opts.method === 'POST') {
+      globalThis.__fal.submits++;
+      const b = JSON.parse(opts.body);
+      globalThis.__fal.images.push(String(b.image_url).slice(0, 30));
+      const id = `req${globalThis.__fal.submits}`;
+      return json({ request_id: id, status_url: `https://queue.fal.run/fal-ai/kling-video/requests/${id}/status`, response_url: `https://queue.fal.run/fal-ai/kling-video/requests/${id}` });
+    }
+    if (u.pathname.endsWith('/status')) return json({ status: 'COMPLETED' });
+    return json({ video: { url: 'https://v3b.fal.media/files/test/shot.webm', content_type: 'video/webm' } });
   }
   if (u.host === 'api.edenai.run') {
     const req = JSON.parse(opts.body);
@@ -243,6 +262,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/__test/reset-failures') { failOnce = new Set(); res.end('ok'); return; }
     if (url.pathname === '/__test/silent.mp3') { res.writeHead(200, { 'content-type': 'audio/mpeg' }); res.end(SILENT_MP3); return; }
+    if (url.pathname === '/__test/fal') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ...(globalThis.__fal || { submits: 0, images: [] }), storyboard: globalThis.__storyboard || '' })); return; }
     if (url.pathname === '/__test/fish') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ voices: globalThis.__fishVoices || [], create: globalThis.__fishCreate || null })); return; }
     if (url.pathname === '/__test/openai') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ calls: globalThis.__openaiCalls || 0, summaries: globalThis.__summaries || 0, imagePrompt: globalThis.__lastImagePrompt || '', lastSystem: globalThis.__lastAssistant?.system || '', lastWord: globalThis.__lastWord || null })); return; }
     if (url.pathname === '/__test/tts-calls') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(String(globalThis.__ttsCalls || 0)); return; }

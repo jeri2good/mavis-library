@@ -63,15 +63,21 @@ export async function render(root, route) {
         <div class="quote-actions">
           <button type="button" class="btn btn-sm btn-quiet" data-copy="${a.uid}">${icon('copy', { size: 16 })} Copy</button>
           <button type="button" class="btn btn-sm btn-quiet" data-share="${a.uid}">${icon('share', { size: 16 })} Share</button>
-          ${a.text ? html`<button type="button" class="btn btn-sm btn-quiet" data-video="${a.uid}">${icon('present', { size: 16 })} Video</button>` : ''}
+          ${a.text ? html`<button type="button" class="btn btn-sm btn-quiet" data-video="${a.uid}">${icon('present', { size: 16 })} Video</button><button type="button" class="btn btn-sm btn-quiet" data-film="${a.uid}">${icon('play', { size: 16 })} Scene film</button>` : ''}
           <button type="button" class="icon-btn" data-del="${a.uid}" aria-label="Delete">${icon('trash', { size: 18 })}</button>
         </div>
       </li>`)}</ul>`);
     el.onclick = async (e) => {
-      const id = e.target.closest('[data-copy],[data-share],[data-del],[data-video]');
+      const id = e.target.closest('[data-copy],[data-share],[data-del],[data-video],[data-film]');
       if (!id) return;
-      const a = list.find((x) => x.uid === (id.dataset.copy || id.dataset.share || id.dataset.del || id.dataset.video));
+      const a = list.find((x) => x.uid === (id.dataset.copy || id.dataset.share || id.dataset.del || id.dataset.video || id.dataset.film));
       if (!a) return;
+      if (id.dataset.film) {
+        const { openSceneFilm } = await import('../lib/scenefilm.js');
+        const b = shelfTitles.get(a.bookKey);
+        openSceneFilm({ text: a.text, source: 'quote', title: a.bookKey === 'bible' ? citeOf(a) : b?.title || 'Untitled', author: b?.authors?.[0] || '', chapter: a.bookKey === 'bible' ? '' : a.chapter || '', citation: citeOf(a), bookKey: a.bookKey, defaultStyle: a.bookKey === 'bible' ? 'painterly' : undefined });
+        return;
+      }
       if (id.dataset.video) {
         const { openVideoMaker } = await import('../lib/video.js');
         openVideoMaker({ text: a.text, citation: citeOf(a), bookKey: a.bookKey, title: citeOf(a), defaultStyle: a.bookKey === 'bible' ? 'stained glass' : 'painterly' });

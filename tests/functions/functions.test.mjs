@@ -446,6 +446,75 @@ await test('study spoiler guard: names the reader hasn’t met are trimmed or re
   process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
 });
 
+await test('scene films: storyboard shots follow the passage, shot pictures are wide film stills, motion goes through fal.ai safely', async () => {
+  const study = (await import('../../netlify/functions/study.mjs')).default;
+  const featuresMod = (await import('../../netlify/functions/features.mjs')).default;
+  process.env.LLM_PROVIDER = 'openai'; process.env.LLM_MODEL = 'gpt-5.6-luna';
+  const H = { 'x-mavis-access': 'right-code' };
+  const sentences = ['The keeper climbed the stair at dusk.', 'Fog rolled over the harbor.', 'A bell rang far out at sea.', 'She lit the great lamp.'];
+  let board = { look: 'A woman in a grey shawl; a stone lighthouse; blue dusk.', shots: [
+    { from: 0, visual: 'She climbs a spiral stair with a lantern.', camera: 'rise', effect: 'dust', motion: 'lantern swings' },
+    { from: 1, visual: 'Fog over a dark harbor.', camera: 'zoom-wild', effect: 'lava', motion: 'fog drifts' },
+    { from: 3, visual: 'The great lamp blazes.', camera: 'push-in', effect: 'none' },
+  ] };
+  const sent = [];
+  let fal = [];
+  routes = [
+    [(u) => u === 'https://api.openai.com/v1/chat/completions', (u, o) => { sent.push(JSON.parse(o.body)); return respond({ choices: [{ message: { content: JSON.stringify(board) } }] }); }],
+    [(u) => u === 'https://api.openai.com/v1/responses', (u, o) => { sent.push(JSON.parse(o.body)); return respond({ id: 'resp_film0123456789', status: 'queued' }); }],
+    [(u) => u.startsWith('https://queue.fal.run/'), (u, o) => {
+      fal.push({ u, o });
+      if (o.method === 'POST') return respond({ request_id: 'r1', status_url: 'https://queue.fal.run/fal-ai/kling-video/requests/r1/status', response_url: 'https://queue.fal.run/fal-ai/kling-video/requests/r1' });
+      if (u.endsWith('/status')) return respond({ status: fal.filter((x) => x.u.endsWith('/status')).length > 1 ? 'COMPLETED' : 'IN_PROGRESS' });
+      return respond({ video: { url: 'https://v3b.fal.media/files/b/x/out.mp4', content_type: 'video/mp4' } });
+    }],
+  ];
+  let r = await study(post('/api/study', { task: 'storyboard', title: 'The Lantern Keeper', sentences, shots: 3 }, H), ctx('sf1'));
+  let j = await r.json();
+  assert.equal(r.status, 200);
+  assert.deepEqual(j.shots.map((x) => x.from), [0, 1, 3]);
+  assert.ok(['push-in', 'pull-out', 'pan-left', 'pan-right', 'rise', 'drift'].includes(j.shots[1].camera), 'unknown camera moves fall back to a known one');
+  assert.equal(j.shots[1].effect, 'none', 'unknown effects become none');
+  assert.match(sent[0].messages[0].content, /Make exactly 3 shots/);
+  assert.match(sent[0].messages[1].content, /^Book: /);
+  assert.match(sent[0].messages[1].content, /3\. She lit the great lamp\./);
+  // Out-of-order shots are spread evenly through the passage instead.
+  board = { look: '', shots: [{ from: 2, visual: 'a' }, { from: 1, visual: 'b' }] };
+  j = await (await study(post('/api/study', { task: 'storyboard', title: 'T', sentences }, H), ctx('sf2'))).json();
+  assert.deepEqual(j.shots.map((x) => x.from), [0, 2]);
+  assert.equal((await study(post('/api/study', { task: 'storyboard', title: 'T', sentences: ['Hi.'] }, H), ctx('sf3'))).status, 400);
+  // A shot picture: wide size, film-still prompt with the shared look.
+  sent.length = 0;
+  r = await study(post('/api/study', { task: 'picture', title: 'The Lantern Keeper', scene: 'She climbs a spiral stair with a lantern.', look: 'grey shawl, blue dusk', shape: 'wide', passage: sentences[0] }, H), ctx('sf4'));
+  assert.equal((await r.json()).id, 'resp_film0123456789');
+  assert.equal(sent[0].tools[0].size, '1536x1024');
+  assert.match(sent[0].input, /wide, cinematic film still/);
+  assert.match(sent[0].input, /grey shawl, blue dusk/);
+  // Motion is off without a fal key, and the features endpoint says so.
+  delete process.env.FAL_KEY;
+  assert.equal((await (await featuresMod(get('/api/features'))).json()).motion, false);
+  const img = 'data:image/jpeg;base64,' + 'A'.repeat(400);
+  assert.equal((await study(post('/api/study', { task: 'motion', image: img, prompt: 'fog drifts' }, H), ctx('sf5'))).status, 503);
+  process.env.FAL_KEY = 'fal-test-key';
+  assert.equal((await (await featuresMod(get('/api/features'))).json()).motion, true);
+  assert.equal((await study(post('/api/study', { task: 'motion', image: 'https://evil.example/x.png', prompt: 'x' }, H), ctx('sf6'))).status, 400, 'only inline pictures are sent');
+  r = await study(post('/api/study', { task: 'motion', image: img, prompt: 'fog drifts' }, H), ctx('sf7'));
+  const { job } = await r.json();
+  assert.ok(job);
+  assert.equal(fal[0].u, 'https://queue.fal.run/fal-ai/kling-video/v2.5-turbo/standard/image-to-video');
+  assert.equal(fal[0].o.headers.authorization, 'Key fal-test-key');
+  assert.equal(JSON.parse(fal[0].o.body).image_url, img);
+  const poll = (jb) => study(new Request(`https://mavis.test/api/study?motion=${encodeURIComponent(jb)}`, { headers: H }), ctx('sfp'));
+  assert.deepEqual(await (await poll(job)).json(), { status: 'working', queue: null });
+  assert.deepEqual(await (await poll(job)).json(), { status: 'done', url: 'https://v3b.fal.media/files/b/x/out.mp4' });
+  // A tampered job token can't point the server at another host.
+  const evil = Buffer.from(JSON.stringify({ s: 'https://evil.example/s', r: 'https://evil.example/r' })).toString('base64url');
+  assert.equal((await poll(evil)).status, 400);
+  assert.equal((await study(new Request('https://mavis.test/api/study?motion=abc', { headers: H }), ctx('sf8'))).status, 400);
+  delete process.env.FAL_KEY;
+  process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
+});
+
 await test('study cast: speaker lines are cleaned and indexed', async () => {
   const study = (await import('../../netlify/functions/study.mjs')).default;
   process.env.LLM_PROVIDER = 'openai'; process.env.LLM_MODEL = 'gpt-5.6-luna';

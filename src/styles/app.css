@@ -1034,3 +1034,13 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 3px; paddi
 .group-mini { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
 .group-mini a { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--paper-raised); border: 1px solid var(--line); text-decoration: none; color: var(--ink); }
 @media (max-width: 520px) { .group-head { gap: 12px; } .group-cover, .group-icon.big { width: 64px; } .post.reply, .post.removed { margin-left: 14px; } }
+
+/* ---------- Scene films ---------- */
+.sf-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sf-steps li { display: flex; align-items: center; gap: 8px; color: var(--ink-faint); }
+.sf-steps li.now { color: var(--ink); font-weight: 600; }
+.sf-steps li.done { color: var(--ok); }
+.sf-steps li:not(.now):not(.done) .pulse-dot { animation: none; opacity: .35; }
+.sf-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; margin: 10px 0; }
+.sf-thumbs img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 8px; animation: card-in .45s var(--ease) both; }
+.sf-canvas { width: 100%; max-height: 50vh; object-fit: contain; border-radius: 12px; background: #000; display: block; margin: 8px 0; }

@@ -9,6 +9,7 @@ import { loadFeatures, can, features, ownerPost, accessCode } from './features.j
 import { Narrator, sentences } from './speech.js';
 import { ttsSupported, whenVoicesReady } from './tts.js';
 import { apiUrl } from './api.js';
+import { reportButton, aiLabel } from './report.js';
 
 export const STYLES = [['painterly', 'Painterly'], ['watercolor', 'Watercolor'], ['pencil', 'Pencil sketch'], ['storybook', 'Storybook'], ['stained glass', 'Stained glass']];
 
@@ -130,7 +131,7 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
           <button type="button" class="btn" data-cp="film">${icon('play', { size: 18 })} Film this ${sel ? 'passage' : 'page'}</button></div>
         <p class="small faint">A scene film paints a few shots that follow the text and narrates it, as a video you can save or share.</p>
         <div id="cp-out" aria-live="polite"></div>`}
-      ${gallery.length ? html`<h3 class="h-section" style="margin-top:18px">Your pictures from this book</h3>
+      ${gallery.length ? html`<h3 class="h-section" style="margin-top:18px">Your pictures from this book ${aiLabel()}</h3>
         <ul class="pic-grid">${gallery.map((p) => html`<li><button type="button" class="pic-thumb" data-pic="${p.id}" aria-label="${p.chapter || 'Picture'}"><img alt="" data-blob="${p.id}" /></button></li>`)}</ul>` : ''}`);
     // Attach thumbnails from the stored blobs.
     for (const img of body.querySelectorAll('img[data-blob]')) {
@@ -149,6 +150,7 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
           <button type="button" class="btn btn-sm" data-pv="share">${icon('share', { size: 18 })} Share</button>
           <a class="btn btn-sm" href="${url}" download="${(ctx.title || 'mavis').replace(/[^\w-]+/g, '-').slice(0, 40)}-picture.webp">${icon('download', { size: 18 })} Save image</a>
           <button type="button" class="btn btn-sm btn-quiet" data-pv="delete">${icon('trash', { size: 18 })} Delete</button>
+          ${reportButton('picture', `${ctx.title}${p.chapter ? ` · ${p.chapter}` : ''}${p.revised ? ` — ${p.revised.slice(0, 160)}` : ''}`)}
         </div>`,
       onClose: () => setTimeout(() => URL.revokeObjectURL(url), 1000),
     });
@@ -207,7 +209,7 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
       const el = body.querySelector('#cp-prog'); if (el) el.textContent = 'Writing your recap…';
       const { recap } = await ownerPost(apiUrl('/api/study'), { task: 'recap', title: ctx.title, author: ctx.author, summaries, seen: summaries.seen, current: { chapter: ctx.chapter(), text: ctx.textSoFar() } }, { signal: ctl.signal });
       out.innerHTML = String(html`<div class="recap">${recap.split(/\n+/).map((p) => html`<p>${p}</p>`)}</div>
-        <div class="dialog-actions" style="justify-content:flex-start"><button type="button" class="btn btn-sm btn-primary" data-cp="speak">${icon('play', { size: 18 })} Listen</button><button type="button" class="btn btn-sm btn-quiet" data-cp="hush" hidden>${icon('stop', { size: 18 })} Stop</button></div>`);
+        <div class="dialog-actions" style="justify-content:flex-start"><button type="button" class="btn btn-sm btn-primary" data-cp="speak">${icon('play', { size: 18 })} Listen</button><button type="button" class="btn btn-sm btn-quiet" data-cp="hush" hidden>${icon('stop', { size: 18 })} Stop</button>${reportButton('summary', `${ctx.title} · story so far, up to ${ctx.chapter() || 'here'}`)}</div>`);
       out.dataset.recap = recap;
     } catch (err) {
       if (err.name !== 'AbortError') out.innerHTML = String(html`<p class="form-error" role="alert">${err.message}</p>`);
@@ -260,7 +262,8 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
           const j = list.findIndex((x) => x.name === r.to);
           return j >= 0 ? html`<a class="chip" href="#p-${j}" data-jump="p-${j}">${r.relation}: ${r.to}</a>` : html`<span class="chip">${r.relation}: ${r.to}</span>`;
         })}</p>` : ''}
-        ${c.firstSeen ? html`<p class="small faint">First appears: ${c.firstSeen}</p>` : ''}</li>`)}</ul>`);
+        ${c.firstSeen ? html`<p class="small faint">First appears: ${c.firstSeen}</p>` : ''}</li>`)}</ul>
+      <div class="dialog-actions" style="justify-content:flex-start">${reportButton('summary', `${ctx.title} · characters, as of ${data.chapter || 'here'}`)}</div>`);
   }
 
   async function runPeople() {

@@ -9,7 +9,7 @@
     "build": "vite build",
     "build:android": "vite build --mode android --outDir dist-android",
     "preview": "vite preview --port 4173",
-    "test:functions": "node tests/functions/functions.test.mjs && node tests/functions/accounts.test.mjs && node tests/functions/groups.test.mjs && node tests/functions/cors.test.mjs && node tests/unit/vocab.test.mjs",
+    "test:functions": "node tests/functions/functions.test.mjs && node tests/functions/accounts.test.mjs && node tests/functions/groups.test.mjs && node tests/functions/cors.test.mjs && node tests/functions/report.test.mjs && node tests/unit/vocab.test.mjs",
     "test:e2e": "python3 tests/e2e/run_e2e.py",
     "build:bible": "node scripts/build-bible.mjs"
   },

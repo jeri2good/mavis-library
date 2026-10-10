@@ -10,6 +10,7 @@ import { StorageUnavailableError } from './lib/idb.js';
 import { isKids, applyKidsClass, onKids, grownUpUnlocked, askPin, kidsName } from './lib/kids.js';
 import { watchProgress, forgetCache as forgetGroups } from './lib/groups.js';
 import { isNativeApp } from './lib/native.js';
+import { installReportHandler } from './lib/report.js';
 
 const routes = {
   '': () => import('./views/home.js'),
@@ -213,6 +214,7 @@ async function onSignedIn(user, { quiet = false } = {}) {
 async function boot() {
   installAppFonts();
   installCoverFallback();
+  installReportHandler();
   // Upgrade covers to real published artwork as they appear on screen.
   let coverTimer;
   new MutationObserver(() => { clearTimeout(coverTimer); coverTimer = setTimeout(() => enhanceCovers(document), 60); })

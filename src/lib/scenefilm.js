@@ -11,6 +11,7 @@ import { loadFeatures, can, features, ownerPost, accessCode } from './features.j
 import { makePicture, savePicture, STYLES } from './companion.js';
 import { videoSupported } from './video.js';
 import { apiUrl } from './api.js';
+import { reportButton, aiLabel } from './report.js';
 
 const SHAPES = {
   wide: { label: 'Wide 16:9 (TV, YouTube, computer)', w: 1920, h: 1080, pic: 'wide' },
@@ -491,8 +492,9 @@ export async function openSceneFilm(opts) {
           <button type="button" class="btn btn-sm btn-primary" data-sf="share">${icon('share', { size: 18 })} Share</button>
           <a class="btn btn-sm" href="${url}" download="${name}">${icon('download', { size: 18 })} Save video</a>
           <button type="button" class="btn btn-sm btn-quiet" data-sf="make">${icon('refresh', { size: 18 })} Make another take</button>
+          ${reportButton('film', opts.citation || opts.title || '')}
         </div>
-        <p class="small faint">${Math.round(res.seconds)} seconds · ${board.shots.length} shots${clips.some(Boolean) ? ` (${clips.filter(Boolean).length} moving)` : ''} · ${ext.toUpperCase()} · ${(res.blob.size / 1048576).toFixed(1)} MB. The painted shots are also in this book’s pictures.</p>`);
+        <p class="small faint">${aiLabel()} ${Math.round(res.seconds)} seconds · ${board.shots.length} shots${clips.some(Boolean) ? ` (${clips.filter(Boolean).length} moving)` : ''} · ${ext.toUpperCase()} · ${(res.blob.size / 1048576).toFixed(1)} MB. The painted shots are also in this book’s pictures.</p>`);
       out.querySelector('[data-sf="share"]').onclick = async () => {
         const file = new File([res.blob], name, { type: res.mime });
         try {

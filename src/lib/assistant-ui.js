@@ -3,6 +3,7 @@ import { html, icon, openDialog, toast } from './ui.js';
 import { features, can, ownerPost, loadFeatures } from './features.js';
 import { getSetting, setSetting } from './store.js';
 import { apiUrl } from './api.js';
+import { reportButton } from './report.js';
 
 const SUGGESTIONS = {
   book: ['Summarize this chapter', 'Who are the main characters so far?', 'Explain the selected passage', 'Read this chapter to me'],
@@ -61,6 +62,10 @@ export async function openAssistant({ container, getContext, actions = {}, initi
       const reply = out.reply || (out.actions?.length ? 'Done.' : 'I don’t have an answer for that.');
       wait.textContent = reply;
       wait.classList.remove('pending');
+      if (out.reply) {
+        const c = getContext();
+        wait.insertAdjacentHTML('afterend', String(html`<div class="msg-report">${reportButton('answer', `${c.title || ''}${c.chapter ? ` · ${c.chapter}` : ''} — “${out.reply.slice(0, 160)}”`)}</div>`));
+      }
       history.push({ role: 'assistant', content: reply });
       for (const a of out.actions || []) {
         const fn = actions[a.name];

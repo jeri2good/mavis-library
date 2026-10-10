@@ -8,6 +8,7 @@ import * as store from './store.js';
 import { loadFeatures, can, features, ownerPost } from './features.js';
 import { makePicture, listPictures } from './companion.js';
 import { apiUrl } from './api.js';
+import { reportButton, aiLabel } from './report.js';
 
 const FORMATS = {
   story: { label: 'Vertical (Stories, Reels, Status)', w: 1080, h: 1920 },
@@ -264,7 +265,8 @@ export async function openVideoMaker({ text, citation, bookKey = '', title = '',
         <div class="dialog-actions" style="justify-content:flex-start">
           <button type="button" class="btn btn-sm btn-primary" data-vm="share">${icon('share', { size: 18 })} Share</button>
           <a class="btn btn-sm" href="${url}" download="${citation.replace(/[^\w-]+/g, '-').slice(0, 40)}.${ext}">${icon('download', { size: 18 })} Save video</a>
-        </div><p class="small faint">${Math.round(res.seconds)} seconds · ${ext.toUpperCase()} · ${(res.blob.size / 1048576).toFixed(1)} MB</p>`);
+          ${image ? reportButton('film', `${citation} — verse video with an AI background`) : ''}
+        </div><p class="small faint">${image ? html`${aiLabel()} ` : ''}${Math.round(res.seconds)} seconds · ${ext.toUpperCase()} · ${(res.blob.size / 1048576).toFixed(1)} MB</p>`);
       out.querySelector('[data-vm="share"]').onclick = async () => {
         const file = new File([res.blob], `${citation.replace(/[^\w-]+/g, '-').slice(0, 40)}.${ext}`, { type: res.mime });
         try {

@@ -129,3 +129,10 @@ This receipt is committed separately and last. No push was performed.
 - NOT verified: the real trigger. A simulated ACL_CONNECTED broadcast is rejected by the OS (protected broadcast), so car-Bluetooth entry is covered only by DriveModeTriggerTest unit tests. Brightness dimming not observed (dumpsys printed nothing).
 - Offline audio: NOT verified. LibriVox search/open works (Moby Dick: Save offline + Listen buttons shown), but the full "save, cut network, play" run did not happen: Gutenberg answered 504 again and my text input doubled in the search box. A Christmas Carol (5 chapters) is the short test case to use next.
 - Also added: MainActivity launchMode=singleTop.
+
+## Hermes round 10 - delegated work verified (Codex gpt-6-astra + Devin gpt-6-sol-medium)
+- Codex (worktree, merged): native Shelf tab (ui/shelf/*, ui/common/BookTile.kt). Emulator: fresh install shows "Your shelf", the web-shelf button, and Popular picks rows with covers; tapping a pick opens the book page; Add to shelf puts the book in a native grid; the three-dot menu removes it.
+- Devin (worktree, merged): REVIEW.md security review of the owner-code handoff (fix needed: origin gate; plaintext web storage accepted; global hook minor) + 13 new tests (Discover VM, API edges).
+- Codex fix pass on native: handoff now pushes only when the page is the app origin (isAppOrigin, 6 tests); empty id list resolved locally.
+- Hermes check: 75 unit tests, 0 failures (own rebuild). Emulator: code typed in native Settings -> saved to Keystore -> after opening a web page the web app holds the exact code and the server returns owner:true.
+- NOT verified: foreign-origin refusal on a live WebView (unit tests only); the earlier native-Settings typing doubled a character once (adb input quirk, not an app fault).

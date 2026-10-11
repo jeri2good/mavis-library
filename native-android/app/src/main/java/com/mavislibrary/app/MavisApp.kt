@@ -23,6 +23,8 @@ import com.mavislibrary.app.data.repo.ShelfRepository
 import com.mavislibrary.app.data.secure.KeystoreCipher
 import com.mavislibrary.app.data.secure.SecureStore
 import com.mavislibrary.app.audio.ResumePositionStore
+import com.mavislibrary.app.audio.AudiobookRepository
+import com.mavislibrary.app.audio.AudioFileStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
@@ -64,6 +66,8 @@ class AppContainer(private val app: Application) {
     }
     val shelfRepository: ShelfRepository by lazy { ShelfRepository(database.shelf()) }
     val resumePositionStore: ResumePositionStore by lazy { ResumePositionStore(database.audioResume()) }
+    val audiobookRepository: AudiobookRepository by lazy { AudiobookRepository(api) }
+    val audioFiles: AudioFileStore by lazy { AudioFileStore(app.filesDir, okHttp) }
 }
 
 class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Factory {

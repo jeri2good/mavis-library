@@ -87,6 +87,30 @@ data class OpenLibraryPage(
 @Serializable
 data class ApiErrorBody(val error: String = "error", val message: String = "")
 
+@Serializable
+data class LibriVoxSection(
+    val n: Int,
+    val title: String = "",
+    val url: String,
+    val secs: Long = 0,
+    val reader: String = "",
+)
+
+@Serializable
+data class LibriVoxVersion(
+    val id: String,
+    val title: String = "",
+    val language: String = "",
+    val readers: List<String> = emptyList(),
+    val moreReaders: Int = 0,
+    val totalSecs: Long = 0,
+    val url: String? = null,
+    val sections: List<LibriVoxSection> = emptyList(),
+)
+
+@Serializable
+data class LibriVoxResponse(val versions: List<LibriVoxVersion> = emptyList())
+
 val ApiJson = Json {
     ignoreUnknownKeys = true
     explicitNulls = false

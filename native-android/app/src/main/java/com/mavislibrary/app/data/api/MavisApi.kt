@@ -61,6 +61,7 @@ class MavisApi(
 object Endpoints {
     const val CATALOG = "/api/catalog"
     const val OPEN_LIBRARY = "/api/openlibrary"
+    const val LIBRIVOX = "/api/librivox"
 
     /** catalog.mjs parseListParams: search (≤120 chars), topic, languages, page 1..2000, sort popular|ascending|descending. */
     fun catalogSearch(search: String, page: Int = 1, languages: String = "", sort: String = "popular", topic: String = ""): List<Pair<String, String>> =
@@ -80,12 +81,19 @@ object Endpoints {
         add("page" to page.coerceIn(1, 100).toString())
         if (lang.isNotBlank()) add("lang" to lang)
     }
+
+    fun libriVox(title: String, author: String = "", gutenbergId: Int? = null): List<Pair<String, String>> = buildList {
+        add("title" to title.trim().take(200))
+        if (author.isNotBlank()) add("author" to author.trim().take(120))
+        if (gutenbergId != null) add("gid" to gutenbergId.toString())
+    }
 }
 
 object ApiParser {
     fun catalogPage(json: String): CatalogPage = decode { ApiJson.decodeFromString(CatalogPage.serializer(), json) }
     fun catalogBook(json: String): GutenbergBook = decode { ApiJson.decodeFromString(CatalogBookResponse.serializer(), json).book }
     fun openLibraryPage(json: String): OpenLibraryPage = decode { ApiJson.decodeFromString(OpenLibraryPage.serializer(), json) }
+    fun libriVox(json: String): LibriVoxResponse = decode { ApiJson.decodeFromString(LibriVoxResponse.serializer(), json) }
 
     private inline fun <T> decode(block: () -> T): T = try {
         block()

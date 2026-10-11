@@ -15,7 +15,7 @@ val gitSha: String = providers.exec {
 
 android {
     namespace = "com.mavislibrary.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.mavislibrary.app"
@@ -119,6 +119,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -136,6 +137,13 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    val stagedMedia3 = rootProject.file(".gradle/offline-repo")
+    if (stagedMedia3.isDirectory) {
+        implementation(fileTree(stagedMedia3) { include("**/*.aar", "**/*.jar") })
+    } else {
+        implementation(libs.androidx.media3.exoplayer)
+        implementation(libs.androidx.media3.session)
+    }
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

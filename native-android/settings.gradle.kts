@@ -1,5 +1,7 @@
 pluginManagement {
     repositories {
+        // Local Maven is checked first so pre-staged artifacts work with the required --offline lane.
+        mavenLocal()
         google()
         mavenCentral()
         gradlePluginPortal()

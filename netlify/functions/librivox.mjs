@@ -15,8 +15,8 @@ export function matches(b, { gid, title, author }) {
   const src = String(b.url_text_source || '');
   if (gid && new RegExp(`gutenberg\\.org/(?:etext|ebooks|files)/${gid}(?:\\D|$)`).test(src)) return 2;
   const have = String(b.title || '').replace(/\([^)]*\)/g, '').trim();
-  const tWant = norm(shortTitle(title));
-  const tHave = norm(shortTitle(have));
+  const tWant = norm(shortTitle(title)).replace(/^(?:a|an|the) (?=\S)/, '');
+  const tHave = norm(shortTitle(have)).replace(/^(?:a|an|the) (?=\S)/, '');
   // "Pride and Prejudice: A Play" is a different work unless the book's own title says so too.
   const sub = (t) => norm((String(t).match(/[:;](?!\s*or\b)\s*(.+)$/i) || [])[1]);
   if (sub(have) && sub(have) !== sub(title)) return 0;

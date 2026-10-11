@@ -576,6 +576,24 @@ await test('kids mode: AI answers and pictures get child-safe rules only when th
   process.env.LLM_PROVIDER = 'anthropic'; delete process.env.LLM_MODEL;
 });
 
+for (const [name, wanted, have, author, lastName, expected] of [
+  ['ignores leading a', 'A Christmas Carol', 'Christmas Carol', 'Dickens', 'Dickens', 1],
+  ['ignores leading the', 'The Time Machine', 'Time Machine', 'Wells', 'Wells', 1],
+  ['ignores leading an on both sides', 'An Inquiry', 'The Inquiry', 'Smith', 'Smith', 1],
+  ['ignores an article on the recording', 'Christmas Carol', 'A Christmas Carol', 'Dickens', 'Dickens', 1],
+  ['rejects a different subtitle', 'Pride and Prejudice', 'Pride and Prejudice: A Play', 'Austen', 'Austen', 0],
+  ['rejects a different author', 'A Christmas Carol', 'Christmas Carol', 'Dickens', 'Wells', 0],
+  ['rejects different words', 'An Inquiry', 'Inquiry Into Bees', 'Smith', 'Smith', 0],
+  ['preserves an article-only title', 'The', 'The', 'Smith', 'Smith', 1],
+  ['does not equate different article-only titles', 'The', 'An', 'Smith', 'Smith', 0],
+]) {
+  await test(`librivox matches: ${name}`, async () => {
+    const { matches } = await import('../../netlify/functions/librivox.mjs');
+    assert.equal(matches({ title: have, authors: [{ last_name: lastName }] }, { title: wanted, author }), expected);
+    assert.equal(calls.length, 0);
+  });
+}
+
 await test('librivox: exact Gutenberg match first, solo readers ahead of groups, only archive.org audio', async () => {
   const lv = (await import('../../netlify/functions/librivox.mjs')).default;
   const sec = (id, n, reader, host = 'https://www.archive.org') => ({ section_number: String(n), title: `Chapter ${n}`, listen_url: `${host}/download/${id}/${n}.mp3`, playtime: '600', readers: [{ display_name: reader }] });

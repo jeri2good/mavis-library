@@ -123,3 +123,9 @@ This receipt is committed separately and last. No push was performed.
 
 ## Hermes round 8 - earbud attempt 3 (manifest MEDIA_BUTTON receiver + setMediaButtonReceiver)
 - Built and installed. `dumpsys media_session` still "Media button session is null" after KEYCODE_MEDIA_NEXT, and the reader never paginated in this run (page 1 of 1 for 160 s), so a page-turn could not be observed either way. No app errors in logcat; host had ~490 MB free RAM. UNVERIFIED, likely needs a real phone with real earbuds.
+
+## Hermes round 9 - drive mode + offline audio
+- Drive mode screen: VERIFIED on emulator through a debug-only intent (am start -a com.mavislibrary.app.DEBUG_DRIVE; compiled out of release). Dark screen, back-10 / play / forward-30 / sleep timer, close X returns to the app. Settings toggle "Start for car Bluetooth" turns on (BLUETOOTH_CONNECT granted).
+- NOT verified: the real trigger. A simulated ACL_CONNECTED broadcast is rejected by the OS (protected broadcast), so car-Bluetooth entry is covered only by DriveModeTriggerTest unit tests. Brightness dimming not observed (dumpsys printed nothing).
+- Offline audio: NOT verified. LibriVox search/open works (Moby Dick: Save offline + Listen buttons shown), but the full "save, cut network, play" run did not happen: Gutenberg answered 504 again and my text input doubled in the search box. A Christmas Carol (5 chapters) is the short test case to use next.
+- Also added: MainActivity launchMode=singleTop.

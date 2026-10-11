@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (BuildConfig.DEBUG && savedInstanceState == null && intent?.action == "com.mavislibrary.app.DEBUG_DRIVE") window.decorView.post { setDriveScreen(true) }
         val container = (application as MavisApp).container
         webHost = if (useWebHost) WebHost(this) else null
 
@@ -114,6 +115,12 @@ class MainActivity : ComponentActivity() {
         window.attributes = window.attributes.apply {
             screenBrightness = if (active) .12f else android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
+    }
+
+    /** Debug builds only: `am start -a com.mavislibrary.app.DEBUG_DRIVE` shows the drive screen without a car. */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (BuildConfig.DEBUG && intent.action == "com.mavislibrary.app.DEBUG_DRIVE") setDriveScreen(true)
     }
 
     override fun onResume() {

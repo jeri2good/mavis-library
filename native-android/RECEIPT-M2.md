@@ -120,3 +120,6 @@ This receipt is committed separately and last. No push was performed.
 - Not tried yet: setMediaButtonReceiver with a PendingIntent to a manifest receiver (Android may require it for non-foreground-service sessions), or routing earbud keys through the existing audiobook MediaSession.
 - Also seen: on this emulator the web reader sometimes stays on the cover ("page 1 of 1") for 2+ minutes after Download & read; it did paginate fine in an earlier run. Probably emulator speed, not proven.
 - Volume-key page turns (verified earlier) are unaffected.
+
+## Hermes round 8 - earbud attempt 3 (manifest MEDIA_BUTTON receiver + setMediaButtonReceiver)
+- Built and installed. `dumpsys media_session` still "Media button session is null" after KEYCODE_MEDIA_NEXT, and the reader never paginated in this run (page 1 of 1 for 160 s), so a page-turn could not be observed either way. No app errors in logcat; host had ~490 MB free RAM. UNVERIFIED, likely needs a real phone with real earbuds.

@@ -1,6 +1,9 @@
 package com.mavislibrary.app.web
 
+import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.view.KeyEvent
@@ -19,6 +22,14 @@ class ReaderMediaSession(context: Context, private val onPageKey: (Int) -> Boole
             override fun onPause() { }
         })
         setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
+        setMediaButtonReceiver(
+            PendingIntent.getBroadcast(
+                context, 0,
+                Intent(Intent.ACTION_MEDIA_BUTTON).setComponent(ComponentName(context, ReaderMediaButtonReceiver::class.java)),
+                PendingIntent.FLAG_IMMUTABLE,
+            ),
+        )
+        ReaderMediaButtonReceiver.handler = onPageKey
         isActive = true
     }
 
@@ -35,6 +46,7 @@ class ReaderMediaSession(context: Context, private val onPageKey: (Int) -> Boole
 
 
     override fun close() {
+        ReaderMediaButtonReceiver.handler = null
         session.isActive = false
         session.release()
     }

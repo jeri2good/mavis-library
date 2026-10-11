@@ -74,7 +74,7 @@ class KidsPrefs(private val store: DataStore<Preferences>, private val clock: ()
         store.edit { p ->
             val log = decodeLog(p[LOG]).toMutableMap()
             durations.filterValues { it > 0 }.forEach { (d, ms) -> log[d] = (log[d] ?: 0) + ms }
-            p[LOG] = log.toSortedMap().entries.takeLast(120).joinToString(";") { "${it.key}=${it.value}" }
+            p[LOG] = log.toSortedMap().entries.toList().takeLast(120).joinToString(";") { "${it.key}=${it.value}" }
         }
     }
     private companion object {

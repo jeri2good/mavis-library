@@ -44,6 +44,20 @@ class KidsPrefsTest {
     @Test fun missingPinDoesNotUnlock() = runTest(UnconfinedTestDispatcher()) {
         assertEquals(PinResult.Wrong, KidsPrefs(store()).leave("1234"))
     }
+    @Test fun correctPinClearsMissesAndExpiredLockStartsFresh() = runTest(UnconfinedTestDispatcher()) {
+        val ds = store(); var now = 500L
+        val prefs = KidsPrefs(ds) { now }
+        prefs.start("Sam", 15, "1234")
+        repeat(4) { assertEquals(PinResult.Wrong, prefs.leave("0000")) }
+        assertEquals(PinResult.Correct, prefs.leave("1234"))
+        prefs.start("Sam", 15, "1234")
+        assertEquals(PinResult.Wrong, prefs.leave("0000"))
+        repeat(4) { prefs.leave("0000") }
+        assertEquals(PinResult.Locked(30), prefs.leave("1234"))
+        now += 30000
+        assertEquals(PinResult.Wrong, prefs.leave("0000"))
+        assertEquals(PinResult.Correct, prefs.leave("1234"))
+    }
     @Test fun goalsAndDefault() = runTest(UnconfinedTestDispatcher()) {
         val prefs = KidsPrefs(store()); assertEquals(15, prefs.state.first().goal)
         assertTrue(runCatching { prefs.start("Sam", 12, "1234") }.isFailure)

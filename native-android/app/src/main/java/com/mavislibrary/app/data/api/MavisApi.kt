@@ -62,6 +62,8 @@ object Endpoints {
     const val CATALOG = "/api/catalog"
     const val OPEN_LIBRARY = "/api/openlibrary"
     const val LIBRIVOX = "/api/librivox"
+    const val SHELVES = "/api/shelves"
+    const val TECH = "/api/tech"
 
     /** catalog.mjs parseListParams: search (≤120 chars), topic, languages, page 1..2000, sort popular|ascending|descending. */
     fun catalogSearch(search: String, page: Int = 1, languages: String = "", sort: String = "popular", topic: String = ""): List<Pair<String, String>> =
@@ -74,6 +76,13 @@ object Endpoints {
         }
 
     fun catalogBook(id: Int) = listOf("id" to id.toString())
+
+    /** catalog.mjs ?ids=: up to 24 numeric Gutenberg ids. */
+    fun catalogIds(ids: List<Int>): List<Pair<String, String>> = listOf("ids" to ids.take(24).joinToString(","))
+
+    fun tech(kind: String): List<Pair<String, String>> = listOf("kind" to kind)
+
+    fun shelves(kids: Boolean = false): List<Pair<String, String>> = if (kids) listOf("kids" to "1") else emptyList()
 
     /** openlibrary.mjs: q required (≤120 chars), page 1..100, optional lang (3 letters). */
     fun openLibrarySearch(q: String, page: Int = 1, lang: String = ""): List<Pair<String, String>> = buildList {
@@ -93,6 +102,8 @@ object ApiParser {
     fun catalogPage(json: String): CatalogPage = decode { ApiJson.decodeFromString(CatalogPage.serializer(), json) }
     fun catalogBook(json: String): GutenbergBook = decode { ApiJson.decodeFromString(CatalogBookResponse.serializer(), json).book }
     fun openLibraryPage(json: String): OpenLibraryPage = decode { ApiJson.decodeFromString(OpenLibraryPage.serializer(), json) }
+    fun shelves(json: String): List<ShelfDef> = decode { ApiJson.decodeFromString(ShelvesResponse.serializer(), json).shelves }
+    fun tech(json: String): List<TechItem> = decode { ApiJson.decodeFromString(TechResponse.serializer(), json).items }
     fun libriVox(json: String): LibriVoxResponse = decode { ApiJson.decodeFromString(LibriVoxResponse.serializer(), json) }
 
     private inline fun <T> decode(block: () -> T): T = try {

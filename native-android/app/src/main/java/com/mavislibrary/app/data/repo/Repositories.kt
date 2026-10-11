@@ -2,6 +2,8 @@ package com.mavislibrary.app.data.repo
 
 import com.mavislibrary.app.data.api.ApiParser
 import com.mavislibrary.app.data.api.Endpoints
+import com.mavislibrary.app.data.api.ShelfDef
+import com.mavislibrary.app.data.api.TechItem
 import com.mavislibrary.app.data.db.ShelfDao
 import com.mavislibrary.app.data.db.ShelfEntryEntity
 import com.mavislibrary.app.data.db.toBook
@@ -15,6 +17,21 @@ import kotlinx.coroutines.flow.map
 data class SearchPage(val books: List<Book>, val page: Int, val hasNext: Boolean)
 
 class SearchRepository(private val fetcher: CachedFetcher) {
+    /** The curated shelves shown when Search opens: the same list the website uses. */
+    suspend fun curatedShelves(kids: Boolean = false): Loaded<List<ShelfDef>> =
+        fetcher.fetch(Endpoints.SHELVES, Endpoints.shelves(kids)) { ApiParser.shelves(it) }
+
+    /** What is new in technology and AI: kind = ai | papers | tech. */
+    suspend fun techFeed(kind: String): Loaded<List<TechItem>> =
+        fetcher.fetch(Endpoints.TECH, Endpoints.tech(kind)) { ApiParser.tech(it) }
+
+    /** Books for one curated shelf, in the shelf's own order. */
+    suspend fun booksByIds(ids: List<Int>): Loaded<List<Book>> =
+        fetcher.fetch(Endpoints.CATALOG, Endpoints.catalogIds(ids)) { body ->
+            val byId = ApiParser.catalogPage(body).results.filter { it.copyright != true }.associateBy { it.id }
+            ids.take(24).mapNotNull { byId[it]?.toBook() }
+        }
+
     suspend fun search(source: BookSource, query: String, page: Int = 1): Loaded<SearchPage> = when (source) {
         BookSource.GUTENBERG -> fetcher.fetch(Endpoints.CATALOG, Endpoints.catalogSearch(query, page)) { body ->
             val p = ApiParser.catalogPage(body)

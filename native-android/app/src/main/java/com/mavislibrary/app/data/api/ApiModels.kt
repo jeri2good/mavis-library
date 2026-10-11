@@ -116,3 +116,33 @@ val ApiJson = Json {
     explicitNulls = false
     coerceInputValues = true
 }
+
+
+/** One curated shelf from GET /api/shelves (ids only; the books are loaded from /api/catalog?ids=). */
+@Serializable
+data class ShelfDef(
+    val id: String,
+    val label: String,
+    val blurb: String = "",
+    val ids: List<Int> = emptyList(),
+    val kids: Boolean = false,
+)
+
+@Serializable
+data class ShelvesResponse(val shelves: List<ShelfDef> = emptyList())
+
+
+/** One story or paper from GET /api/tech. */
+@Serializable
+data class TechItem(
+    val id: String,
+    val title: String,
+    val url: String,
+    val points: Int = 0,
+    val comments: Int = 0,
+    val source: String = "",
+    val summary: String = "",
+)
+
+@Serializable
+data class TechResponse(val kind: String = "", val items: List<TechItem> = emptyList())

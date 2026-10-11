@@ -119,7 +119,7 @@ fun MavisRoot(
                 .consumeWindowInsets(padding),
         ) {
             OfflineBanner(visible = !online)
-            NavHost(nav, startDestination = Tab.SHELF.route, modifier = Modifier.fillMaxSize()) {
+            NavHost(nav, startDestination = Tab.SEARCH.route, modifier = Modifier.fillMaxSize()) {
                 Tab.entries.filter { it.webRoute != null }.forEach { tab ->
                     composable(tab.route) {
                         if (webHost != null) {

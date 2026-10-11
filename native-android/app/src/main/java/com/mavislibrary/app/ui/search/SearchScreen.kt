@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -43,6 +45,8 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -86,7 +90,7 @@ fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (String) 
     })
     val state by vm.state.collectAsStateWithLifecycle()
     val shelf by vm.shelfKeys.collectAsStateWithLifecycle()
-    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select)
+    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech)
     state.selected?.let { book ->
         BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book.key) }, onDismiss = { vm.select(null) })
     }
@@ -103,7 +107,10 @@ private fun SearchContent(
     onSubmit: (String) -> Unit,
     onMore: () -> Unit,
     onSelect: (Book) -> Unit,
+    onRetryDiscover: () -> Unit = {},
+    onTech: (String) -> Unit = {},
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val tokens = LocalLookTokens.current
     val focus = LocalFocusManager.current
     val submit = { q: String -> focus.clearFocus(); onSubmit(q) }
@@ -159,6 +166,75 @@ private fun SearchContent(
                     Text("Try", style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SUGGESTIONS.forEach { s -> SuggestionChip(onClick = { onQuery(s); submit(s) }, label = { Text(s) }) }
+                    }
+                }
+            }
+        }
+
+        if (state.submittedQuery == null && state.source == BookSource.GUTENBERG) {
+            if (state.discover.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Centered {
+                        if (state.discoverError != null) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(state.discoverError, textAlign = TextAlign.Center, modifier = Modifier.testTag("discover_error"))
+                            if (online) OutlinedButton(onClick = onRetryDiscover) { Text("Try again") }
+                        } else CircularProgressIndicator()
+                    }
+                }
+            }
+            state.discover.forEach { shelfRow ->
+                item(key = "shelf-head-${shelfRow.id}", span = { GridItemSpan(maxLineSpan) }) {
+                    Column(Modifier.padding(top = 8.dp)) {
+                        Text(shelfRow.label, style = MaterialTheme.typography.titleLarge)
+                        if (shelfRow.blurb.isNotBlank()) Text(shelfRow.blurb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                item(key = "shelf-row-${shelfRow.id}", span = { GridItemSpan(maxLineSpan) }) {
+                    val books = shelfRow.books
+                    if (books == null) Centered { CircularProgressIndicator() }
+                    else if (books.isEmpty()) Text("Couldn't load this shelf right now.", style = MaterialTheme.typography.bodySmall)
+                    else LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.gridSpacing), modifier = Modifier.testTag("discover_row_${shelfRow.id}")) {
+                        rowItems(books, key = { it.key }) { book ->
+                            Box(Modifier.width(tokens.coverMinWidth)) { BookTile(book, onShelf = book.key in shelf, onClick = { onSelect(book) }) }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (state.submittedQuery == null && state.source == BookSource.GUTENBERG) {
+            item(key = "tech-head", span = { GridItemSpan(maxLineSpan) }) {
+                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("New in tech & AI", style = MaterialTheme.typography.titleLarge)
+                    Text("Live from Hacker News and arXiv. Opens the original article.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("ai" to "AI news", "papers" to "Research papers", "tech" to "Tech front page").forEach { (kind, label) ->
+                            FilterChip(selected = state.techKind == kind, onClick = { onTech(kind) }, label = { Text(label) })
+                        }
+                    }
+                }
+            }
+            val techItems = state.tech
+            if (techItems == null) item(key = "tech-loading", span = { GridItemSpan(maxLineSpan) }) { Centered { CircularProgressIndicator() } }
+            else if (techItems.isEmpty()) item(key = "tech-empty", span = { GridItemSpan(maxLineSpan) }) {
+                Text(state.techError ?: "Nothing new right now.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("tech_empty"))
+            }
+            else techItems.forEach { item ->
+                item(key = "tech-${state.techKind}-${item.id}", span = { GridItemSpan(maxLineSpan) }) {
+                    Card(
+                        onClick = {
+                            try { context.startActivity(Intent(Intent.ACTION_VIEW, item.url.toUri()).addCategory(Intent.CATEGORY_BROWSABLE)) } catch (_: ActivityNotFoundException) { }
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("tech_item"),
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                listOfNotNull(item.source.takeIf { it.isNotBlank() }, item.points.takeIf { it > 0 }?.let { "▲ $it" }, item.comments.takeIf { it > 0 }?.let { "$it comments" }).joinToString(" · "),
+                                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (item.summary.isNotBlank()) Text(item.summary, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }

@@ -26,11 +26,7 @@ class NavigationShellTest {
 
     @Test
     fun tabsNavigateAndBackReturnsToStartThenExits() {
-        waitForTag("tab_shelf")
-        compose.onNodeWithTag("tab_shelf").assertIsSelected()
-        compose.onNodeWithText("Shelf opens here in the full app.").assertExists()
-
-        compose.onNodeWithTag("tab_search").performClick()
+        // The app opens on Search, which now starts with the curated shelves instead of an empty page.
         waitForTag("search_field")
         compose.onNodeWithTag("tab_search").assertIsSelected()
 
@@ -43,8 +39,8 @@ class NavigationShellTest {
         compose.waitForIdle()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        waitForTag("tab_shelf")
-        compose.onNodeWithTag("tab_shelf").assertIsSelected()
+        waitForTag("tab_search")
+        compose.onNodeWithTag("tab_search").assertIsSelected()
 
         // At the start tab nothing in the app intercepts Back, so the system default (leave the app) applies.
         compose.activityRule.scenario.onActivity { assertFalse(it.onBackPressedDispatcher.hasEnabledCallbacks()) }

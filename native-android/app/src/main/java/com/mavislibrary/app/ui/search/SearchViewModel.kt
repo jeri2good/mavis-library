@@ -3,6 +3,11 @@ package com.mavislibrary.app.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mavislibrary.app.data.api.ApiException
+import com.mavislibrary.app.data.api.TechItem
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import com.mavislibrary.app.data.model.Book
 import com.mavislibrary.app.data.model.BookSource
 import com.mavislibrary.app.data.repo.Origin
@@ -17,7 +22,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** A curated shelf on the Search start screen. [books] is null while it loads, empty if it failed. */
+data class DiscoverShelf(val id: String, val label: String, val blurb: String, val books: List<Book>? = null)
+
 data class SearchUiState(
+    val techKind: String = "ai",
+    val tech: List<TechItem>? = null,
+    val techError: String? = null,
+    val discover: List<DiscoverShelf> = emptyList(),
+    val discoverError: String? = null,
     val query: String = "",
     val source: BookSource = BookSource.GUTENBERG,
     val submittedQuery: String? = null,
@@ -42,6 +55,39 @@ class SearchViewModel(
     val shelfKeys: StateFlow<Set<String>> = shelf.shelfKeys.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     private var job: Job? = null
+
+    init { loadDiscover(); loadTech("ai") }
+
+    fun loadTech(kind: String) {
+        _state.update { it.copy(techKind = kind, tech = null, techError = null) }
+        viewModelScope.launch {
+            try {
+                val items = search.techFeed(kind).value.take(12)
+                _state.update { if (it.techKind == kind) it.copy(tech = items) else it }
+            } catch (e: ApiException) {
+                _state.update { if (it.techKind == kind) it.copy(tech = emptyList(), techError = e.message) else it }
+            }
+        }
+    }
+
+    /** Fills the start screen with the curated shelves (popular, children's, science, tinker, ...). */
+    fun loadDiscover() {
+        viewModelScope.launch {
+            try {
+                val defs = search.curatedShelves().value
+                _state.update { s -> s.copy(discoverError = null, discover = defs.map { DiscoverShelf(it.id, it.label, it.blurb) }) }
+                val gate = Semaphore(3)
+                defs.map { def ->
+                    async {
+                        val books = gate.withPermit { runCatching { search.booksByIds(def.ids).value }.getOrDefault(emptyList()) }
+                        _state.update { s -> s.copy(discover = s.discover.map { if (it.id == def.id) it.copy(books = books) else it }) }
+                    }
+                }.awaitAll()
+            } catch (e: ApiException) {
+                _state.update { it.copy(discoverError = e.message) }
+            }
+        }
+    }
 
     fun onQueryChange(q: String) = _state.update { it.copy(query = q) }
 

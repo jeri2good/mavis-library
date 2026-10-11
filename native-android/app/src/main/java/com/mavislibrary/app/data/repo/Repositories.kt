@@ -16,9 +16,19 @@ import kotlinx.coroutines.flow.map
 
 data class SearchPage(val books: List<Book>, val page: Int, val hasNext: Boolean)
 
-class SearchRepository(private val fetcher: CachedFetcher) {
+interface CuratedCatalog {
+    suspend fun curatedShelves(kids: Boolean = false): Loaded<List<ShelfDef>>
+    suspend fun booksByIds(ids: List<Int>): Loaded<List<Book>>
+}
+
+interface SavedShelf {
+    val shelfBooks: Flow<List<Book>>
+    suspend fun remove(key: String)
+}
+
+class SearchRepository(private val fetcher: CachedFetcher) : CuratedCatalog {
     /** The curated shelves shown when Search opens: the same list the website uses. */
-    suspend fun curatedShelves(kids: Boolean = false): Loaded<List<ShelfDef>> =
+    override suspend fun curatedShelves(kids: Boolean): Loaded<List<ShelfDef>> =
         fetcher.fetch(Endpoints.SHELVES, Endpoints.shelves(kids)) { ApiParser.shelves(it) }
 
     /** What is new in technology and AI: kind = ai | papers | tech. */
@@ -26,7 +36,7 @@ class SearchRepository(private val fetcher: CachedFetcher) {
         fetcher.fetch(Endpoints.TECH, Endpoints.tech(kind)) { ApiParser.tech(it) }
 
     /** Books for one curated shelf, in the shelf's own order. */
-    suspend fun booksByIds(ids: List<Int>): Loaded<List<Book>> =
+    override suspend fun booksByIds(ids: List<Int>): Loaded<List<Book>> =
         fetcher.fetch(Endpoints.CATALOG, Endpoints.catalogIds(ids)) { body ->
             val byId = ApiParser.catalogPage(body).results.filter { it.copyright != true }.associateBy { it.id }
             ids.take(24).mapNotNull { byId[it]?.toBook() }
@@ -45,14 +55,14 @@ class SearchRepository(private val fetcher: CachedFetcher) {
     }
 }
 
-class ShelfRepository(private val dao: ShelfDao, private val clock: () -> Long = System::currentTimeMillis) {
+class ShelfRepository(private val dao: ShelfDao, private val clock: () -> Long = System::currentTimeMillis) : SavedShelf {
     val shelfKeys: Flow<Set<String>> = dao.keys().map { it.toSet() }
-    val shelfBooks: Flow<List<Book>> = dao.books().map { list -> list.map { it.toBook() } }
+    override val shelfBooks: Flow<List<Book>> = dao.books().map { list -> list.map { it.toBook() } }
 
     suspend fun add(book: Book) {
         val now = clock()
         dao.addToShelf(book.toEntity(now), ShelfEntryEntity(bookKey = book.key, addedAt = now))
     }
 
-    suspend fun remove(key: String) = dao.remove(key)
+    override suspend fun remove(key: String) = dao.remove(key)
 }

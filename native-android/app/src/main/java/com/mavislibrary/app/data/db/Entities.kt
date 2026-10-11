@@ -54,6 +54,16 @@ data class ReadingProgressEntity(
     val updatedAt: Long,
 )
 
+/** Durable native-player position, separate from the EPUB reader's locator. */
+@Entity(tableName = "audio_resume")
+data class AudioResumeEntity(
+    @PrimaryKey val bookKey: String,
+    val chapterIndex: Int,
+    val positionMs: Long,
+    val speed: Float,
+    val updatedAt: Long,
+)
+
 /** Queue for background downloads (Wi-Fi only). Filled from M3. */
 @Entity(tableName = "download_queue", indices = [Index("bookKey"), Index("state")])
 data class DownloadQueueEntity(

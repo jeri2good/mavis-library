@@ -67,6 +67,18 @@ interface ReadingProgressDao {
 }
 
 @Dao
+interface AudioResumeDao {
+    @Upsert
+    suspend fun put(position: AudioResumeEntity)
+
+    @Query("SELECT * FROM audio_resume WHERE bookKey = :bookKey")
+    suspend fun get(bookKey: String): AudioResumeEntity?
+
+    @Query("SELECT * FROM audio_resume ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun latest(): AudioResumeEntity?
+}
+
+@Dao
 interface DownloadQueueDao {
     @Insert
     suspend fun enqueue(item: DownloadQueueEntity): Long

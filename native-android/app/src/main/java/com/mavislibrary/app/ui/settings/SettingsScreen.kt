@@ -18,9 +18,12 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Policy
+import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,6 +35,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +68,7 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit) {
     val scope = rememberCoroutineScope()
     val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = LookChoice.Automatic)
     val hasCode by container.secureStore.has(Secret.OWNER_ACCESS_CODE).collectAsStateWithLifecycle(initialValue = false)
+    val playback by container.settings.playback.collectAsStateWithLifecycle(initialValue = com.mavislibrary.app.data.prefs.PlaybackSettings())
     val context = LocalContext.current
 
     Column(
@@ -99,11 +105,54 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit) {
             )
         }
 
+        Section("Listening", Icons.Outlined.Headphones) {
+            Text("Default sleep timer", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(15, 30, 45, 60).forEach { minutes ->
+                    FilterChip(
+                        selected = playback.defaultSleepMinutes == minutes,
+                        onClick = { scope.launch { container.settings.setDefaultSleep(minutes) } },
+                        label = { Text(if (minutes == 60) "1 hr" else "$minutes min") },
+                    )
+                }
+            }
+            Text("Default speed", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
+                    FilterChip(
+                        selected = playback.defaultSpeed == speed,
+                        onClick = { scope.launch { container.settings.setDefaultSpeed(speed) } },
+                        label = { Text("${speed}×") },
+                    )
+                }
+            }
+        }
+
+        Section("Drive mode", Icons.Outlined.DirectionsCar) {
+            SettingSwitch(
+                "Start for car Bluetooth",
+                "Off by default. Permission is requested only when you turn this on.",
+                playback.driveModeEnabled,
+            ) { scope.launch { container.settings.setDriveMode(it) } }
+        }
+
+        Section("Reader buttons", Icons.AutoMirrored.Outlined.MenuBook) {
+            SettingSwitch("Volume keys turn pages", "Volume down goes forward; volume up goes back.", playback.volumePageTurns) {
+                scope.launch { container.settings.setVolumePageTurns(it) }
+            }
+            SettingSwitch("Headset next/previous", "Use media next and previous while the reader is open.", playback.headsetPageTurns) {
+                scope.launch { container.settings.setHeadsetPageTurns(it) }
+            }
+            SettingSwitch("Haptic page tick", "A short tactile tick after a native page turn.", playback.hapticPageTurns) {
+                scope.launch { container.settings.setHapticPageTurns(it) }
+            }
+        }
+
         Section("About", Icons.Outlined.Policy) {
             Text("Mavis Library", style = MaterialTheme.typography.titleMedium)
             Text("Version ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE}, ${BuildConfig.GIT_SHA}, ${BuildConfig.BUILD_TYPE})",
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("about_version"))
-            Text("Shelf, Bible and Listen use the bundled web screens until their native versions ship.",
+            Text("Shelf and Bible use the bundled web screens until their native versions ship.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = {
                 try {
@@ -111,6 +160,18 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit) {
                 } catch (_: ActivityNotFoundException) { }
             }) { Text("Privacy policy") }
         }
+    }
+}
+
+@Composable
+private fun SettingSwitch(title: String, blurb: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(blurb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = onChecked)
     }
 }
 

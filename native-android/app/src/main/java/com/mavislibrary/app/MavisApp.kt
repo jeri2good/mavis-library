@@ -22,6 +22,7 @@ import com.mavislibrary.app.data.repo.SearchRepository
 import com.mavislibrary.app.data.repo.ShelfRepository
 import com.mavislibrary.app.data.secure.KeystoreCipher
 import com.mavislibrary.app.data.secure.SecureStore
+import com.mavislibrary.app.audio.ResumePositionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +63,7 @@ class AppContainer(private val app: Application) {
         SearchRepository(CachedFetcher(api, RoomResponseCache(database.cachedResponses()), connectivity::isOnline))
     }
     val shelfRepository: ShelfRepository by lazy { ShelfRepository(database.shelf()) }
+    val resumePositionStore: ResumePositionStore by lazy { ResumePositionStore(database.audioResume()) }
 }
 
 class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Factory {

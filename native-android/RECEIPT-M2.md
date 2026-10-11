@@ -93,3 +93,10 @@ This receipt is committed separately and last. No push was performed.
 - Layout defect found by screenshot: the speed row overflowed, so the 2.0x button and the sleep-timer icon were clipped off the right edge and unusable. Fixed: speed buttons share the row equally; sleep timer is now a labeled "Sleep timer" button. Verified screenshot: all five speeds visible, menu shows 15/30/45/60 minutes, End of chapter, Off, unclipped.
 - VERIFIED sleep timer (End of chapter): label changed to "Stops at end of chapter"; seeked near chapter end; playback kept running to the boundary, then state went PLAYING -> PAUSED at position 18 ms of the next chapter and stayed paused 8+ s (did not roll into chapter 2).
 - NOT verified: the volume fade curve itself, timed (15/30/45/60) timers, shake-to-extend, notification contents, drive mode, volume-key page turns, haptics, offline-saved playback.
+
+## Hermes round 4 (emulator, API 35) - reader keys, settings
+- Settings screen renders Drive mode (off by default), Volume keys, Headset next/previous, Haptic page tick toggles. Switched volume keys, headset keys and haptic on; confirmed checked.
+- Opened Pride and Prejudice via Shelf > Discover > Download and read: reader loads real text, "page 1 of 38".
+- VERIFIED volume keys: DOWN advanced pages 2->3->4->5->6, UP went back 6->5->4 (6/6 correct once paginated). One early DOWN press before pagination finished did nothing.
+- NOT working / unproven: MEDIA_NEXT (keyevent 87) did NOT turn the page (adb key injection; real earbud behavior untested). Haptic: vibrator history shows short effects but I could not attribute them to page turns, so it is unverified. Drive mode untested (needs a car Bluetooth connect event; permission flow not exercised).
+- Defect: in Search, the EPUB and Web page format chips are AssistChip(onClick = {}) - they do nothing. Reading starts from Shelf > Discover > Download and read instead.

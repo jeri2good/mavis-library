@@ -143,3 +143,9 @@ This receipt is committed separately and last. No push was performed.
 - Emulator, own run, build with retry: Anthem (1:18:06, 12 chapters) Save offline -> "Saved for offline", 12 mp3 files, 62 MB. Airplane mode ON, ping DOWN: Listen played from local files, position advanced (27 s -> 36 s), chapter 1 rolled into Part 2 offline and kept advancing.
 - Before the retry fix the same save died at chapter 11 with HTTP 500 (archive.org answered 200 seconds later).
 - Not verified: Christmas Carol on the LIVE site until deploy; real phone; Gutenberg flaps 502/504 for minutes at a time (not an app fault).
+
+## Hermes round 12 - native Kids mode v1 (Codex gpt-6-astra started, Devin gpt-6-sol-medium finished)
+- Codex hit its usage limit mid-job (build never ran, no receipt); tree failed to compile (KidsPrefs.kt takeLast). Devin fixed it, added route/shell tests, startup drive-mode guard, 30 s reading-log flush.
+- Hermes own rebuild: 97 unit tests, 0 skipped/failed/errors; APK built.
+- Emulator (Mavis_Fresh forced to 1600x2560 @280dpi to hit the tablet breakpoint), own run: Settings Kids section -> name Maya, 20 min, PIN 1234 x2 -> Start; kids home (greeting, ring 0 of 20, streak, week dots, 4 big tiles, no adult tabs); 3x system Back stays in kids home; Read = 4-column cover grid; book page -> Download & read -> reader; Listen list; Bible stories list (12) -> Noah's ark opens Genesis 6; lock icon -> PIN pad; 5 wrong PINs -> "Wait 30 seconds", correct PIN refused while locked, accepted after ~30 s -> adult shell; force-stop + relaunch re-opens kids home with 3 min counted.
+- NOT verified: real tablet/hardware; LibriVox playback inside kids Listen; star earned at goal; PIN lockout surviving app kill; whether a child can escape via reader links (Devin review pending); Bible text is plain KJV, not simplified.

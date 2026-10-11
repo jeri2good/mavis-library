@@ -18,7 +18,7 @@ val BIBLE_STORIES = listOf(
 /** Fail closed: only the selected curated book or selected Bible passage can be opened. */
 fun kidsWebRouteAllowed(url: String, selectedRoute: String): Boolean = runCatching {
     val uri = URI(url)
-    if (uri.scheme != "https" || uri.rawAuthority != "localhost" || uri.path != "/") return false
+    if (uri.scheme != "https" || uri.rawAuthority != "localhost" || uri.rawUserInfo != null || uri.rawQuery != null || uri.path != "/") return false
     val hash = "#" + URLDecoder.decode(uri.rawFragment.orEmpty(), "UTF-8")
     val selected = URLDecoder.decode(selectedRoute, "UTF-8")
     if (selected.startsWith("#/book/gutenberg:")) {
@@ -26,3 +26,7 @@ fun kidsWebRouteAllowed(url: String, selectedRoute: String): Boolean = runCatchi
         id in KIDS_SHELF && hash in setOf("#/book/gutenberg:$id", "#/read/gutenberg:$id")
     } else selected in BIBLE_STORIES.map { it.route } && hash == selected
 }.getOrDefault(false)
+
+internal fun kidsNavigationAllowed(url: String, selectedRoute: String, mainFrame: Boolean): Boolean =
+    kidsWebRouteAllowed(url, selectedRoute) || (!mainFrame &&
+        (url == "about:blank" || url.startsWith("blob:https://localhost/") || url.startsWith("data:")))

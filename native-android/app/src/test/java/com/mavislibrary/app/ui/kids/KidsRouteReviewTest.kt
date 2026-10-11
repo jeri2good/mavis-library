@@ -19,6 +19,7 @@ class KidsRouteReviewTest {
             "https://LOCALHOST/#/book/gutenberg:11",
             "https://localhost@evil.example/#/book/gutenberg:11",
             "https://evil.example@localhost/#/book/gutenberg:11",
+            "https://user%40name@localhost/#/book/gutenberg:11",
             "https://localhost:443/#/book/gutenberg:11",
             "https://localhost./#/book/gutenberg:11",
             "https://localhost/%2f#/book/gutenberg:11",
@@ -33,8 +34,29 @@ class KidsRouteReviewTest {
         ).forEach { assertFalse(it, kidsWebRouteAllowed(it, book)) }
     }
 
-    @Test fun mainDocumentQueryIsCurrentlyNotPartOfTheAllowListCheck() {
-        assertTrue(kidsWebRouteAllowed("https://localhost/?extra=1#/book/gutenberg:11", book))
+    @Test fun mainDocumentQueryAndUserInfoAreRejected() {
+        listOf("?extra=1", "?", "?x=%23%2Fsettings").forEach {
+            assertFalse(kidsWebRouteAllowed("https://localhost/$it#/book/gutenberg:11", book))
+        }
+        assertFalse(kidsWebRouteAllowed("https://user@localhost/#/book/gutenberg:11", book))
+    }
+
+    @Test fun allFramesRejectOffsiteAndActiveSchemes() {
+        val selected = "https://localhost/#/read/gutenberg:11"
+        assertTrue(kidsNavigationAllowed(selected, book, true))
+        assertTrue(kidsNavigationAllowed(selected, book, false))
+        listOf("about:blank", "blob:https://localhost/abc", "data:text/html,chapter").forEach {
+            assertTrue(it, kidsNavigationAllowed(it, book, false))
+            assertFalse(it, kidsNavigationAllowed(it, book, true))
+        }
+        listOf("https://elsewhere.test/", "https://localhost/#/settings", "https://localhost/?q=1#/read/gutenberg:11",
+            "http://localhost/#/read/gutenberg:11", "intent://open", "market://details", "tel:123", "mailto:a@b.test",
+            "sms:123", "geo:0,0", "javascript:alert(1)", "file:///etc/passwd", "about:config",
+            "blob:https://evil.test/id", "datax:text/html,chapter"
+        ).forEach { url ->
+            assertFalse(url, kidsNavigationAllowed(url, book, false))
+            assertFalse(url, kidsNavigationAllowed(url, book, true))
+        }
     }
 
     @Test fun uncuratedSelectedRoutesAndBiblePassageChangesAreRejected() {

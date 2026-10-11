@@ -4,9 +4,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Voice features in the hosted web screens (getUserMedia); asked at first use. -->
+    <!-- Declared so the first-use microphone prompt can appear; Android never grants it at install. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Voice features in the hosted web screens (getUserMedia); asked at first use. -->
 
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 

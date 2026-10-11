@@ -113,3 +113,10 @@ This receipt is committed separately and last. No push was performed.
 - Tests: 50 pass, 0 fail (4 new for shelves/ids/tech parsing, shelf order, copyright filtering; the start-tab navigation test updated for the new start tab).
 - Emulator check: shelf titles and descriptions render in the right order, but every shelf showed "Couldn't load this shelf right now." because Project Gutenberg itself was down at the time (www.gutenberg.org answered 503/504 or timed out directly from this host; /api/catalog returned 502/504). So the cover rows were NOT visually verified. The error state was verified: it degrades to a clear message instead of a blank page.
 - RETEST once Gutenberg was back: VERIFIED on emulator. Search opens on the shelves with real covers (Most-loved classics, Children's, Maths & puzzles, Science fiction, ...) and the tech feed shows live items (Claude Haiku 5.5, Sonnet 5.5, ...). Screens 51-54.
+
+## Hermes round 7 - earbud next/previous (STILL NOT WORKING)
+- Tried: reader session reporting PLAYING at speed 0 + play/pause handlers; then FLAG_HANDLES_MEDIA_BUTTONS and a paused->playing transition after activation. Both builds install and run.
+- Result: `dumpsys media_session` still says "Media button session is null" after injecting KEYCODE_MEDIA_NEXT, so Android never routes the key to the app. The session itself is registered and active.
+- Not tried yet: setMediaButtonReceiver with a PendingIntent to a manifest receiver (Android may require it for non-foreground-service sessions), or routing earbud keys through the existing audiobook MediaSession.
+- Also seen: on this emulator the web reader sometimes stays on the cover ("page 1 of 1") for 2+ minutes after Download & read; it did paginate fine in an earlier run. Probably emulator speed, not proven.
+- Volume-key page turns (verified earlier) are unaffected.

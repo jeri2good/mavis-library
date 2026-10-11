@@ -15,15 +15,24 @@ class ReaderMediaSession(context: Context, private val onPageKey: (Int) -> Boole
         setCallback(object : MediaSession.Callback() {
             override fun onSkipToNext() { onPageKey(KeyEvent.KEYCODE_MEDIA_NEXT) }
             override fun onSkipToPrevious() { onPageKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS) }
+            override fun onPlay() { /* nothing plays; the key is swallowed so it cannot start other apps */ }
+            override fun onPause() { }
         })
-        setPlaybackState(
-            PlaybackState.Builder()
-                .setActions(PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
-                .setState(PlaybackState.STATE_PAUSED, 0, 0f)
-                .build(),
-        )
+        setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
         isActive = true
     }
+
+    private fun state(state: Int) = PlaybackState.Builder()
+        .setActions(PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE)
+        .setState(state, 0, if (state == PlaybackState.STATE_PLAYING) 1f else 0f)
+        .build()
+
+    init {
+        // Android only picks a session for media buttons when it CHANGES to playing after it is active.
+        session.setPlaybackState(state(PlaybackState.STATE_PAUSED))
+        session.setPlaybackState(state(PlaybackState.STATE_PLAYING))
+    }
+
 
     override fun close() {
         session.isActive = false

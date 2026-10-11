@@ -136,3 +136,10 @@ This receipt is committed separately and last. No push was performed.
 - Codex fix pass on native: handoff now pushes only when the page is the app origin (isAppOrigin, 6 tests); empty id list resolved locally.
 - Hermes check: 75 unit tests, 0 failures (own rebuild). Emulator: code typed in native Settings -> saved to Keystore -> after opening a web page the web app holds the exact code and the server returns owner:true.
 - NOT verified: foreign-origin refusal on a live WebView (unit tests only); the earlier native-Settings typing doubled a character once (adb input quirk, not an app fault).
+
+## Hermes round 11 - title match, download retry, offline audio PROVEN
+- Codex gpt-6-astra: LibriVox title match ignores a leading a/an/the (netlify/functions/librivox.mjs, 9 cases; function tests 91 pass, own re-run exit 0). Live before fix: title=A%20Christmas%20Carol -> 0 versions, Christmas%20Carol -> 8.
+- Codex gpt-6-astra: AudioFileStore retries each chapter 4x (1s/3s/8s) on 5xx/429/IO errors; 404 fails at once; finished chapters kept. 82 unit tests, 0 failures (own rebuild).
+- Emulator, own run, build with retry: Anthem (1:18:06, 12 chapters) Save offline -> "Saved for offline", 12 mp3 files, 62 MB. Airplane mode ON, ping DOWN: Listen played from local files, position advanced (27 s -> 36 s), chapter 1 rolled into Part 2 offline and kept advancing.
+- Before the retry fix the same save died at chapter 11 with HTTP 500 (archive.org answered 200 seconds later).
+- Not verified: Christmas Carol on the LIVE site until deploy; real phone; Gutenberg flaps 502/504 for minutes at a time (not an app fault).

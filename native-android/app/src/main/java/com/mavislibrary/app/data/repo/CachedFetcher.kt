@@ -17,7 +17,7 @@ class RoomResponseCache(private val dao: CachedResponseDao) : ResponseCache {
     override suspend fun put(key: String, body: String, fetchedAt: Long) = dao.put(CachedResponseEntity(key, body, fetchedAt))
 }
 
-enum class Origin { NETWORK, CACHE_FRESH, CACHE_STALE }
+enum class Origin { NETWORK, CACHE_FRESH, CACHE_STALE, LOCAL }
 
 /** A value plus where it came from, so the UI can say honestly when it is showing saved data. */
 data class Loaded<T>(val value: T, val origin: Origin, val fetchedAt: Long) {

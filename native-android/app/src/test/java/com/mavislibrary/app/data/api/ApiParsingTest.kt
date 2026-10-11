@@ -3,6 +3,12 @@ package com.mavislibrary.app.data.api
 import com.mavislibrary.app.Fixtures
 import com.mavislibrary.app.data.model.BookSource
 import com.mavislibrary.app.data.model.toBook
+import com.mavislibrary.app.data.repo.CachedFetcher
+import com.mavislibrary.app.data.repo.CachedResponse
+import com.mavislibrary.app.data.repo.Origin
+import com.mavislibrary.app.data.repo.ResponseCache
+import com.mavislibrary.app.data.repo.SearchRepository
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -87,8 +93,22 @@ class ApiParsingTest {
         assertEquals("100", Endpoints.openLibrarySearch("x", page = 500).toMap()["page"])
     }
 
-    @Test fun catalogIdsWithNoIdsSendsEmptyValue() {
-        assertEquals(listOf("ids" to ""), Endpoints.catalogIds(emptyList()))
+    @Test(expected = IllegalArgumentException::class)
+    fun catalogIdsWithNoIdsCannotProduceServerRequest() {
+        Endpoints.catalogIds(emptyList())
+    }
+
+    @Test fun emptyBookIdsReturnLocallyWithoutCacheOrServerAccess() = runTest {
+        val remote = RemoteSource { _, _ -> error("Must not call the server") }
+        val cache = object : ResponseCache {
+            override suspend fun get(key: String): CachedResponse? = error("Must not read cache")
+            override suspend fun put(key: String, body: String, fetchedAt: Long) = error("Must not write cache")
+        }
+        val repo = SearchRepository(CachedFetcher(remote, cache, { error("Must not require connectivity") }))
+        val result = repo.booksByIds(emptyList())
+        assertTrue(result.value.isEmpty())
+        assertEquals(Origin.LOCAL, result.origin)
+        assertFalse(result.isStale)
     }
 
     @Test fun catalogIdsWithOneIdPreservesIt() {

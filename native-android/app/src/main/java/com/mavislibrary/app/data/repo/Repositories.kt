@@ -37,7 +37,8 @@ class SearchRepository(private val fetcher: CachedFetcher) : CuratedCatalog {
 
     /** Books for one curated shelf, in the shelf's own order. */
     override suspend fun booksByIds(ids: List<Int>): Loaded<List<Book>> =
-        fetcher.fetch(Endpoints.CATALOG, Endpoints.catalogIds(ids)) { body ->
+        if (ids.isEmpty()) Loaded(emptyList(), Origin.LOCAL, 0L)
+        else fetcher.fetch(Endpoints.CATALOG, Endpoints.catalogIds(ids)) { body ->
             val byId = ApiParser.catalogPage(body).results.filter { it.copyright != true }.associateBy { it.id }
             ids.take(24).mapNotNull { byId[it]?.toBook() }
         }

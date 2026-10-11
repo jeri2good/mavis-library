@@ -27,6 +27,8 @@ Tests run as `env -u TYPESAFE_API_KEY -u FISH_AUDIO_API_KEY npm run test:functio
 # Native tests-review progress (devin/tests-review)
 
 - Native fix 1: guard owner-code injection on the UI thread and main-frame page completion with a pure exact-origin check; add six JVM origin tests. Storage unchanged; integrated validation pending.
+- Native fix 2: return empty book IDs locally before cache/connectivity/server access; reject empty endpoint serialization and adapt ApiParsingTest with a no-I/O regression test. Integrated validation pending.
+- Native fixes validation: background `./gradlew testDebugUnitTest assembleDebug --no-daemon -q` exited 0 with JDK 21.0.12.1+1; 19 XML suites / 75 tests / 0 failures / 0 errors / 0 skipped, including ApiParsingTest 15 and AppOriginTest 6. Debug APK produced; diff check clean. No emulator or device verification.
 
 - Baseline: prescribed `./gradlew testDebugUnitTest --no-daemon -q` failed before tests at `:app:copyWebAssets` (missing repo-root dist-android); skipping only copyWebAssets failed at `mergeDebugAssets`. JVM-test-only run `./gradlew testDebugUnitTest --no-daemon -q -x :app:copyWebAssets -x :app:mergeDebugAssets` passed; 16 XML suites, **50 tests, 0 failures/errors/skips** before new tests. The exact prescribed command remains blocked without dist-android.
 - Task 1 security review: native-android/REVIEW.md documents unguarded owner-code injection, plaintext IndexedDB persistence/stale code on removal, and the JS-global exposure; source review only, no emulator or production edits. Commit 34cb5aa.

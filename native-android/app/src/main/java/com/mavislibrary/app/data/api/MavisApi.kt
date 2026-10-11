@@ -78,7 +78,10 @@ object Endpoints {
     fun catalogBook(id: Int) = listOf("id" to id.toString())
 
     /** catalog.mjs ?ids=: up to 24 numeric Gutenberg ids. */
-    fun catalogIds(ids: List<Int>): List<Pair<String, String>> = listOf("ids" to ids.take(24).joinToString(","))
+    fun catalogIds(ids: List<Int>): List<Pair<String, String>> {
+        require(ids.isNotEmpty()) { "Empty ID lists must be resolved locally." }
+        return listOf("ids" to ids.take(24).joinToString(","))
+    }
 
     fun tech(kind: String): List<Pair<String, String>> = listOf("kind" to kind)
 

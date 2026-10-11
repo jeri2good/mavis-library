@@ -22,3 +22,4 @@ Tests run as `env -u TYPESAFE_API_KEY -u FISH_AUDIO_API_KEY npm run test:functio
 - Task 5-8 tests — app/src/test/** (ApiParsingTest, MavisApiTest[MockWebServer], CachedFetcherTest, SecureStoreTest, LookChoiceTest, ShelfRepositoryTest[Robolectric+Room in-memory], WebNavigationPolicyTest[Robolectric], NavigationShellTest[Robolectric+Compose]) — `./gradlew testDebugUnitTest assembleDebug lintDebug` — BUILD SUCCESSFUL, 34 tests, 0 failures, lint no issues.
 
 - Native Shelf step 1: extracted shared Cover/BookTile; added SavedShelf/CuratedCatalog repository contracts and ShelfViewModel observing Room order, loading curated picks, and removing books. Validation pending integrated Gradle run.
+- Native Shelf step 2: added themed Compose saved-book grid, removal menus, empty-state Popular picks rows and web-shelf link; Search and Shelf share the existing openLater/book-key encoding mechanism through a dedicated web destination. Device UI remains unverified.

@@ -46,6 +46,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.mavislibrary.app.AppContainer
+import com.mavislibrary.app.ui.shelf.ShelfScreen
 import com.mavislibrary.app.ui.search.SearchScreen
 import com.mavislibrary.app.ui.listen.ListenScreen
 import com.mavislibrary.app.ui.listen.MiniPlayer
@@ -57,12 +58,14 @@ import com.mavislibrary.app.web.WebHost
 import com.mavislibrary.app.web.WebScreen
 
 enum class Tab(val route: String, val label: String, val icon: ImageVector, val webRoute: String? = null) {
-    SHELF("shelf", "Shelf", Icons.Outlined.LocalLibrary, "#/shelf"),
+    SHELF("shelf", "Shelf", Icons.Outlined.LocalLibrary),
     SEARCH("search", "Search", Icons.Outlined.Search),
     BIBLE("bible", "Bible", Icons.AutoMirrored.Outlined.MenuBook, "#/bible"),
     LISTEN("listen", "Listen", Icons.Outlined.Headphones),
     SETTINGS("settings", "Settings", Icons.Outlined.Settings),
 }
+
+const val ROUTE_WEB_SHELF = "web_shelf"
 
 const val ROUTE_SHOWCASE = "showcase"
 
@@ -87,6 +90,13 @@ fun MavisRoot(
     DisposableEffect(playback) { onDispose { playback.close() } }
     val entry by nav.currentBackStackEntryAsState()
     val current = entry?.destination
+    val openBook: (String) -> Unit = { key ->
+        webHost?.openLater("#/book/" + java.net.URLEncoder.encode(key, "UTF-8").replace("+", "%20"))
+        nav.navigate(ROUTE_WEB_SHELF) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = false }
+            launchSingleTop = true
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -130,14 +140,22 @@ fun MavisRoot(
                         }
                     }
                 }
-                composable(Tab.SEARCH.route) {
-                    SearchScreen(container, online, onOpenBook = { key ->
-                        webHost?.openLater("#/book/" + java.net.URLEncoder.encode(key, "UTF-8").replace("+", "%20"))
-                        nav.navigate(Tab.SHELF.route) {
-                            popUpTo(nav.graph.findStartDestination().id) { saveState = false }
-                            launchSingleTop = true
-                        }
+                composable(Tab.SHELF.route) {
+                    ShelfScreen(container, onOpenBook = openBook, onOpenWebShelf = {
+                        webHost?.openLater("#/shelf")
+                        nav.navigate(ROUTE_WEB_SHELF) { launchSingleTop = true }
                     })
+                }
+                composable(ROUTE_WEB_SHELF) {
+                    if (webHost != null) {
+                        BackHandler(enabled = webHost.canGoBack) { webHost.goBack() }
+                        WebScreen(webHost, "#/shelf", Modifier.fillMaxSize())
+                    } else {
+                        WebUnavailable("Shelf")
+                    }
+                }
+                composable(Tab.SEARCH.route) {
+                    SearchScreen(container, online, onOpenBook = openBook)
                 }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio) }
                 composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange) }

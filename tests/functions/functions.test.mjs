@@ -601,4 +601,18 @@ await test('librivox: exact Gutenberg match first, solo readers ahead of groups,
   assert.deepEqual(await (await lv(get('/api/librivox?title=Nothing'), ctx('lv3'))).json(), { versions: [] });
 });
 
+await test('librivox: one stalled upstream try is retried; two stalls give an honest 504', async () => {
+  const lv = (await import('../../netlify/functions/librivox.mjs')).default;
+  const book = { id: '7', title: 'Moby Dick', language: 'English', authors: [{ last_name: 'Melville' }], sections: [{ section_number: '1', title: 'Ch 1', listen_url: 'https://www.archive.org/download/m/1.mp3', playtime: '60' }] };
+  let calls = 0;
+  routes = [[(u) => u.startsWith('https://librivox.org/'), () => { calls += 1; if (calls === 1) { const e = new Error('aborted'); e.name = 'AbortError'; throw e; } return respond({ books: [book] }); }]];
+  const ok = await lv(get('/api/librivox?title=Moby%20Dick&author=Melville'), ctx('lv-retry'));
+  assert.equal(ok.status, 200); assert.equal(calls, 2, 'retried once');
+  assert.equal((await ok.json()).versions.length, 1);
+  calls = 0;
+  routes = [[(u) => u.startsWith('https://librivox.org/'), () => { calls += 1; const e = new Error('aborted'); e.name = 'AbortError'; throw e; }]];
+  const bad = await lv(get('/api/librivox?title=Moby%20Dick&author=Melville'), ctx('lv-stall'));
+  assert.equal(bad.status, 504); assert.equal(calls, 2, 'gave up after exactly two tries');
+});
+
 console.log(`\n${passed} endpoint checks passed.`);

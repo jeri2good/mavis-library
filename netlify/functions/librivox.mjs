@@ -54,7 +54,12 @@ const handler = async (req, context) => {
   if (!title) return fail(400, 'bad_request', 'Give a title.');
   const q = new URLSearchParams({ title: `^${shortTitle(title)}`, format: 'json', extended: '1', limit: '20' });
   try {
-    const r = await upstream(`https://librivox.org/api/feed/audiobooks/?${q}`, { timeoutMs: 8500 });
+    // LibriVox is occasionally slow. Two short tries fit inside the platform's 10 s function limit
+    // and recover from a one-off stall; a single long wait does not.
+    const url = `https://librivox.org/api/feed/audiobooks/?${q}`;
+    let r;
+    try { r = await upstream(url, { timeoutMs: 5200 }); }
+    catch (e) { if (e?.name !== 'AbortError' && !(e instanceof TypeError)) throw e; r = await upstream(url, { timeoutMs: 3800 }); }
     if (r.status === 404) return json({ versions: [] }, { cache: 'public, max-age=86400', cdn: 'public, s-maxage=604800' });
     if (!r.ok) return fail(502, 'upstream_error', `LibriVox answered ${r.status}.`);
     const j = await r.json().catch(() => ({}));

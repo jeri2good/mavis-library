@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private var webHost: WebHost? = null
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private var driveEnabled = false
+    private var readerKeys: com.mavislibrary.app.web.ReaderMediaSession? = null
     private var driveMonitor: DriveModeMonitor? = null
     private var driveModeActive by mutableStateOf(false)
     private val askBluetooth = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -118,12 +119,17 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         webHost?.onResume()
+        readerKeys?.close()
+        readerKeys = com.mavislibrary.app.web.ReaderMediaSession(this) { code ->
+            webHost?.handlePageTurnKey(KeyEvent(KeyEvent.ACTION_DOWN, code)) == true
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
         if (webHost?.handlePageTurnKey(event) == true) true else super.onKeyDown(keyCode, event)
 
     override fun onPause() {
+        readerKeys?.close(); readerKeys = null
         webHost?.onPause()
         super.onPause()
     }

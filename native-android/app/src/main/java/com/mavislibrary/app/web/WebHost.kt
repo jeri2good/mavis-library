@@ -176,7 +176,14 @@ class WebHost(private val activity: ComponentActivity) {
     }
 
     /** Shows a web route such as "#/bible" without adding a history entry, and makes it this tab's root. */
-    fun show(hashRoute: String) {
+    @Volatile private var pendingHash: String? = null
+
+    /** Queues a web route (for example a book page) to show the next time the Shelf web screen is entered. */
+    fun openLater(hashRoute: String) { pendingHash = hashRoute }
+
+    fun show(requestedRoute: String) {
+        val hashRoute = pendingHash ?: requestedRoute
+        pendingHash = null
         val view = webView
         if (!loaded) {
             loaded = true

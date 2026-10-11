@@ -130,7 +130,15 @@ fun MavisRoot(
                         }
                     }
                 }
-                composable(Tab.SEARCH.route) { SearchScreen(container, online) }
+                composable(Tab.SEARCH.route) {
+                    SearchScreen(container, online, onOpenBook = { key ->
+                        webHost?.openLater("#/book/" + java.net.URLEncoder.encode(key, "UTF-8").replace("+", "%20"))
+                        nav.navigate(Tab.SHELF.route) {
+                            popUpTo(nav.graph.findStartDestination().id) { saveState = false }
+                            launchSingleTop = true
+                        }
+                    })
+                }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio) }
                 composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange) }
                 composable(ROUTE_SHOWCASE) { ThemeShowcaseScreen(onBack = { nav.popBackStack() }) }

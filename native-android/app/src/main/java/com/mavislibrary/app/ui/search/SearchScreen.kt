@@ -80,7 +80,7 @@ import com.mavislibrary.app.ui.theme.LocalLookTokens
 private val SUGGESTIONS = listOf("Jane Austen", "Sherlock Holmes", "Psalms", "Fairy tales", "Dickens", "Poetry")
 
 @Composable
-fun SearchScreen(container: AppContainer, online: Boolean) {
+fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (String) -> Unit = {}) {
     val vm: SearchViewModel = viewModel(factory = viewModelFactory {
         initializer { SearchViewModel(container.searchRepository, container.shelfRepository) }
     })
@@ -88,7 +88,7 @@ fun SearchScreen(container: AppContainer, online: Boolean) {
     val shelf by vm.shelfKeys.collectAsStateWithLifecycle()
     SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select)
     state.selected?.let { book ->
-        BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onDismiss = { vm.select(null) })
+        BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book.key) }, onDismiss = { vm.select(null) })
     }
 }
 
@@ -247,7 +247,7 @@ private fun BookTile(book: Book, onShelf: Boolean, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun BookDetailSheet(book: Book, onShelf: Boolean, onToggleShelf: () -> Unit, onDismiss: () -> Unit) {
+private fun BookDetailSheet(book: Book, onShelf: Boolean, onToggleShelf: () -> Unit, onOpen: () -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
@@ -267,14 +267,20 @@ private fun BookDetailSheet(book: Book, onShelf: Boolean, onToggleShelf: () -> U
                 }
             }
             Text("Formats", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                book.formats.forEach { f -> AssistChip(onClick = {}, label = { Text(if (f.free) "${f.label} \u00b7 free" else f.label) }) }
-            }
+            Text(
+                book.formats.joinToString("  \u2022  ") { f -> if (f.free) "${f.label} \u00b7 free" else f.label }.ifBlank { "No downloadable file listed" },
+                style = MaterialTheme.typography.bodyMedium,
+            )
             if (book.source == BookSource.OPEN_LIBRARY) {
                 Text("Open Library is for discovery. A listing here does not mean the book is free or available.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Button(onClick = onToggleShelf, modifier = Modifier.fillMaxWidth().testTag("shelf_button")) {
+            Button(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("open_book_button")) {
+                Icon(Icons.Outlined.OpenInBrowser, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Open book page")
+            }
+            OutlinedButton(onClick = onToggleShelf, modifier = Modifier.fillMaxWidth().testTag("shelf_button")) {
                 Icon(if (onShelf) Icons.Outlined.BookmarkAdded else Icons.Outlined.BookmarkAdd, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(if (onShelf) "On your shelf \u00b7 Remove" else "Add to shelf")

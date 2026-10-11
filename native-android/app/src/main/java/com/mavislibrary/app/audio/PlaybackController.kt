@@ -71,7 +71,8 @@ class PlaybackController(context: Context, connect: Boolean = android.os.Build.F
     }
 
     fun play(book: Book, version: LibriVoxVersion, files: AudioFileStore, resume: ResumePosition?) {
-        val player = controller ?: return
+        val player = controller ?: run { android.util.Log.w("MavisAudio", "play(): player service not connected yet"); return }
+        android.util.Log.i("MavisAudio", "play(): ${version.sections.size} chapters, commands ok=${player.isCommandAvailable(Player.COMMAND_PLAY_PAUSE)}")
         val items = version.sections.mapIndexed { index, section ->
             val extras = Bundle().apply { putString(PlaybackService.EXTRA_BOOK_KEY, book.key) }
             MediaItem.Builder()

@@ -16,7 +16,7 @@ class AudioFileStore(private val root: File, private val client: OkHttpClient) {
 
     fun playableUri(versionId: String, chapter: Int, streamUrl: String): Uri {
         val local = file(versionId, chapter)
-        return if (local.isFile && local.length() > 0) Uri.fromFile(local) else Uri.parse(streamUrl)
+        return if (local.isFile && local.length() > 0) Uri.fromFile(local) else Uri.parse(streamUrl.replaceFirst("://www.archive.org/", "://archive.org/"))
     }
 
     fun isComplete(version: LibriVoxVersion): Boolean =

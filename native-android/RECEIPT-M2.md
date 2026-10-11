@@ -81,3 +81,10 @@ This receipt is committed separately and last. No push was performed.
 - Verified on emulator: launch, native Listen tab renders, audiobook search returns real results (Pride and Prejudice etc.).
 - NOT verified: actual audio playback, lock-screen/notification controls, headset buttons, sleep timer fade, drive mode, volume-key page turns, haptics. Reason: LibriVox (librivox.org and the Netlify /api/librivox function) timed out (504 / no answer in 25s) during the test, so no book could be opened, and a substitute MP3 test file did not download (got an HTML redirect). The app showed an honest "LibriVox didn't answer" error.
 - Lesson: green unit tests did not catch a launch crash. Always launch the APK before reporting done.
+
+## Hermes round 2 (emulator, API 35) - LibriVox + playback
+- Netlify /api/librivox: one stalled upstream try is now retried once within the 10s limit (live, ae0610a). Search lists real recordings.
+- Listen button did nothing: PlaybackService.onConnect limited player commands, so play() was dropped ("COMMAND_PLAY_PAUSE not being available"). Fixed with DEFAULT_PLAYER_COMMANDS.
+- VERIFIED playing Moby Dick: position 15s -> 30s -> 45s, state PLAYING, 0 playback errors. Screen truly OFF (mWakefulness=Asleep): 84s -> 102s over 20s. Play/pause key and media_session dispatch pause/play both work. Foreground service + media notification present.
+- archive.org returns 500/503 for some files (e.g. Pride and Prejudice ch1-4, reproduced with curl from host). Added load-error retry policy (8) and bare-host URL; built, NOT yet verified against that file.
+- NOT verified: sleep timer start/fade, notification contents, drive mode, volume-key page turns, haptics, offline-saved playback.

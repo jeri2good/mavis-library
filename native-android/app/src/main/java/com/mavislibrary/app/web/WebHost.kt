@@ -45,6 +45,15 @@ import com.mavislibrary.app.MavisApp
 /** Origin of the bundled web app. Already an allowed CORS origin on the Netlify functions. */
 const val WEB_ORIGIN = "https://localhost"
 
+/** Pure origin check; a hostname that merely starts with localhost is not trusted. */
+fun isAppOrigin(url: String?): Boolean {
+    if (url == null || !url.startsWith(WEB_ORIGIN)) return false
+    return runCatching {
+        val uri = java.net.URI(url)
+        uri.scheme == "https" && uri.rawAuthority in setOf("localhost", "localhost:443")
+    }.getOrDefault(false)
+}
+
 /** Serves assets/web/ (copied from dist-android at build time) for https://localhost/. */
 class BundledWebAssets(activity: ComponentActivity) : WebViewAssetLoader.PathHandler {
     private val assets = WebViewAssetLoader.AssetsPathHandler(activity)
@@ -191,7 +200,11 @@ class WebHost(private val activity: ComponentActivity) {
 
     private fun pushOwnerCode() {
         val code = ownerCode?.takeIf { it.isNotBlank() } ?: return
-        activity.runOnUiThread { webView.evaluateJavascript("window.MavisApp&&window.MavisApp.setAccessCode(${JSONObject.quote(code)});", null) }
+        activity.runOnUiThread {
+            if (isAppOrigin(webView.url)) {
+                webView.evaluateJavascript("window.MavisApp&&window.MavisApp.setAccessCode(${JSONObject.quote(code)});", null)
+            }
+        }
     }
 
     fun show(requestedRoute: String) {
@@ -294,7 +307,10 @@ class WebHost(private val activity: ComponentActivity) {
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) view.evaluateJavascript(nativeMarkerScript(), null)
         }
 
-        override fun onPageFinished(view: WebView, url: String?) { pushOwnerCode() }
+        override fun onPageFinished(view: WebView, url: String?) {
+            // WebView delivers onPageFinished only for the main frame.
+            if (isAppOrigin(url) && isAppOrigin(view.url)) pushOwnerCode()
+        }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = updateBackState()
     }

@@ -1,0 +1,22 @@
+# Brief (Codex, gpt-6-astra): native KIDS MODE v1 for a 7-year-old on a tablet
+Repo: this tree, branch native, you are the ONLY writer. Work in native-android/. Toolchain: export JAVA_HOME=$HOME/.local/jdks/jdk-21.0.12.1+1 PATH=$JAVA_HOME/bin:$PATH ANDROID_HOME=$HOME/Android/Sdk. Run gradle in the BACKGROUND with a log file and poll it (`./gradlew testDebugUnitTest assembleDebug --no-daemon -q`). NO emulator (host RAM). Commit in steps (3-5 commits). Last action: write RECEIPT-kids.md (files, test counts read from app/build/test-results/**/*.xml, what is NOT verified). Do not push. Never fabricate results.
+
+## Context
+The web app already has a kids mode (read src/lib/kids.js and src/views/kids-home.js for the rules; do NOT edit anything under src/ or netlify/). Native only has a Kids colour look (ui/theme/Look.kt, "Preview only for now") and MavisApi.shelves(kids=true). Goal: a real native Kids mode a child can use alone on a tablet, bright colours, big round buttons, game-like feel.
+
+## Build
+1. data/kids/KidsPrefs.kt (+ tests): kidsMode flag, child name, daily goal minutes (10/15/20/30, default 15), PIN, reading log (minutes per local date, last 7 days + streak) stored in the existing SettingsStore/SecureStore pattern. PIN is exactly 4 digits, stored ONLY as a salted hash (random salt, SHA-256 or better), never plaintext. Wrong PIN: after 5 misses lock entry for 30 s (injectable clock for tests). Streak/week semantics must match lib/kids.js goalStreak/lastWeek.
+2. Settings: new "Kids mode" section in ui/settings/SettingsScreen.kt: name, goal chips, set 4-digit PIN (enter twice), a big "Start Kids mode" button. Kids mode persists across app restarts (app opens straight into kids home while on).
+3. ui/kids/ (Compose): KidsRoot replaces the adult shell in ui/MavisRoot.kt when kids mode is on. NO adult bottom bar, no Settings, no owner-code, no assistant, no drive mode while on. Back button never leaves kids mode. Screens:
+   - KidsHome: greeting with the child's name, goal ring + stars (today's minutes of goal, streak, last-7-days dots), and 4 giant rounded tiles: "Read" (story shelf), "Listen" (audiobook of kid books), "Bible stories", "My stars". 
+   - Read: grid of the KIDS_SHELF children's classics (copy the id list from src/lib/kids.js; fetch via existing catalogIds(), which takes up to 24 ids; cache with the existing repository/Room path so it works offline once seen). Big covers, tap opens the book in the EXISTING web reader handoff you used for Shelf. Back returns to kids home.
+   - Listen: same books, tap -> LibriVox lookup (existing libriVox API params, pass gid) -> play with the existing PlaybackController; if no recording, show a friendly "No recording for this one yet".
+   - Bible stories: the 12 stories list from src/views/kids-home.js BIBLE_STORIES, opening the existing web Bible route at that passage.
+   - My stars: bigger goal ring, streak, week.
+   - Grown-ups corner: a small lock icon top-corner; tap -> PIN pad dialog (shows lockout message); correct PIN leaves kids mode and returns to the adult shell.
+4. Reading time: add minutes to today's log while a book is open in the reader (kids mode) and while audio is PLAYING in kids mode; flush on pause/leave. Keep it simple, unit-test the accumulator (no UI test needed).
+5. Tablet layout: use window width (>= 600 dp = tablet): 2x2 giant tiles on home, 3-5 column cover grids, touch targets >= 64 dp, body text >= 20 sp, headings >= 32 sp. Phone: single column. Use the Kids look colours (Look.KIDS) throughout; update the Look.KIDS description text (no longer "preview only"). Keep text short and friendly; no jargon, no adult/owner wording.
+6. Tests (JVM, no network): PIN valid/invalid, hash != plaintext and verifies, 5-miss lockout and recovery with fake clock, streak/week rollover across midnight, kids-book filter, accumulator, "kids mode on -> adult routes unreachable" logic if you factor it into a pure function.
+
+## Rules
+Touch only: ui/kids/*, data/kids/*, ui/MavisRoot.kt, ui/settings/SettingsScreen.kt, ui/theme/Look.kt, MainActivity.kt only if startup routing needs it, tests, PROGRESS.md, RECEIPT-kids.md, and build files only if strictly needed (say so). Do NOT touch web/WebHost.kt's owner-code logic, audio/ internals (use PlaybackController as is), netlify/, src/. Any new user-visible text must read well to a 7-year-old. Honest labels only: do not claim features you did not build.

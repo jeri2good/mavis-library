@@ -149,3 +149,12 @@ This receipt is committed separately and last. No push was performed.
 - Hermes own rebuild: 97 unit tests, 0 skipped/failed/errors; APK built.
 - Emulator (Mavis_Fresh forced to 1600x2560 @280dpi to hit the tablet breakpoint), own run: Settings Kids section -> name Maya, 20 min, PIN 1234 x2 -> Start; kids home (greeting, ring 0 of 20, streak, week dots, 4 big tiles, no adult tabs); 3x system Back stays in kids home; Read = 4-column cover grid; book page -> Download & read -> reader; Listen list; Bible stories list (12) -> Noah's ark opens Genesis 6; lock icon -> PIN pad; 5 wrong PINs -> "Wait 30 seconds", correct PIN refused while locked, accepted after ~30 s -> adult shell; force-stop + relaunch re-opens kids home with 3 min counted.
 - NOT verified: real tablet/hardware; LibriVox playback inside kids Listen; star earned at goal; PIN lockout surviving app kill; whether a child can escape via reader links (Devin review pending); Bible text is plain KJV, not simplified.
+
+## Hermes round 13 - Kids hardening verified on emulator
+- Devin gpt-6-sol-medium wrote KIDS-REVIEW.md (3 HIGH, MED, LOW findings; reasoning only) then hardened the reader (3fbd893, 578b50c, a20abba). Own rebuild: 105 tests, 0 failed/skipped.
+- Emulator (tablet-size), owner code saved in adult Settings, then Kids mode on, Peter Rabbit open. Own CDP probes inside the live WebViews:
+  - Network.requestWillBeSent, same two probe requests (fetch + XHR with x-mavis-access): ADULT page sends the header unchanged (control); KIDS reader sends only x-mavis-kids:1 - owner header stripped on both paths.
+  - Kids page: shared IndexedDB has NO accessCode key (adult page has it); window.open -> null; navigator.share -> NotAllowedError; user-select none; a target=_blank anchor click left MainActivity on top (no external activity).
+  - Long press on text: no selection toolbar or handles (screenshot 103). Reader still works: cover then page 3 of 27 text (screenshots 102, 104).
+- Exit via PIN pad still returns to the adult shell. Kids WebView does not receive the owner code.
+- NOT verified: EPUB subframe links (no EPUB tested; Peter Rabbit is HTML); real tablet; system Home/Recents (needs Android screen pinning, not app code); findings 5 (shared media service) and 6 (4-digit PIN KDF) deferred; Listen audio and goal star still untested.

@@ -21,10 +21,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.colorResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mavislibrary.app.data.kids.kidsPrefs
 import com.mavislibrary.app.ui.MavisRoot
 import com.mavislibrary.app.ui.theme.MavisTheme
 import com.mavislibrary.app.ui.theme.tokensFor
@@ -63,6 +65,8 @@ class MainActivity : ComponentActivity() {
             val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = null)
             val online by container.connectivity.online.collectAsStateWithLifecycle()
             val playbackSettings by container.settings.playback.collectAsStateWithLifecycle(initialValue = com.mavislibrary.app.data.prefs.PlaybackSettings())
+            val kidsPrefs = remember { kidsPrefs() }
+            val kidsState by kidsPrefs.state.collectAsStateWithLifecycle(initialValue = null)
             val now by produceState(LocalTime.now()) {
                 while (true) {
                     delay(60_000)
@@ -80,7 +84,9 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             MavisTheme(resolved) {
-                LaunchedEffect(playbackSettings.driveModeEnabled) { configureDriveMode(playbackSettings.driveModeEnabled) }
+                LaunchedEffect(playbackSettings.driveModeEnabled, kidsState?.enabled) {
+                    configureDriveMode(playbackSettings.driveModeEnabled && kidsState?.enabled == false)
+                }
                 MavisRoot(
                     container, webHost, online,
                     onFirstAudio = ::requestNotificationPermission,

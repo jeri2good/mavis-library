@@ -7,6 +7,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.mavislibrary.app.MainActivity
+import com.mavislibrary.app.data.kids.PinResult
+import com.mavislibrary.app.data.kids.kidsPrefs
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import org.robolectric.RuntimeEnvironment
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -55,5 +61,22 @@ class NavigationShellTest {
         waitForTag("showcase")
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         waitForTag("settings")
+    }
+
+    @Test
+    fun kidsModeReplacesAdultShellAndBackStaysHome() {
+        waitForTag("tab_settings")
+        val prefs = RuntimeEnvironment.getApplication().kidsPrefs()
+        runBlocking { prefs.start("Sam", 15, "1234") }
+        try {
+            compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("Hi, Sam!")).fetchSemanticsNodes().isNotEmpty() }
+            assertTrue(runBlocking { prefs.state.first().enabled })
+            assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasTestTag("tab_settings")).fetchSemanticsNodes().isEmpty())
+            compose.activityRule.scenario.onActivity { assertTrue(it.onBackPressedDispatcher.hasEnabledCallbacks()); it.onBackPressedDispatcher.onBackPressed() }
+            compose.onNodeWithText("Hi, Sam!").assertExists()
+        } finally {
+            assertEquals(PinResult.Correct, runBlocking { prefs.leave("1234") })
+        }
+        waitForTag("tab_settings")
     }
 }

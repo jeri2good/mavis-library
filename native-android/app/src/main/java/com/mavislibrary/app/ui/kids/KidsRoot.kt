@@ -57,6 +57,7 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
     val accumulator = remember { ReadingAccumulator() }
     val active = (reading && foreground) || (kidsAudio && audio.playing)
     val currentActive by rememberUpdatedState(active)
+    val currentKidsAudio by rememberUpdatedState(kidsAudio)
     fun flush(activeNow: Boolean) {
         accumulator.update(activeNow)
         val chunk = accumulator.drain()
@@ -65,15 +66,15 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) { foreground = true; today = LocalDate.now() }
-            if (event == Lifecycle.Event.ON_PAUSE) { foreground = false; flush(kidsAudio && playback.state.value.playing) }
+            if (event == Lifecycle.Event.ON_PAUSE) { foreground = false; flush(currentKidsAudio && playback.state.value.playing) }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); flush(false) }
     }
     LaunchedEffect(active) { flush(active) }
-    LaunchedEffect(Unit) { while (true) { delay(1000); today = LocalDate.now(); flush(currentActive) } }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); today = LocalDate.now(); flush(currentActive) } }
     // Stop an adult queue on entry, including a service that connects after composition.
-    LaunchedEffect(audio.connected) { if (audio.connected && !kidsAudio && audio.playing) playback.toggle() }
+    LaunchedEffect(audio.connected, audio.playing, kidsAudio) { if (audio.connected && !kidsAudio && audio.playing) playback.toggle() }
     val home = { reading = false; route = null; screen = "Home" }
     BackHandler { if (pinOpen) pinOpen = false else home() }
     MavisTheme(Look.KIDS) {
@@ -149,15 +150,15 @@ private fun Stars(state: KidsState, today: LocalDate, large: Boolean) {
                 trackColor = MaterialTheme.colorScheme.primaryContainer)
             Column(horizontalAlignment = Alignment.CenterHorizontally) { Heading("$minutes"); KidsText("of ${state.goal} min") }
         }
-        KidsText(if (minutes >= state.goal) "You earned today’s star! ★" else "Read or listen to earn a star!")
+        KidsText(if (minutes >= state.goal) "You earned today’s star! ★" else "Read or listen for ${state.goal - minutes} more minutes to earn a star!")
         KidsText("${state.streak(today)} days in a row")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             state.week(today).forEach { day ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.semantics {
                     contentDescription = "${day.date}: ${day.minutes} minutes" + if (day.star) ", star earned" else ""
                 }) {
-                    Text(if (day.star) "★" else "☆", fontSize = 28.sp, color = MaterialTheme.colorScheme.primary)
-                    Text(day.date.format(DateTimeFormatter.ofPattern("EEEEE")), fontSize = 20.sp)
+                    Text(if (day.star) "★" else "○", fontSize = 28.sp, color = MaterialTheme.colorScheme.primary)
+                    Text(day.date.format(DateTimeFormatter.ofPattern("EEE")), fontSize = 20.sp)
                 }
             }
         }

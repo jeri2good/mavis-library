@@ -22,11 +22,11 @@ fun KidsSetup(prefs: KidsPrefs, onStart: () -> Unit = {}) {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(saved.name, saved.goal) { name = saved.name; goal = saved.goal }
-    OutlinedTextField(name, { name = it.take(30) }, label = { KidsText("Child’s name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(name, { name = it.take(30) }, label = { KidsText("Child’s name") }, singleLine = true, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp))
     KidsText("A star each day")
     // Two rows keep every chip at least 64 dp wide, even on a phone.
     listOf(listOf(10,15), listOf(20,30)).forEach { row ->
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             row.forEach { value -> FilterChip(goal == value, { goal = value }, label = { KidsText("$value min") }, modifier = Modifier.weight(1f).heightIn(min = 64.dp)) }
         }
     }
@@ -37,7 +37,7 @@ fun KidsSetup(prefs: KidsPrefs, onStart: () -> Unit = {}) {
             if (confirm) again = digits else pin = digits
             message = null
         }, label = { KidsText(if (confirm) "PIN again" else "4-digit PIN") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth())
+            visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp))
     }
     message?.let { KidsText(it) }
     Button(onClick = {

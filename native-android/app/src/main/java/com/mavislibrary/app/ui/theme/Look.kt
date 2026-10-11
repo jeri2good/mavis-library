@@ -2,12 +2,12 @@ package com.mavislibrary.app.ui.theme
 
 import java.time.LocalTime
 
-/** The three selectable adult looks, plus the kids theme (defined in M1, previewed only). */
+/** The three selectable adult looks, plus the Kids mode theme. */
 enum class Look(val label: String, val blurb: String) {
     PAPER("Paper", "Warm cream pages and serif type. A classic library."),
     MIDNIGHT("Midnight", "Deep, calm dark with gold accents. Easy on evening eyes."),
     EDITORIAL("Editorial", "White space, bold type and big cover tiles."),
-    KIDS("Kids", "Bright colours, big round buttons. Preview only for now.");
+    KIDS("Kids", "Bright colours, big round buttons. A happy place for stories.");
 
     companion object {
         val selectable = listOf(PAPER, MIDNIGHT, EDITORIAL)

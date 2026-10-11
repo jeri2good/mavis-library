@@ -44,3 +44,8 @@ Tests run as `env -u TYPESAFE_API_KEY -u FISH_AUDIO_API_KEY npm run test:functio
 - Added separate singleton Preferences DataStore following SettingsStore's edit/Flow pattern; the PIN is only a random-salted SHA-256 digest. Five-miss, 30-second lockout is persisted.
 - Added curated IDs, web-compatible kids filter, local-date streak/week, and a midnight-splitting reading accumulator with JVM tests.
 - Validation pending background Gradle. Original edited UI files backed up at /tmp/kids-before.
+
+## Native Kids mode — step 2
+- Added Kids-only Compose home, curated Read/Listen grids, 12 Bible stories, stars, PIN pad, setup fields, and persisted startup gating before the adult navigation graph is composed.
+- Reader uses the existing bundled book/download/read and Bible routes with a dedicated restricted WebView under ui/kids. Document-start navigation guard and native URL allowlist prevent adult/external routes; older WebViews without document-start support fail closed. WebHost and its owner-code logic remain untouched.
+- Added PLAYING/foreground-reader time tracking, lifecycle flush, tablet grids, and Kids look. Build and device behavior remain unverified at this step.

@@ -24,6 +24,11 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
+import com.mavislibrary.app.data.kids.kidsPrefs
+import com.mavislibrary.app.data.kids.KidsState
+import com.mavislibrary.app.data.kids.adultRoutesAllowed
+import com.mavislibrary.app.ui.kids.KidsRoot
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
@@ -88,6 +93,14 @@ fun MavisRoot(
     val context = LocalContext.current
     val playback = remember { PlaybackController(context) }
     DisposableEffect(playback) { onDispose { playback.close() } }
+    val kidsPrefs = remember(context.applicationContext) { context.kidsPrefs() }
+    val kids by kidsPrefs.state.collectAsState(initial = null)
+    // Do not compose adult navigation until the persisted mode has been read.
+    val loadedKids = kids ?: return
+    if (!adultRoutesAllowed(loadedKids.enabled)) {
+        KidsRoot(container, kidsPrefs, loadedKids, playback)
+        return
+    }
     val entry by nav.currentBackStackEntryAsState()
     val current = entry?.destination
     val openBook: (String) -> Unit = { key ->

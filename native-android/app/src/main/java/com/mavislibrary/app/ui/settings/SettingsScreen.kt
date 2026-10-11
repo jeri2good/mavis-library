@@ -53,6 +53,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mavislibrary.app.data.kids.kidsPrefs
+import com.mavislibrary.app.ui.kids.KidsSetup
 import com.mavislibrary.app.AppContainer
 import com.mavislibrary.app.BuildConfig
 import com.mavislibrary.app.data.secure.Secret
@@ -76,6 +78,10 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
+
+        Section("Kids mode", Icons.Outlined.Lock) {
+            KidsSetup(remember(context.applicationContext) { context.kidsPrefs() }, onStart = { onDriveModeChange(false) })
+        }
 
         Section("Look", Icons.Outlined.Palette) {
             LookOption(

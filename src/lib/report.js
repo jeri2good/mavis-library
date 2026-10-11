@@ -1,5 +1,5 @@
-// "Report this" for AI answers, pictures, summaries, and scene films, and the
-// "Made with AI" label. One delegated click handler serves every button, so
+// "Report this" for AI answers, pictures, summaries, and scene films. One
+// delegated click handler serves every button, so
 // views only add markup: reportButton('picture', 'Emma · Chapter 3').
 
 import { html, openDialog, toast } from './ui.js';
@@ -10,7 +10,6 @@ const WHAT = { answer: 'AI answer', picture: 'AI picture', summary: 'AI summary'
 
 export const reportButton = (what, ref = '') => html`<button type="button" class="btn btn-sm btn-quiet report-btn" data-report="${what}" data-report-ref="${String(ref).slice(0, 300)}">Report this</button>`;
 
-export const aiLabel = () => html`<span class="badge ai-label">Made with AI</span>`;
 
 export async function sendReport({ what, ref = '', text = '' }) {
   let r;

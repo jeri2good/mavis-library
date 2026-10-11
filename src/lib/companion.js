@@ -9,7 +9,7 @@ import { loadFeatures, can, features, ownerPost, accessCode } from './features.j
 import { Narrator, sentences } from './speech.js';
 import { ttsSupported, whenVoicesReady } from './tts.js';
 import { apiUrl } from './api.js';
-import { reportButton, aiLabel } from './report.js';
+import { reportButton } from './report.js';
 
 export const STYLES = [['painterly', 'Painterly'], ['watercolor', 'Watercolor'], ['pencil', 'Pencil sketch'], ['storybook', 'Storybook'], ['stained glass', 'Stained glass']];
 
@@ -131,7 +131,7 @@ export async function openCompanion(ctx, { tab = 'picture', only = null, default
           <button type="button" class="btn" data-cp="film">${icon('play', { size: 18 })} Film this ${sel ? 'passage' : 'page'}</button></div>
         <p class="small faint">A scene film paints a few shots that follow the text and narrates it, as a video you can save or share.</p>
         <div id="cp-out" aria-live="polite"></div>`}
-      ${gallery.length ? html`<h3 class="h-section" style="margin-top:18px">Your pictures from this book ${aiLabel()}</h3>
+      ${gallery.length ? html`<h3 class="h-section" style="margin-top:18px">Your pictures from this book</h3>
         <ul class="pic-grid">${gallery.map((p) => html`<li><button type="button" class="pic-thumb" data-pic="${p.id}" aria-label="${p.chapter || 'Picture'}"><img alt="" data-blob="${p.id}" /></button></li>`)}</ul>` : ''}`);
     // Attach thumbnails from the stored blobs.
     for (const img of body.querySelectorAll('img[data-blob]')) {

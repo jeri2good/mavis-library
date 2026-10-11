@@ -763,7 +763,6 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 3px; paddi
 .msg.error { color: var(--danger); }
 .msg-report { justify-self: start; margin-top: -6px; }
 .report-btn { color: var(--ink-faint); }
-.ai-label { vertical-align: middle; }
 .chat-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
 .chat-form textarea { padding: 10px 12px; min-height: 48px; resize: none; }
 

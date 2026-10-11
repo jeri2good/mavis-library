@@ -1,5 +1,7 @@
 package com.mavislibrary.app.ui
 
+import android.content.Intent
+import android.view.WindowManager
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -28,6 +30,11 @@ class NavigationShellTest {
 
     private fun waitForTag(tag: String) = compose.waitUntil(5_000) {
         compose.onAllNodes(androidx.compose.ui.test.hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
+    }
+
+    private fun sendDebugDrive(activity: MainActivity) {
+        MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
+            .invoke(activity, Intent("com.mavislibrary.app.DEBUG_DRIVE"))
     }
 
     @Test
@@ -72,11 +79,20 @@ class NavigationShellTest {
             compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("Hi, Sam!")).fetchSemanticsNodes().isNotEmpty() }
             assertTrue(runBlocking { prefs.state.first().enabled })
             assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasTestTag("tab_settings")).fetchSemanticsNodes().isEmpty())
-            compose.activityRule.scenario.onActivity { assertTrue(it.onBackPressedDispatcher.hasEnabledCallbacks()); it.onBackPressedDispatcher.onBackPressed() }
+            compose.activityRule.scenario.onActivity {
+                sendDebugDrive(it)
+                assertEquals(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE, it.window.attributes.screenBrightness)
+                assertTrue(it.onBackPressedDispatcher.hasEnabledCallbacks())
+                it.onBackPressedDispatcher.onBackPressed()
+            }
             compose.onNodeWithText("Hi, Sam!").assertExists()
         } finally {
             assertEquals(PinResult.Correct, runBlocking { prefs.leave("1234") })
         }
         waitForTag("tab_settings")
+        compose.activityRule.scenario.onActivity {
+            sendDebugDrive(it)
+            assertEquals(.12f, it.window.attributes.screenBrightness)
+        }
     }
 }

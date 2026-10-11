@@ -8,6 +8,7 @@ import android.os.Build
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import androidx.lifecycle.lifecycleScope
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -42,6 +43,9 @@ class MainActivity : ComponentActivity() {
     private var readerKeys: com.mavislibrary.app.web.ReaderMediaSession? = null
     private var driveMonitor: DriveModeMonitor? = null
     private var driveModeActive by mutableStateOf(false)
+    private var kidsModeEnabled = true
+    private var kidsModeLoaded = false
+    private var pendingDebugDrive = false
     private val askBluetooth = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted && driveEnabled) startDriveMonitor()
     }
@@ -52,7 +56,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (BuildConfig.DEBUG && savedInstanceState == null && intent?.action == "com.mavislibrary.app.DEBUG_DRIVE") window.decorView.post { setDriveScreen(true) }
+        pendingDebugDrive = BuildConfig.DEBUG && savedInstanceState == null && intent?.action == "com.mavislibrary.app.DEBUG_DRIVE"
+        lifecycleScope.launch {
+            kidsPrefs().state.collect { state ->
+                kidsModeEnabled = state.enabled
+                kidsModeLoaded = true
+                if (state.enabled) {
+                    pendingDebugDrive = false
+                    configureDriveMode(false)
+                } else if (pendingDebugDrive) {
+                    pendingDebugDrive = false
+                    window.decorView.post { setDriveScreen(true) }
+                }
+            }
+        }
         val container = (application as MavisApp).container
         webHost = if (useWebHost) WebHost(this) else null
         lifecycleScope.launch {
@@ -105,8 +122,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun configureDriveMode(enabled: Boolean) {
-        driveEnabled = enabled
-        if (!enabled) {
+        driveEnabled = enabled && !kidsModeEnabled
+        if (!driveEnabled) {
             driveMonitor?.close(); driveMonitor = null; driveModeActive = false
             window.attributes = window.attributes.apply { screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
             return
@@ -117,13 +134,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startDriveMonitor() {
-        if (driveMonitor != null) return
+        if (kidsModeEnabled || !driveEnabled || driveMonitor != null) return
         driveMonitor = DriveModeMonitor(this, { driveEnabled }) { active ->
             setDriveScreen(active)
         }.also { it.start() }
     }
 
     private fun setDriveScreen(active: Boolean) {
+        if (active && kidsModeEnabled) return
         driveModeActive = active
         window.attributes = window.attributes.apply {
             screenBrightness = if (active) .12f else android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -133,7 +151,10 @@ class MainActivity : ComponentActivity() {
     /** Debug builds only: `am start -a com.mavislibrary.app.DEBUG_DRIVE` shows the drive screen without a car. */
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
-        if (BuildConfig.DEBUG && intent.action == "com.mavislibrary.app.DEBUG_DRIVE") setDriveScreen(true)
+        if (BuildConfig.DEBUG && intent.action == "com.mavislibrary.app.DEBUG_DRIVE") {
+            if (!kidsModeLoaded) pendingDebugDrive = true
+            else if (!kidsModeEnabled) setDriveScreen(true)
+        }
     }
 
     override fun onResume() {

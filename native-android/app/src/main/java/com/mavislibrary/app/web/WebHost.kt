@@ -181,6 +181,19 @@ class WebHost(private val activity: ComponentActivity) {
     /** Queues a web route (for example a book page) to show the next time the Shelf web screen is entered. */
     fun openLater(hashRoute: String) { pendingHash = hashRoute }
 
+    /** Owner access code from secure storage; pushed into the web app after each page load. Never logged. */
+    @Volatile private var ownerCode: String? = null
+
+    fun setOwnerCode(code: String?) {
+        ownerCode = code
+        pushOwnerCode()
+    }
+
+    private fun pushOwnerCode() {
+        val code = ownerCode?.takeIf { it.isNotBlank() } ?: return
+        activity.runOnUiThread { webView.evaluateJavascript("window.MavisApp&&window.MavisApp.setAccessCode(${JSONObject.quote(code)});", null) }
+    }
+
     fun show(requestedRoute: String) {
         val hashRoute = pendingHash ?: requestedRoute
         pendingHash = null
@@ -280,6 +293,8 @@ class WebHost(private val activity: ComponentActivity) {
             // Fallback for old WebView builds without document-start scripts (best effort, may run after page scripts).
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) view.evaluateJavascript(nativeMarkerScript(), null)
         }
+
+        override fun onPageFinished(view: WebView, url: String?) { pushOwnerCode() }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = updateBackState()
     }

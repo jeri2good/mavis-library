@@ -1,6 +1,7 @@
 import './styles/app.css';
 import { installAppFonts } from './lib/fonts.js';
 import * as store from './lib/store.js';
+import { setAccessCode as setOwnerAccessCode } from './lib/features.js';
 import { initAuth, onAuth, currentUser } from './lib/auth.js';
 import { startSync, stopSync, onSyncState, syncNow, syncState as syncStateNow } from './lib/sync.js';
 import { html, icon, toast, closeAllDialogs, $, confirmDialog } from './lib/ui.js';
@@ -277,3 +278,6 @@ async function boot() {
 }
 
 boot();
+
+// Lets the Android app hand over the owner access code it keeps in secure storage (no-op on the plain website).
+window.MavisApp = Object.assign(window.MavisApp || {}, { setAccessCode: (code) => setOwnerAccessCode(code) });

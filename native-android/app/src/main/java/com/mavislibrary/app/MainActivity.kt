@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
+import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,6 +53,11 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG && savedInstanceState == null && intent?.action == "com.mavislibrary.app.DEBUG_DRIVE") window.decorView.post { setDriveScreen(true) }
         val container = (application as MavisApp).container
         webHost = if (useWebHost) WebHost(this) else null
+        lifecycleScope.launch {
+            container.secureStore.has(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE).collect {
+                webHost?.setOwnerCode(container.secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE))
+            }
+        }
 
         setContent {
             val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = null)

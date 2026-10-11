@@ -20,3 +20,8 @@ Tests run as `env -u TYPESAFE_API_KEY -u FISH_AUDIO_API_KEY npm run test:functio
 - Task 1-4 (scaffold, looks, nav shell, web host) — native-android/** — `npm run build:android` then `./gradlew assembleDebug` — BUILD SUCCESSFUL; aapt2 badging: package com.mavislibrary.app, versionName 0.5.0-m1, minSdk 26, targetSdk 35; APK bundles 1540 assets/web/ files.
 - Lint cleanup — WebHost.kt (feature-guard SW file/content access, drop deprecated databaseEnabled), SettingsScreen.kt/SearchScreen.kt (toUri), mipmap-anydpi-v26 -> mipmap-anydpi + monochrome icon — `./gradlew lintDebug` — 0 errors, 7 warnings before; "No issues found" after.
 - Task 5-8 tests — app/src/test/** (ApiParsingTest, MavisApiTest[MockWebServer], CachedFetcherTest, SecureStoreTest, LookChoiceTest, ShelfRepositoryTest[Robolectric+Room in-memory], WebNavigationPolicyTest[Robolectric], NavigationShellTest[Robolectric+Compose]) — `./gradlew testDebugUnitTest assembleDebug lintDebug` — BUILD SUCCESSFUL, 34 tests, 0 failures, lint no issues.
+
+# Native tests-review progress (devin/tests-review)
+
+- Baseline: prescribed `./gradlew testDebugUnitTest --no-daemon -q` failed before tests at `:app:copyWebAssets` (missing repo-root dist-android); skipping only copyWebAssets failed at `mergeDebugAssets`. JVM-test-only run `./gradlew testDebugUnitTest --no-daemon -q -x :app:copyWebAssets -x :app:mergeDebugAssets` passed; 16 XML suites, **50 tests, 0 failures/errors/skips** before new tests. The exact prescribed command remains blocked without dist-android.
+- Task 1 security review: native-android/REVIEW.md documents unguarded owner-code injection, plaintext IndexedDB persistence/stale code on removal, and the JS-global exposure; source review only, no emulator or production edits.

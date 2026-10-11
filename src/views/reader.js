@@ -524,6 +524,10 @@ async function renderEpub(root, item, file, close, route) {
     if (mode !== 'none') { try { window.MavisNative?.haptic?.('tick'); navigator.vibrate?.(8); } catch { /* optional */ } }
     turning = false;
   }
+  // Behaviour-neutral native hook: absent in browsers; the Android shell can invoke physical page turns.
+  const nativeReader = Object.freeze({ nextPage: () => turn('next'), prevPage: () => turn('prev') });
+  window.MavisReader = nativeReader;
+  cleanups.push(() => { if (window.MavisReader === nativeReader) delete window.MavisReader; });
   function motionMode() {
     const app = store.getSetting('motion', 'system');
     if (app === 'off' || prefersReducedMotion() && app !== 'on') return 'none';

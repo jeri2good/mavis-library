@@ -26,10 +26,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -44,6 +47,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.mavislibrary.app.AppContainer
 import com.mavislibrary.app.ui.search.SearchScreen
+import com.mavislibrary.app.ui.listen.ListenScreen
+import com.mavislibrary.app.ui.listen.MiniPlayer
+import com.mavislibrary.app.ui.listen.DriveModeScreen
+import com.mavislibrary.app.audio.PlaybackController
 import com.mavislibrary.app.ui.settings.SettingsScreen
 import com.mavislibrary.app.ui.showcase.ThemeShowcaseScreen
 import com.mavislibrary.app.web.WebHost
@@ -53,7 +60,7 @@ enum class Tab(val route: String, val label: String, val icon: ImageVector, val 
     SHELF("shelf", "Shelf", Icons.Outlined.LocalLibrary, "#/shelf"),
     SEARCH("search", "Search", Icons.Outlined.Search),
     BIBLE("bible", "Bible", Icons.AutoMirrored.Outlined.MenuBook, "#/bible"),
-    LISTEN("listen", "Listen", Icons.Outlined.Headphones, "#/listen"),
+    LISTEN("listen", "Listen", Icons.Outlined.Headphones),
     SETTINGS("settings", "Settings", Icons.Outlined.Settings),
 }
 
@@ -65,28 +72,42 @@ const val ROUTE_SHOWCASE = "showcase"
  * from the start tab.
  */
 @Composable
-fun MavisRoot(container: AppContainer, webHost: WebHost?, online: Boolean) {
+fun MavisRoot(
+    container: AppContainer,
+    webHost: WebHost?,
+    online: Boolean,
+    onFirstAudio: () -> Unit = {},
+    driveModeActive: Boolean = false,
+    onDriveModeChange: (Boolean) -> Unit = {},
+    onCloseDriveMode: () -> Unit = {},
+) {
     val nav = rememberNavController()
+    val context = LocalContext.current
+    val playback = remember { PlaybackController(context) }
+    DisposableEffect(playback) { onDispose { playback.close() } }
     val entry by nav.currentBackStackEntryAsState()
     val current = entry?.destination
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                Tab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = current?.hierarchy?.any { it.route == tab.route } == true,
-                        onClick = {
-                            nav.navigate(tab.route) {
-                                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(tab.icon, contentDescription = null) },
-                        label = { Text(tab.label) },
-                        modifier = Modifier.testTag("tab_${tab.route}"),
-                    )
+            Column {
+                MiniPlayer(playback, Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh))
+                NavigationBar {
+                    Tab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = current?.hierarchy?.any { it.route == tab.route } == true,
+                            onClick = {
+                                nav.navigate(tab.route) {
+                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            icon = { Icon(tab.icon, contentDescription = null) },
+                            label = { Text(tab.label) },
+                            modifier = Modifier.testTag("tab_${tab.route}"),
+                        )
+                    }
                 }
             }
         },
@@ -110,7 +131,8 @@ fun MavisRoot(container: AppContainer, webHost: WebHost?, online: Boolean) {
                     }
                 }
                 composable(Tab.SEARCH.route) { SearchScreen(container, online) }
-                composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }) }
+                composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio) }
+                composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange) }
                 composable(ROUTE_SHOWCASE) { ThemeShowcaseScreen(onBack = { nav.popBackStack() }) }
             }
         }
@@ -125,6 +147,7 @@ fun MavisRoot(container: AppContainer, webHost: WebHost?, online: Boolean) {
             dismissButton = { TextButton(onClick = webHost::onMicReasonDeclined) { Text("Not now") } },
         )
     }
+    if (driveModeActive) DriveModeScreen(playback, onCloseDriveMode)
 }
 
 @Composable

@@ -64,7 +64,7 @@ import kotlinx.coroutines.launch
 const val PRIVACY_URL = "https://mavis-library.netlify.app/privacy"
 
 @Composable
-fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit) {
+fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = LookChoice.Automatic)
     val hasCode by container.secureStore.has(Secret.OWNER_ACCESS_CODE).collectAsStateWithLifecycle(initialValue = false)
@@ -133,7 +133,10 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit) {
                 "Start for car Bluetooth",
                 "Off by default. Permission is requested only when you turn this on.",
                 playback.driveModeEnabled,
-            ) { scope.launch { container.settings.setDriveMode(it) } }
+            ) {
+                scope.launch { container.settings.setDriveMode(it) }
+                onDriveModeChange(it)
+            }
         }
 
         Section("Reader buttons", Icons.AutoMirrored.Outlined.MenuBook) {

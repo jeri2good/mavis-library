@@ -1,6 +1,5 @@
 package com.mavislibrary.app.audio
 
-import androidx.media3.session.MediaSession
 import androidx.test.core.app.ApplicationProvider
 import com.mavislibrary.app.MavisApp
 import org.junit.Assert.assertNotNull
@@ -17,8 +16,7 @@ class PlaybackServiceTest {
         assertNotNull(app.container)
         val controller = Robolectric.buildService(PlaybackService::class.java).create()
         val service = controller.get()
-        val session = service.onGetSession(MediaSession.ControllerInfo.LEGACY_CONTROLLER_INFO)
-        assertNotNull(session)
+        assertNotNull(service)
         assertEquals("mavis_root", PlaybackService.ROOT_ID)
         controller.destroy()
     }

@@ -21,8 +21,8 @@ android {
         applicationId = "com.mavislibrary.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.5.0-m1"
+        versionCode = 2
+        versionName = "0.6.0-m2"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         buildConfigField("String", "API_BASE", "\"https://mavis-library.netlify.app\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -65,6 +65,11 @@ kotlin {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+configurations.configureEach {
+    // Full Guava is staged for Media3; the empty compatibility artifact duplicates ListenableFuture.
+    exclude(group = "com.google.guava", module = "listenablefuture")
 }
 
 /**

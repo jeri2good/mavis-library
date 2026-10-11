@@ -61,6 +61,9 @@ class PlaybackService : MediaLibraryService() {
     private val ticker = object : Runnable {
         override fun run() {
             val now = SystemClock.elapsedRealtime()
+            if (sleepState.target == SleepTarget.EndOfChapter && fadeStartedAt == null &&
+                player.duration > 0 && player.duration - player.currentPosition in 1..SleepTimer.FADE_MS
+            ) fadeStartedAt = now
             val (next, effect) = SleepTimer.tick(sleepState, now)
             sleepState = next
             when (effect) {

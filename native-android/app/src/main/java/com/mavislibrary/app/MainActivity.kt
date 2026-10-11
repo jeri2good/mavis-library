@@ -2,28 +2,44 @@ package com.mavislibrary.app
 
 import android.graphics.Color
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.colorResource
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mavislibrary.app.ui.MavisRoot
 import com.mavislibrary.app.ui.theme.MavisTheme
 import com.mavislibrary.app.ui.theme.tokensFor
 import com.mavislibrary.app.web.WebHost
+import com.mavislibrary.app.drive.DriveModeMonitor
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 
 class MainActivity : ComponentActivity() {
     private var webHost: WebHost? = null
+    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private var driveEnabled = false
+    private var driveMonitor: DriveModeMonitor? = null
+    private var driveModeActive by mutableStateOf(false)
+    private val askBluetooth = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted && driveEnabled) startDriveMonitor()
+    }
 
     /** Robolectric has no real Chromium, so the JVM shell tests run without the WebView. */
     private val useWebHost: Boolean get() = android.os.Build.FINGERPRINT != "robolectric"
@@ -37,6 +53,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = null)
             val online by container.connectivity.online.collectAsStateWithLifecycle()
+            val playbackSettings by container.settings.playback.collectAsStateWithLifecycle(initialValue = com.mavislibrary.app.data.prefs.PlaybackSettings())
             val now by produceState(LocalTime.now()) {
                 while (true) {
                     delay(60_000)
@@ -54,8 +71,47 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             MavisTheme(resolved) {
-                MavisRoot(container, webHost, online)
+                LaunchedEffect(playbackSettings.driveModeEnabled) { configureDriveMode(playbackSettings.driveModeEnabled) }
+                MavisRoot(
+                    container, webHost, online,
+                    onFirstAudio = ::requestNotificationPermission,
+                    driveModeActive = driveModeActive,
+                    onDriveModeChange = ::configureDriveMode,
+                    onCloseDriveMode = { setDriveScreen(false) },
+                )
             }
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun configureDriveMode(enabled: Boolean) {
+        driveEnabled = enabled
+        if (!enabled) {
+            driveMonitor?.close(); driveMonitor = null; driveModeActive = false
+            window.attributes = window.attributes.apply { screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 31 && ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            askBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        } else startDriveMonitor()
+    }
+
+    private fun startDriveMonitor() {
+        if (driveMonitor != null) return
+        driveMonitor = DriveModeMonitor(this, { driveEnabled }) { active ->
+            setDriveScreen(active)
+        }.also { it.start() }
+    }
+
+    private fun setDriveScreen(active: Boolean) {
+        driveModeActive = active
+        window.attributes = window.attributes.apply {
+            screenBrightness = if (active) .12f else android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         }
     }
 
@@ -64,12 +120,17 @@ class MainActivity : ComponentActivity() {
         webHost?.onResume()
     }
 
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
+        if (webHost?.handlePageTurnKey(event) == true) true else super.onKeyDown(keyCode, event)
+
     override fun onPause() {
         webHost?.onPause()
         super.onPause()
     }
 
     override fun onDestroy() {
+        driveMonitor?.close()
+        driveMonitor = null
         webHost?.destroy()
         webHost = null
         super.onDestroy()

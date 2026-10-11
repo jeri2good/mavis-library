@@ -16,6 +16,12 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.JavascriptInterface
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.webkit.ServiceWorkerClientCompat
 import androidx.webkit.ServiceWorkerControllerCompat
 import androidx.webkit.WebViewAssetLoader
@@ -30,6 +37,10 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.mavislibrary.app.BuildConfig
 import org.json.JSONObject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import com.mavislibrary.app.MavisApp
 
 /** Origin of the bundled web app. Already an allowed CORS origin on the Netlify functions. */
 const val WEB_ORIGIN = "https://localhost"
@@ -91,6 +102,16 @@ class WebHost(private val activity: ComponentActivity) {
     private var loaded = false
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var micRequestAwaitingSystem: PermissionRequest? = null
+    @Volatile private var hapticEnabled = true
+    @Volatile private var volumeKeysEnabled = false
+    @Volatile private var headsetKeysEnabled = true
+    private val settingsJob: Job = activity.lifecycleScope.launch {
+        (activity.application as MavisApp).container.settings.playback.collectLatest {
+            hapticEnabled = it.hapticPageTurns
+            volumeKeysEnabled = it.volumePageTurns
+            headsetKeysEnabled = it.headsetPageTurns
+        }
+    }
 
     private val assetLoader = WebViewAssetLoader.Builder()
         .setDomain("localhost")
@@ -134,6 +155,7 @@ class WebHost(private val activity: ComponentActivity) {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 WebViewCompat.addDocumentStartJavaScript(this, nativeMarkerScript(), setOf(WEB_ORIGIN))
             }
+            addJavascriptInterface(NativeBridge(), "MavisAndroid")
             webViewClient = Client()
             webChromeClient = Chrome()
         }
@@ -187,9 +209,40 @@ class WebHost(private val activity: ComponentActivity) {
     fun onResume() { if (loaded) webView.onResume() }
     fun onPause() { if (loaded) webView.onPause() }
     fun destroy() {
+        settingsJob.cancel()
         if (!loaded) return
         fileCallback?.onReceiveValue(null)
         webView.destroy()
+    }
+
+    fun handlePageTurnKey(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0 || !webView.url.orEmpty().contains("#/read/")) return false
+        val direction = when (event.keyCode) {
+            KeyEvent.KEYCODE_VOLUME_DOWN -> if (volumeKeysEnabled) "next" else null
+            KeyEvent.KEYCODE_VOLUME_UP -> if (volumeKeysEnabled) "prev" else null
+            KeyEvent.KEYCODE_MEDIA_NEXT -> if (headsetKeysEnabled) "next" else null
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> if (headsetKeysEnabled) "prev" else null
+            else -> null
+        } ?: return false
+        turnReaderPage(direction)
+        return true
+    }
+
+    fun turnReaderPage(direction: String) {
+        val method = if (direction == "next") "nextPage" else "prevPage"
+        webView.evaluateJavascript("window.MavisReader?.$method?.()", null)
+    }
+
+    private inner class NativeBridge {
+        @JavascriptInterface fun haptic(kind: String) {
+            if (!hapticEnabled || kind != "tick") return
+            activity.runOnUiThread {
+                val vibrator = if (Build.VERSION.SDK_INT >= 31) activity.getSystemService(VibratorManager::class.java)?.defaultVibrator
+                    else @Suppress("DEPRECATION") activity.getSystemService(Vibrator::class.java)
+                if (Build.VERSION.SDK_INT >= 29) vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+                else @Suppress("DEPRECATION") vibrator?.vibrate(8)
+            }
+        }
     }
 
     private fun updateBackState() {
@@ -263,7 +316,7 @@ class WebHost(private val activity: ComponentActivity) {
                 .put("version", BuildConfig.VERSION_NAME)
                 .put("build", BuildConfig.GIT_SHA)
                 .put("platform", "android")
-            return "window.MavisNative = Object.freeze($info);"
+            return "window.MavisNative = Object.freeze({...$info,haptic:(kind)=>window.MavisAndroid?.haptic(String(kind))});"
         }
     }
 }

@@ -9,14 +9,15 @@ import { withCors } from '../lib/cors.mjs';
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 const shortTitle = (t) => String(t || '').split(/[;:(\[]|, or,? /i)[0].trim();
+const stripArticle = (t) => t.replace(/^(?:a|an|the)\s+(?=\S)/i, '');
 const https = (u) => (typeof u === 'string' && /^https?:\/\/(www\.)?archive\.org\//.test(u) ? u.replace(/^http:/, 'https:') : null);
 
 export function matches(b, { gid, title, author }) {
   const src = String(b.url_text_source || '');
   if (gid && new RegExp(`gutenberg\\.org/(?:etext|ebooks|files)/${gid}(?:\\D|$)`).test(src)) return 2;
   const have = String(b.title || '').replace(/\([^)]*\)/g, '').trim();
-  const tWant = norm(shortTitle(title)).replace(/^(?:a|an|the) (?=\S)/, '');
-  const tHave = norm(shortTitle(have)).replace(/^(?:a|an|the) (?=\S)/, '');
+  const tWant = stripArticle(norm(shortTitle(title)));
+  const tHave = stripArticle(norm(shortTitle(have)));
   // "Pride and Prejudice: A Play" is a different work unless the book's own title says so too.
   const sub = (t) => norm((String(t).match(/[:;](?!\s*or\b)\s*(.+)$/i) || [])[1]);
   if (sub(have) && sub(have) !== sub(title)) return 0;
@@ -52,17 +53,31 @@ const handler = async (req, context) => {
   const title = clean(sp.get('title'), 200);
   const author = clean(sp.get('author'), 120);
   if (!title) return fail(400, 'bad_request', 'Give a title.');
-  const q = new URLSearchParams({ title: `^${shortTitle(title)}`, format: 'json', extended: '1', limit: '20' });
+  const originalTitle = shortTitle(title);
+  const queryTitle = stripArticle(originalTitle);
+  const q = new URLSearchParams({ title: `^${queryTitle}`, format: 'json', extended: '1', limit: '20' });
   try {
-    // LibriVox is occasionally slow. Two short tries fit inside the platform's 10 s function limit
-    // and recover from a one-off stall; a single long wait does not.
-    const url = `https://librivox.org/api/feed/audiobooks/?${q}`;
-    let r;
-    try { r = await upstream(url, { timeoutMs: 5200 }); }
-    catch (e) { if (e?.name !== 'AbortError' && !(e instanceof TypeError)) throw e; r = await upstream(url, { timeoutMs: 3800 }); }
-    if (r.status === 404) return json({ versions: [] }, { cache: 'public, max-age=86400', cdn: 'public, s-maxage=604800' });
-    if (!r.ok) return fail(502, 'upstream_error', `LibriVox answered ${r.status}.`);
-    const j = await r.json().catch(() => ({}));
+    // Retry and article fallback share two short tries, never a third long wait.
+    let j;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let r;
+      try {
+        r = await upstream(`https://librivox.org/api/feed/audiobooks/?${q}`, { timeoutMs: attempt === 0 ? 5200 : 3800 });
+      } catch (e) {
+        if (attempt === 0 && (e?.name === 'AbortError' || e instanceof TypeError)) continue;
+        throw e;
+      }
+      if (r.status === 404) j = { books: [] };
+      else {
+        if (!r.ok) return fail(502, 'upstream_error', `LibriVox answered ${r.status}.`);
+        j = await r.json().catch(() => ({}));
+      }
+      if (attempt === 0 && !j.books?.length && queryTitle !== originalTitle) {
+        q.set('title', `^${originalTitle}`);
+        continue;
+      }
+      break;
+    }
     const books = (j.books || []).map((b) => ({ b, score: matches(b, { gid, title, author }) })).filter((x) => x.score > 0);
     const english = (x) => /english/i.test(x.b.language || '') ? 1 : 0;
     const shaped = books.map((x) => ({ ...x, v: shapeVersion(x.b) })).filter((x) => x.v.sections.length);

@@ -619,6 +619,57 @@ await test('librivox: exact Gutenberg match first, solo readers ahead of groups,
   assert.deepEqual(await (await lv(get('/api/librivox?title=Nothing'), ctx('lv3'))).json(), { versions: [] });
 });
 
+for (const [title, prefix, expectedCalls] of [
+  ['A Christmas Carol', '^Christmas Carol', 2],
+  ['Pride and Prejudice', '^Pride and Prejudice', 1],
+  ['The', '^The', 1],
+  ['An American Tragedy', '^American Tragedy', 2],
+  ['The The Raven', '^The Raven', 2],
+]) {
+  await test(`librivox upstream prefix: ${title}`, async () => {
+    const lv = (await import('../../netlify/functions/librivox.mjs')).default;
+    routes = [[(u) => u.startsWith('https://librivox.org/'), () => respond({ books: [] })]];
+    const r = await lv(get(`/api/librivox?title=${encodeURIComponent(title)}`), ctx(`prefix-${title}`));
+    assert.equal(r.status, 200);
+    assert.equal(new URL(calls[0]).searchParams.get('title'), prefix);
+    assert.equal(calls.length, expectedCalls);
+    if (expectedCalls === 2) assert.equal(new URL(calls[1]).searchParams.get('title'), `^${title}`);
+  });
+}
+
+await test('librivox: article fallback finds recording with original title', async () => {
+  const lv = (await import('../../netlify/functions/librivox.mjs')).default;
+  const book = { id: '9', title: 'The Time Machine', sections: [{ listen_url: 'https://archive.org/download/time/1.mp3' }] };
+  routes = [[(u) => u.startsWith('https://librivox.org/'), () => respond({ books: calls.length === 1 ? [] : [book] })]];
+  const r = await lv(get('/api/librivox?title=The%20Time%20Machine'), ctx('article-fallback'));
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).versions[0].id, '9');
+  assert.deepEqual(calls.map((u) => new URL(u).searchParams.get('title')), ['^Time Machine', '^The Time Machine']);
+});
+
+await test('librivox: populated stripped query needs no fallback', async () => {
+  const lv = (await import('../../netlify/functions/librivox.mjs')).default;
+  routes = [[(u) => u.startsWith('https://librivox.org/'), () => respond({ books: [{ title: 'Christmas Carol' }] })]];
+  assert.equal((await lv(get('/api/librivox?title=A%20Christmas%20Carol'), ctx('article-found'))).status, 200);
+  assert.equal(calls.length, 1);
+});
+
+for (const fallbackStalls of [false, true]) {
+  await test(`librivox: retry and fallback share two attempts (fallback stalls: ${fallbackStalls})`, async () => {
+    const lv = (await import('../../netlify/functions/librivox.mjs')).default;
+    routes = [[(u) => u.startsWith('https://librivox.org/'), () => {
+      if (calls.length === (fallbackStalls ? 2 : 1)) {
+        const e = new Error('aborted'); e.name = 'AbortError'; throw e;
+      }
+      return respond({ books: [] });
+    }]];
+    const r = await lv(get('/api/librivox?title=The%20Time%20Machine'), ctx(`article-budget-${fallbackStalls}`));
+    assert.equal(r.status, fallbackStalls ? 504 : 200);
+    assert.equal(calls.length, 2);
+    assert.equal(new URL(calls[1]).searchParams.get('title'), fallbackStalls ? '^The Time Machine' : '^Time Machine');
+  });
+}
+
 await test('librivox: one stalled upstream try is retried; two stalls give an honest 504', async () => {
   const lv = (await import('../../netlify/functions/librivox.mjs')).default;
   const book = { id: '7', title: 'Moby Dick', language: 'English', authors: [{ last_name: 'Melville' }], sections: [{ section_number: '1', title: 'Ch 1', listen_url: 'https://www.archive.org/download/m/1.mp3', playtime: '60' }] };

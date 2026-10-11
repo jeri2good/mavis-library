@@ -198,18 +198,22 @@ private fun NativePlayer(
             }
             IconButton(onClick = onForward) { Icon(Icons.Outlined.Forward30, "Forward 30 seconds") }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             listOf(.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
-                OutlinedButton(onClick = { onSpeed(speed) }) { Text(if (playback.speed == speed) "• ${speed}×" else "${speed}×") }
+                OutlinedButton(
+                    onClick = { onSpeed(speed) },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp),
+                ) { Text(if (playback.speed == speed) "•${speed}×" else "${speed}×", maxLines = 1, softWrap = false) }
             }
-            Box {
-                IconButton(onClick = { sleepOpen = true }) { Icon(Icons.Outlined.Bedtime, "Sleep timer") }
-                DropdownMenu(sleepOpen, { sleepOpen = false }) {
+        }
+        Box {
+            OutlinedButton(onClick = { sleepOpen = true }) { Icon(Icons.Outlined.Bedtime, null); Text("  Sleep timer") }
+            DropdownMenu(sleepOpen, { sleepOpen = false }) {
                     listOf(15, 30, 45, 60).forEach { m -> DropdownMenuItem({ Text("$m minutes") }, { onSleep("mavis.sleep.$m"); sleepLabel = "Stops in $m minutes"; sleepOpen = false }) }
                     DropdownMenuItem({ Text("End of chapter") }, { onSleep(AudioCommands.SLEEP_CHAPTER); sleepLabel = "Stops at end of chapter"; sleepOpen = false })
                     DropdownMenuItem({ Text("Off") }, { onSleep(AudioCommands.SLEEP_CANCEL); sleepLabel = "Sleep timer off"; sleepOpen = false })
                 }
-            }
         }
         Text(sleepLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
     }

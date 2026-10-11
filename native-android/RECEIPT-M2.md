@@ -88,3 +88,8 @@ This receipt is committed separately and last. No push was performed.
 - VERIFIED playing Moby Dick: position 15s -> 30s -> 45s, state PLAYING, 0 playback errors. Screen truly OFF (mWakefulness=Asleep): 84s -> 102s over 20s. Play/pause key and media_session dispatch pause/play both work. Foreground service + media notification present.
 - archive.org returns 500/503 for some files (e.g. Pride and Prejudice ch1-4, reproduced with curl from host). Added load-error retry policy (8) and bare-host URL; built, NOT yet verified against that file.
 - NOT verified: sleep timer start/fade, notification contents, drive mode, volume-key page turns, haptics, offline-saved playback.
+
+## Hermes round 3 (emulator, API 35) - sleep timer + layout
+- Layout defect found by screenshot: the speed row overflowed, so the 2.0x button and the sleep-timer icon were clipped off the right edge and unusable. Fixed: speed buttons share the row equally; sleep timer is now a labeled "Sleep timer" button. Verified screenshot: all five speeds visible, menu shows 15/30/45/60 minutes, End of chapter, Off, unclipped.
+- VERIFIED sleep timer (End of chapter): label changed to "Stops at end of chapter"; seeked near chapter end; playback kept running to the boundary, then state went PLAYING -> PAUSED at position 18 ms of the next chapter and stayed paused 8+ s (did not roll into chapter 2).
+- NOT verified: the volume fade curve itself, timed (15/30/45/60) timers, shake-to-extend, notification contents, drive mode, volume-key page turns, haptics, offline-saved playback.

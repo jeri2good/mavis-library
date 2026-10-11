@@ -1,0 +1,9 @@
+# Brief (Codex, gpt-6-astra): make offline audio download resilient (native-android, branch native, you are the only writer)
+Toolchain: export JAVA_HOME=$HOME/.local/jdks/jdk-21.0.12.1+1 PATH=$JAVA_HOME/bin:$PATH ANDROID_HOME=$HOME/Android/Sdk; run gradle (`cd native-android && ./gradlew testDebugUnitTest assembleDebug --no-daemon -q`) in the BACKGROUND with a log and poll. NO emulator.
+Bug (reproduced on emulator): audio/AudioFileStore.kt download() aborts the WHOLE book on one transient archive.org error. A 12-chapter book got chapters 1-10 (about 55 MB), then chapter 11 returned HTTP 500 and the user saw "Audio download failed (500)." The same URL answered 200 seconds later from curl.
+Fix, in AudioFileStore.kt only (+ its test):
+1. Per chapter, retry up to 4 attempts total on HTTP 5xx, 429, and IOException (timeouts/resets), with backoff 1s, 3s, 8s. Do NOT retry other 4xx (404 etc.): fail immediately with the status. Make the delay injectable (a constructor param `sleeper: suspend (Long) -> Unit = { delay(it) }`) so tests do not wait.
+2. Resume-friendly: keep finished chapters (existing behavior) and delete a stale .part before each attempt.
+3. Error message after final failure: "Chapter N of M failed (HTTP 500). Tap Save offline to continue - the chapters already saved are kept."
+4. Tests (new AudioFileStoreTest.kt, JVM only, use okhttp3.mockwebserver if already a test dependency, else a fake OkHttp Interceptor): a 500 then 200 succeeds; four 500s fail with the message and keep earlier chapters; a 404 fails after ONE attempt; an IOException then success; completed chapters are not re-downloaded on a second call.
+Rules: do not touch other files except build.gradle(.kts) if a test dependency is needed (say so in the receipt). Commit once. Last action: RECEIPT-retry.md (files, test count from app/build/test-results/**/*.xml, not verified). Never fabricate results.

@@ -615,4 +615,56 @@ await test('librivox: one stalled upstream try is retried; two stalls give an ho
   assert.equal(bad.status, 504); assert.equal(calls, 2, 'gave up after exactly two tries');
 });
 
+await test('shelves: every id is a valid unique Gutenberg id, kids filter works, no shelf is empty', async () => {
+  const sh = (await import('../../netlify/functions/shelves.mjs')).default;
+  const all = await (await sh(get('/api/shelves'), ctx('sh1'))).json();
+  assert.ok(all.shelves.length >= 10, 'a real selection');
+  const ids = new Set();
+  for (const s of all.shelves) {
+    assert.ok(s.label && s.id, 'label and id');
+    assert.ok(s.ids.length >= 3, `${s.id} has books`);
+    assert.equal(new Set(s.ids).size, s.ids.length, `${s.id} has no duplicates`);
+    s.ids.forEach((n) => { assert.ok(Number.isInteger(n) && n > 0 && n < 1_000_000, `${s.id}: ${n} is a valid id`); ids.add(n); });
+  }
+  for (const want of ['kids', 'science', 'tinker', 'magazines', 'space']) assert.ok(all.shelves.some((s) => s.id === want), `has ${want}`);
+  const kids = await (await sh(get('/api/shelves?kids=1'), ctx('sh2'))).json();
+  assert.ok(kids.shelves.length >= 2 && kids.shelves.every((s) => s.kids), 'kids filter keeps only kid-safe shelves');
+  assert.ok(!kids.shelves.some((s) => s.id === 'scifi' || s.id === 'magazines'), 'adult shelves are not in kids mode');
+  assert.ok(all.topics.length >= 10);
+});
+
+await test('tech feed: maps Hacker News + papers, sorts by points, refuses javascript: links, rejects unknown kinds', async () => {
+  const { default: tech, mapHn, mapPapers } = await import('../../netlify/functions/tech.mjs');
+  const hn = mapHn([
+    { objectID: '1', title: 'Low', url: 'https://a.example/x', points: 70, num_comments: 3, created_at: '2026-10-01T00:00:00Z' },
+    { objectID: '2', title: 'Evil link', url: 'javascript:alert(1)', points: 500, num_comments: 9 },
+    { objectID: '3', title: '', url: 'https://nope.example', points: 9 },
+  ]);
+  assert.equal(hn.length, 2, 'untitled item dropped');
+  assert.equal(hn[1].url, 'https://news.ycombinator.com/item?id=2', 'unsafe url replaced with the HN discussion page');
+  const papers = mapPapers([{ title: 'A paper', paper: { id: '2610.1', upvotes: 12, summary: 'x '.repeat(400) }, numComments: 2 }, { title: 'no id', paper: {} }]);
+  assert.equal(papers.length, 1);
+  assert.equal(papers[0].url, 'https://arxiv.org/abs/2610.1');
+  assert.ok(papers[0].summary.length <= 300);
+  const { clip } = await import('../../netlify/functions/tech.mjs');
+  assert.equal(clip('alpha beta gamma delta epsilon', 18), 'alpha beta gamma…', 'cuts at a word, adds an ellipsis');
+  assert.equal(clip('short', 18), 'short', 'short text untouched');
+  const asked = [];
+  routes = [[(u) => u.startsWith('https://hn.algolia.com/'), (u) => {
+    const term = new URL(u).searchParams.get('query'); asked.push(term);
+    if (term === 'LLM') return respond({ error: 'x' }, { status: 500 }); // one term failing must not sink the feed
+    return respond({ hits: [
+      { objectID: '10', title: 'Small', url: 'https://s.example', points: 61 },
+      { objectID: '11', title: 'Big', url: 'https://b.example', points: 900 },
+    ] });
+  }]];
+  const ok = await (await tech(get('/api/tech?kind=ai'), ctx('t1'))).json();
+  assert.deepEqual(ok.items.map((i) => i.title), ['Big', 'Small'], 'merged, de-duplicated, highest points first');
+  assert.ok(asked.length >= 5 && !asked.some((t) => / OR /.test(t)), 'asks per term, never an OR expression (Algolia returns nothing for those)');
+  const bad = await tech(get('/api/tech?kind=../../etc'), ctx('t2'));
+  assert.equal(bad.status, 400);
+  routes = [[(u) => u.startsWith('https://hn.algolia.com/'), () => { const e = new Error('x'); e.name = 'AbortError'; throw e; }]];
+  assert.equal((await tech(get('/api/tech?kind=tech'), ctx('t3'))).status, 504, 'honest 504 on timeout');
+});
+
 console.log(`\n${passed} endpoint checks passed.`);

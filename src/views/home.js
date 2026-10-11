@@ -1,5 +1,5 @@
 import { html, icon, toast } from '../lib/ui.js';
-import { searchGutenberg } from '../lib/catalog.js';
+import { searchGutenberg, getShelves, getTech } from '../lib/catalog.js';
 import * as store from '../lib/store.js';
 import { bookCard, cover, skeletonGrid, stateBlock, sourceBadges } from '../components.js';
 import { LIBRARY_FINDERS } from '../lib/links.js';
@@ -95,27 +95,34 @@ export async function render(root, _route, ctx) {
         <div id="recs"></div>
       </section>
 
-      <section class="section" aria-labelledby="classics-h">
-        <div class="section-head">
-          <h2 class="h-section" id="classics-h">Curated classics</h2>
-          <span class="small faint">Free, public domain in the USA · Project Gutenberg</span>
-        </div>
-        <div id="classics">${skeletonGrid(8)}</div>
-      </section>
+      <div id="shelves" style="display:grid;gap:34px">
+        <section class="section" aria-labelledby="classics-h">
+          <div class="section-head">
+            <h2 class="h-section" id="classics-h">Most-loved classics</h2>
+            <span class="small faint">Free, public domain in the USA · Project Gutenberg</span>
+          </div>
+          <div id="classics">${skeletonGrid(8)}</div>
+        </section>
+      </div>
 
       <section class="section" aria-labelledby="topics-h">
-        <div class="section-head"><h2 class="h-section" id="topics-h">Browse by shelf</h2></div>
-        <div class="chips" role="list">
+        <div class="section-head"><h2 class="h-section" id="topics-h">Browse by topic</h2></div>
+        <div class="chips" id="topic-chips" role="list">
           ${SHELVES.map((s) => html`<a role="listitem" class="chip" href="#/search?src=free&topic=${encodeURIComponent(s.topic)}">${s.label}</a>`)}
         </div>
-        <div id="topic-rows" style="display:grid;gap:30px;margin-top:8px">
-          ${SHELVES.slice(0, 4).map((s) => html`
-            <div class="topic-row" data-topic="${s.topic}">
-              <div class="section-head" style="margin-bottom:10px"><h3 style="font-size:1.05rem;font-weight:700">${s.label}</h3>
-              <a class="btn btn-quiet btn-sm" href="#/search?src=free&topic=${encodeURIComponent(s.topic)}">See all ${icon('chevronR', { size: 16 })}</a></div>
-              <div class="rowbox">${skeletonGrid(6)}</div>
-            </div>`)}
+      </section>
+
+      <section class="section" aria-labelledby="tech-h" id="tech-section">
+        <div class="section-head">
+          <h2 class="h-section" id="tech-h">New in tech &amp; AI</h2>
+          <span class="small faint">Live from Hacker News and arXiv · opens the original article</span>
         </div>
+        <div class="chips" role="tablist" aria-label="Technology feed">
+          <button type="button" class="chip" role="tab" data-tech="ai" aria-selected="true">AI news</button>
+          <button type="button" class="chip" role="tab" data-tech="papers" aria-selected="false">Research papers</button>
+          <button type="button" class="chip" role="tab" data-tech="tech" aria-selected="false">Tech front page</button>
+        </div>
+        <div id="tech-list" aria-live="polite">${skeletonGrid(4)}</div>
       </section>
 
       <section class="section" aria-labelledby="more-h">
@@ -199,19 +206,80 @@ export async function render(root, _route, ctx) {
     } catch { /* recommendations are optional */ }
   })();
 
-  loadInto(root.querySelector('#classics'), (signal) => searchGutenberg({ ids: CLASSICS.join(',') }, { signal }), 'The classics shelf is empty right now.');
+  const idsFetch = (ids) => (signal) => searchGutenberg({ ids: ids.join(',') }, { signal });
+  loadInto(root.querySelector('#classics'), idsFetch(CLASSICS), 'The classics shelf is empty right now.');
 
   const io = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
     for (const e of entries) {
       if (!e.isIntersecting) continue;
       io.unobserve(e.target);
-      const topic = e.target.dataset.topic;
-      loadInto(e.target.querySelector('.rowbox'), (signal) => searchGutenberg({ topic, languages: 'en' }, { signal }), 'No books on this shelf.');
+      loadInto(e.target.querySelector('.rowbox'), idsFetch(JSON.parse(e.target.dataset.ids)), 'No books on this shelf.');
     }
   }, { rootMargin: '300px' }) : null;
-  for (const row of root.querySelectorAll('.topic-row')) {
-    if (io) io.observe(row);
-    else loadInto(row.querySelector('.rowbox'), (signal) => searchGutenberg({ topic: row.dataset.topic, languages: 'en' }, { signal }), 'No books on this shelf.');
+
+  // The shared shelf list (same one the Android app uses). The classics row above stays as the fallback.
+  (async () => {
+    try {
+      const data = await getShelves({ kids: false });
+      if (!token() || !data.shelves?.length) return;
+      const box = root.querySelector('#shelves');
+      const [first, ...rest] = data.shelves;
+      root.querySelector('#classics-h').textContent = first.label;
+      if (first.ids?.length) loadInto(root.querySelector('#classics'), idsFetch(first.ids), 'This shelf is empty right now.');
+      for (const sh of rest) {
+        const row = document.createElement('section');
+        row.className = 'section topic-row';
+        row.dataset.ids = JSON.stringify(sh.ids.slice(0, 24));
+        row.innerHTML = String(html`
+          <div class="section-head" style="margin-bottom:10px"><h2 class="h-section" style="font-size:1.25rem">${sh.label}</h2><span class="small faint">${sh.blurb || ''}</span></div>
+          <div class="rowbox">${skeletonGrid(6)}</div>`);
+        box.append(row);
+        if (io) io.observe(row); else loadInto(row.querySelector('.rowbox'), idsFetch(sh.ids.slice(0, 24)), 'No books on this shelf.');
+      }
+      if (data.topics?.length) {
+        root.querySelector('#topic-chips').innerHTML = String(html`${data.topics.map((t) => html`<a role="listitem" class="chip" href="#/search?src=free&topic=${encodeURIComponent(t.topic)}">${t.label}</a>`)}`);
+      }
+    } catch { /* keep the built-in classics row */ }
+  })();
+
+  // New in tech & AI.
+  const techBox = root.querySelector('#tech-list');
+  async function loadTech(kind) {
+    const ctl = new AbortController();
+    controllers.push(ctl);
+    techBox.innerHTML = String(skeletonGrid(4));
+    try {
+      const data = await getTech(kind, { signal: ctl.signal });
+      if (!token()) return;
+      const items = (data.items || []).slice(0, 12);
+      if (!items.length) { techBox.innerHTML = String(stateBlock({ title: 'Nothing new right now', text: 'Check back in a little while.' })); return; }
+      techBox.innerHTML = String(html`<ul class="tech-list" style="list-style:none;padding:0;margin:0;display:grid;gap:10px">${items.map((i) => html`
+        <li class="card" style="padding:12px 14px">
+          <a href="${i.url}" target="_blank" rel="noopener noreferrer" style="font-weight:650;text-decoration:none">${i.title}</a>
+          <div class="small faint" style="margin-top:4px">${i.source}${i.points ? ` · ▲ ${i.points}` : ''}${i.comments ? ` · ${i.comments} comments` : ''}</div>
+          ${i.summary ? html`<p class="small muted" style="margin:6px 0 0">${i.summary}</p>` : ''}
+        </li>`)}</ul>`);
+    } catch (err) {
+      if (err.name === 'AbortError' || !token()) return;
+      techBox.innerHTML = String(stateBlock({
+        tone: 'error', title: "Couldn't load the technology feed", text: err.message,
+        actions: html`<button type="button" class="btn btn-sm" data-retry>${icon('refresh', { size: 18 })} Try again</button>`,
+      }));
+      techBox.querySelector('[data-retry]').addEventListener('click', () => loadTech(kind));
+    }
+  }
+  const techSection = root.querySelector('#tech-section');
+  if (techSection) {
+    for (const tab of techSection.querySelectorAll('[data-tech]')) {
+      tab.addEventListener('click', () => {
+        techSection.querySelectorAll('[data-tech]').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+        loadTech(tab.dataset.tech);
+      });
+    }
+    if ('IntersectionObserver' in window) {
+      const tio = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) { tio.disconnect(); loadTech('ai'); } }, { rootMargin: '300px' });
+      tio.observe(techSection);
+    } else loadTech('ai');
   }
 
   return () => { controllers.forEach((c) => c.abort()); io?.disconnect(); };

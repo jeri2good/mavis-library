@@ -2,7 +2,7 @@
 // progress, words to practice, a hand-picked story shelf, and Bible stories.
 
 import { html, icon } from '../lib/ui.js';
-import { searchGutenberg } from '../lib/catalog.js';
+import { searchGutenberg, getShelves } from '../lib/catalog.js';
 import * as store from '../lib/store.js';
 import * as vocab from '../lib/vocab.js';
 import { bookCard, cover, skeletonGrid, stateBlock } from '../components.js';
@@ -78,6 +78,8 @@ export async function render(root, _route, { navigate, token }) {
       <div id="k-more">${skeletonGrid(6)}</div>
     </section>
 
+    <div id="k-extra" style="display:grid;gap:26px"></div>
+
     <p class="small faint" style="margin-top:28px">How to save a word: while reading, press and hold a word, tap the dictionary button, then “Save word”.</p>
   </div>`);
 
@@ -97,5 +99,20 @@ export async function render(root, _route, { navigate, token }) {
   }
   loadInto(root.querySelector('#k-shelf'), (signal) => searchGutenberg({ ids: KIDS_SHELF.join(',') }, { signal }));
   loadInto(root.querySelector('#k-more'), (signal) => searchGutenberg({ topic: KIDS_TOPIC, languages: 'en' }, { signal }));
+  // More kid-safe shelves (fairy tales, animals...) from the shared list; the shelves above are the fallback.
+  (async () => {
+    try {
+      const data = await getShelves({ kids: true });
+      if (!token()) return;
+      const box = root.querySelector('#k-extra');
+      for (const sh of data.shelves.filter((x) => x.id !== 'kids')) {
+        const sec = document.createElement('section');
+        sec.className = 'section';
+        sec.innerHTML = String(html`<div class="section-head"><h2 class="h-section">${sh.label}</h2><span class="small faint">${sh.blurb || ''}</span></div><div class="k-row">${skeletonGrid(6)}</div>`);
+        box.append(sec);
+        loadInto(sec.querySelector('.k-row'), (signal) => searchGutenberg({ ids: sh.ids.slice(0, 24).join(',') }, { signal }));
+      }
+    } catch { /* optional */ }
+  })();
   return () => controllers.forEach((c) => c.abort());
 }

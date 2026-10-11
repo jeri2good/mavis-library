@@ -166,3 +166,14 @@ export async function downloadGutenbergEpub(id, { onProgress, signal } = {}) {
   if (!(head[0] === 0x50 && head[1] === 0x4b)) throw new ApiError('Project Gutenberg sent a file that is not an EPUB. Try again later or import the EPUB yourself.', { code: 'not_epub' });
   return blob;
 }
+
+
+/** The curated shelf list shared with the Android app (ids only; books load from the catalog). */
+export async function getShelves({ kids = false } = {}, opts) {
+  return getJSON(apiUrl(`/api/shelves${kids ? '?kids=1' : ''}`), opts);
+}
+
+/** What is new in technology and AI: kind = ai | tech | papers. Items link out to the original. */
+export async function getTech(kind = 'ai', opts) {
+  return getJSON(apiUrl(`/api/tech?kind=${encodeURIComponent(kind)}`), opts);
+}

@@ -86,4 +86,54 @@ class ApiParsingTest {
         assertEquals(120, Endpoints.openLibrarySearch("a".repeat(500)).toMap()["q"]!!.length)
         assertEquals("100", Endpoints.openLibrarySearch("x", page = 500).toMap()["page"])
     }
+
+    @Test fun catalogIdsWithNoIdsSendsEmptyValue() {
+        assertEquals(listOf("ids" to ""), Endpoints.catalogIds(emptyList()))
+    }
+
+    @Test fun catalogIdsWithOneIdPreservesIt() {
+        assertEquals(listOf("ids" to "1342"), Endpoints.catalogIds(listOf(1342)))
+    }
+
+    @Test fun catalogIdsWithTwentyFourIdsPreservesAllInOrder() {
+        assertEquals(listOf("ids" to (1..24).joinToString(",")), Endpoints.catalogIds((1..24).toList()))
+    }
+
+    @Test fun catalogIdsWithFortyIdsKeepsOnlyTheFirstTwentyFour() {
+        assertEquals(listOf("ids" to (1..24).joinToString(",")), Endpoints.catalogIds((1..40).toList()))
+    }
+
+    @Test fun shelvesIgnoreUnknownFieldsAtBothLevels() {
+        val parsed = ApiParser.shelves("""{"serverVersion":2,"shelves":[{"id":"popular","label":"Popular","ids":[1,2],"extra":{"nested":true}},{"id":"kids","label":"Kids","kids":true,"unknown":[1]}]}""")
+        assertEquals(listOf("popular", "kids"), parsed.map { it.id })
+        assertEquals(listOf(1, 2), parsed[0].ids)
+        assertEquals("", parsed[0].blurb)
+        assertFalse(parsed[0].kids)
+        assertTrue(parsed[1].kids)
+        assertTrue(parsed[1].ids.isEmpty())
+    }
+
+    @Test fun techItemWithMissingOptionalFieldsUsesDefaults() {
+        val parsed = ApiParser.tech("""{"items":[{"id":"item-1","title":"News","url":"https://example.org/news"}]}""")
+        assertEquals("item-1", parsed.single().id)
+        assertEquals("News", parsed.single().title)
+        assertEquals("https://example.org/news", parsed.single().url)
+        assertEquals(0, parsed.single().points)
+        assertEquals(0, parsed.single().comments)
+        assertEquals("", parsed.single().source)
+        assertEquals("", parsed.single().summary)
+    }
+
+    @Test fun malformedDiscoveryResponsesBecomeBadResponse() {
+        listOf(
+            { ApiParser.shelves("""{"shelves":[{"label":"Missing id"}]}""") },
+            { ApiParser.tech("""{"items":[{"id":"x","title":"Missing URL"}]}""") },
+            { ApiParser.shelves("{") },
+            { ApiParser.tech("not json") },
+        ).forEach { parse ->
+            val error = runCatching { parse() }.exceptionOrNull()
+            assertTrue(error is ApiException)
+            assertEquals("bad_response", (error as ApiException).code)
+        }
+    }
 }

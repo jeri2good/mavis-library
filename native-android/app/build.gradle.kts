@@ -68,7 +68,7 @@ ksp {
 }
 
 configurations.configureEach {
-    // Full Guava is staged for Media3; the empty compatibility artifact duplicates ListenableFuture.
+    // Full Guava (with its failureaccess dependency) supplies ListenableFuture; the empty compatibility artifact would duplicate it.
     exclude(group = "com.google.guava", module = "listenablefuture")
 }
 
@@ -142,13 +142,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
-    val stagedMedia3 = rootProject.file(".gradle/offline-repo")
-    if (stagedMedia3.isDirectory) {
-        implementation(fileTree(stagedMedia3) { include("**/*.aar", "**/*.jar") })
-    } else {
-        implementation(libs.androidx.media3.exoplayer)
-        implementation(libs.androidx.media3.session)
-    }
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.session)
+    implementation(libs.guava)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

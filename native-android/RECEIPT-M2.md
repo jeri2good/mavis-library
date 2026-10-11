@@ -75,3 +75,9 @@ Hermes must perform emulator/device verification separately, as requested.
 - `7447e53` — native player, drive mode, and page-turn inputs
 
 This receipt is committed separately and last. No push was performed.
+
+## Hermes verification (emulator, API 35)
+- Codex's build passed 43 tests and lint, but the APK CRASHED AT LAUNCH on a real device: `NoClassDefFoundError: com.google.common.util.concurrent.internal.InternalFutureFailureAccess` at PlaybackController.<init>. Cause: Guava/failureaccess had been hand-staged as raw jars. Fixed by resolving Media3 + Guava normally through Gradle (commit follows). After the fix: app launches, no FATAL, 43 tests green.
+- Verified on emulator: launch, native Listen tab renders, audiobook search returns real results (Pride and Prejudice etc.).
+- NOT verified: actual audio playback, lock-screen/notification controls, headset buttons, sleep timer fade, drive mode, volume-key page turns, haptics. Reason: LibriVox (librivox.org and the Netlify /api/librivox function) timed out (504 / no answer in 25s) during the test, so no book could be opened, and a substitute MP3 test file did not download (got an HTML redirect). The app showed an honest "LibriVox didn't answer" error.
+- Lesson: green unit tests did not catch a launch crash. Always launch the APK before reporting done.

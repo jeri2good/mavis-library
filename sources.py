@@ -240,12 +240,13 @@ class Gathered:
     text: str
     sources: list
     no_live_sources: bool = False
+    source_texts: list | None = None
 
 
 async def gather(request):
     if request.kind == "topic":
         found = await search_topic(request.query)
-        return Gathered("\n\n".join(f"SOURCE: {source['title']}\n{text}" for source, text in found) or "Topic: " + request.query, [source for source, _ in found], not found)
+        return Gathered("\n\n".join(f"SOURCE: {source['title']}\n{text}" for source, text in found) or "Topic: " + request.query, [source for source, _ in found], not found, [{'title': source['title'], 'text': text} for source, text in found])
     if request.text and request.kind != "article":
         text, sources = request.text, [{"title": request.title}]
     elif request.gutenbergId and request.kind == "book":

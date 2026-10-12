@@ -508,7 +508,10 @@ def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=ga
         return JSONResponse({"detail": "; ".join(details)}, 422)
 
     @app.get("/v1/health")
-    async def health():
+    async def health(request: Request):
+        manager = request.app.state.manager
+        if hasattr(manager, 'notebook_health'):
+            return {"ok": True, "notebooklm": await manager.notebook_health()}
         return {"ok": True}
 
     @app.post("/v1/podcasts", status_code=202)

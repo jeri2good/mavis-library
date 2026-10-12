@@ -1,4 +1,4 @@
-notebooklm-py[cookies]==0.8.4
+notebooklm-py==0.8.4
 fastapi==0.143.0
 uvicorn==0.54.0
 edge-tts==7.2.8

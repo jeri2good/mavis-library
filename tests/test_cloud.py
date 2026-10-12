@@ -27,7 +27,7 @@ def test_state_owner_and_public_contract(store):
     uid = str(uuid.uuid4())
     job = store.admit(payload(engine='notebooklm'), uid, True)
     assert job['status'] == 'queued'
-    assert job['engine'] == 'local'
+    assert job['engine'] == 'notebooklm'
     assert store.get(job['id'], uid)['owner_uid'] == uid
     with pytest.raises(HTTPException) as exc:
         store.get(job['id'], str(uuid.uuid4()))

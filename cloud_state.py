@@ -23,6 +23,7 @@ class StateStore(JobManager):
         self.db.execute('CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, record TEXT NOT NULL)')
         self.db.execute('CREATE TABLE IF NOT EXISTS create_events (uid_hash TEXT NOT NULL, created REAL NOT NULL)')
         self.db.execute('CREATE INDEX IF NOT EXISTS create_events_time ON create_events (created)')
+        self.db.execute('CREATE TABLE IF NOT EXISTS notebook_health (id INTEGER PRIMARY KEY, record TEXT NOT NULL)')
         self.db.commit()
         self.global_create_limit = 60
         self.removed = []
@@ -46,7 +47,7 @@ class StateStore(JobManager):
                 raise HTTPException(429, 'Podcast queue is full (50 jobs); wait or delete a job')
             asyncio.run(self._delete(victim['id']))
         job_id = str(uuid.uuid4())
-        job = {'id': job_id, 'owner_uid': uid, 'status': 'queued', 'progress': 0, 'stage': 'Queued', 'engine': 'local', 'title': request.title, 'kind': request.kind, 'style': request.style, 'createdAt': timestamp(), 'sources': [], '_request': request.model_dump(), '_calls': [], '_gpuSeconds': 0.0}
+        job = {'id': job_id, 'owner_uid': uid, 'status': 'queued', 'progress': 0, 'stage': 'Queued', 'engine': 'local' if request.engine == 'local' else 'notebooklm', 'title': request.title, 'kind': request.kind, 'style': request.style, 'createdAt': timestamp(), 'sources': [], '_request': request.model_dump(), '_calls': [], '_gpuSeconds': 0.0}
         now = time.time()
         with self.db:
             self.db.execute('DELETE FROM create_events WHERE created<=?', (now - 3600,))
@@ -69,6 +70,12 @@ class StateStore(JobManager):
         return None
 
     def dispatch(self, operation, args):
+        if operation == 'notebook_health':
+            if args:
+                with self.db:
+                    self.db.execute('INSERT OR REPLACE INTO notebook_health VALUES (1, ?)', (json.dumps({'health': args[0], 'checked_at': time.time()}),))
+            row = self.db.execute('SELECT record FROM notebook_health WHERE id=1').fetchone()
+            return json.loads(row[0]) if row else {'health': {'available': True, 'loggedIn': False, 'note': 'Authentication check pending'}, 'checked_at': 0}
         if operation == 'admit':
             return self.admit(*args)
         if operation == 'all':
@@ -109,12 +116,12 @@ class StateStore(JobManager):
             for job in self.all():
                 if job['status'] == 'queued':
                     pending.append(job['id'])
-                elif job['status'] not in TERMINAL and now - job.get('_started', now) > 1800:
+                elif job['status'] not in TERMINAL and now - job.get('_started', now) > 3300:
                     self.update(job['id'], 'failed', error='restarted', stage='Interrupted cloud worker')
             return pending
         raise ValueError('Unknown state operation')
 
 
 def content_hash(request, gathered, version):
-    payload = {'text': gathered.text, 'style': request.style, 'length': request.length, 'language': request.language, 'title': request.title, 'no_live_sources': gathered.no_live_sources, 'notebook_note': request.engine == 'notebooklm', 'version': version}
+    payload = {'text': gathered.text, 'style': request.style, 'length': request.length, 'language': request.language, 'title': request.title, 'no_live_sources': gathered.no_live_sources, 'requested_engine': request.engine, 'version': version}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()

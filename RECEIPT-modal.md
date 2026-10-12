@@ -165,3 +165,17 @@ Not verified: live Netlify/Android gateway cutover, browser playback/CSP/exact C
 Reproduce with `requirements-modal.txt`, the pytest command in AGENTS.md, `benchmark_modal.py`, and `verify_modal.py`. The verifier has `--resume-topic`/`--resume-alice` for the original IDs without recreating them; `--mode default` creates a separate cost sample, and `--mode warm` explicitly prepares the capped GPU before a distinct real-chapter sample. These provider checks spend compute; run them deliberately, not as routine health probes.
 
 No push was performed. Final implementation/receipt commit is on branch `modal` after the baseline checkpoint.
+
+## NotebookLM primary-engine checkpoint — 2026-10-12
+
+Baseline prerequisite verified: clean branch `modal` at `abf3730`, deployed app `ap-PQX7Blg43xiisac65WlvyP`, live health HTTP 200, pipeline/GPU zero running inputs and backlog. Baseline pytest output: **238 passed, 1 warning in 8.40s**.
+
+First NotebookLM green checkpoint: **311 passed, 1 warning in 9.99s**, read from pytest output. `pip check`, `git diff --check`, and `systemd-analyze verify deploy/podcast-lounge.service` passed. The warning is the pre-existing Starlette HTTPX TestClient deprecation.
+
+Default `auto` tries NotebookLM first; Modal L4/Qwen/Kokoro remains fallback. Explicit NotebookLM auth/challenge failures return a safe job error rather than claiming local audio is NotebookLM; caps, pause, quota, unsupported-source and other failures select local. Local fallback transcripts/audio contain “made with the local engine.” Dedicated single-container/single-input NotebookLM actor uses the core `notebooklm-py==0.8.4` HTTPX/web client, no browser extras or headless reauthentication. Topic source texts are preserved individually (conservative 50-source cap). Audio is converted to MP3 with matching loudnorm and ID3 metadata before notebook cleanup.
+
+Auth is private temporary 0600 storage loaded from `notebooklm-auth`; refreshed storage is copied after client close to a private Volume file with `saved_at`. Volume mtime and saved_at must be newer than the secret timestamp; changed secret fingerprints supersede old persisted sessions. No cookies/email are returned. SDK/HTTP transport logging is disabled in the isolated NotebookLM actor. Global default allowance is six attempted NotebookLM jobs per UTC day, durable reservation before Google calls; optional Secret keys `NOTEBOOKLM_DAILY_MAX`, `NOTEBOOKLM_OWNER_UID` (default `owner`), and `NOTEBOOKLM_OWNER_UNLIMITED=1` configure account policy. Owner is not exempt unless explicitly enabled. Quota pause is durable for 30 minutes.
+
+Open health gains `notebooklm {available, loggedIn, note}` only on Modal, with a five-minute authenticated check. SDK 0.8.4 does **not** accept `list(limit=1)`; the cheapest available `notebooks.list()` is used without returning any notebook data. Heavy use of this **unofficial API can get J’s Google account limited**. Workspace spend cap is J’s stated **$20**, not set or verified by this agent.
+
+Live deployment/proof and created resource names will be recorded below after actual verification; not yet claimed at this checkpoint.

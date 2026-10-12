@@ -32,7 +32,7 @@ async def main(url, mode, resume_topic=None, resume_alice=None):
     async with httpx.AsyncClient(base_url=url, timeout=httpx.Timeout(120, connect=20), trust_env=False, transport=transport) as client:
         started = time.monotonic()
         response = await client.get('/v1/health')
-        assert response.status_code == 200 and response.json() == {'ok': True}
+        assert response.status_code == 200 and response.json()['ok'] is True
         results['coldHealthSeconds'] = time.monotonic() - started
         for label, bad_headers in [('missing_key', {}), ('wrong_key', {'X-Studio-Key': 'wrong', 'X-Mavis-User': uid})]:
             response = await client.get('/v1/podcasts', headers=bad_headers)

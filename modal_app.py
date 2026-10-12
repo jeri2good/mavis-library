@@ -21,11 +21,13 @@ metadata = modal.Volume.from_name('mavis-podcast-studio-state', create_if_missin
 audio_volume = modal.Volume.from_name('mavis-podcast-studio-audio', create_if_missing=True)
 models = modal.Volume.from_name('mavis-podcast-studio-models', create_if_missing=True)
 studio_secret = modal.Secret.from_name('podcast-studio')
+notebook_auth = modal.Volume.from_name('mavis-podcast-studio-notebooklm-auth', create_if_missing=True)
+notebook_secret = modal.Secret.from_name('notebooklm-auth')
 studio_env = {'STUDIO_DEPLOY_ENABLED': os.getenv('STUDIO_ENABLED', '')}
 runtime_image = (modal.Image.debian_slim(python_version='3.12')
                  .apt_install('ffmpeg')
                  .pip_install_from_requirements('requirements.txt'))
-base_image = runtime_image.add_local_python_source('service', 'sources', 'engines', 'cloud_state', 'cloud_budget')
+base_image = runtime_image.add_local_python_source('service', 'sources', 'engines', 'cloud_state', 'cloud_budget', 'notebook_cloud')
 gpu_image = (runtime_image.apt_install('espeak-ng', 'libgomp1')
              .pip_install('vllm==0.11.0', 'kokoro==0.9.4', 'soundfile==0.13.1', 'transformers==4.57.1')
              .pip_install('https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl')
@@ -74,7 +76,64 @@ async def source(payload):
     from sources import gather
     started = time.monotonic()
     gathered = await gather(PodcastRequest(**payload))
-    return {'text': gathered.text, 'sources': gathered.sources, 'no_live_sources': gathered.no_live_sources, 'seconds': time.monotonic() - started}
+    return {'text': gathered.text, 'sources': gathered.sources, 'no_live_sources': gathered.no_live_sources, 'source_texts': gathered.source_texts, 'seconds': time.monotonic() - started}
+
+
+@app.cls(image=base_image, cpu=0.5, memory=1024, min_containers=0, max_containers=1,
+         scaledown_window=60, timeout=1500, secrets=[notebook_secret], volumes={'/auth': notebook_auth, '/audio': audio_volume})
+@modal.concurrent(max_inputs=1)
+class NotebookLM:
+    @modal.enter()
+    def enter(self):
+        from notebook_cloud import NotebookCloud, silence_transport_logs
+        silence_transport_logs()
+        self.private = tempfile.TemporaryDirectory()
+        os.chmod(self.private.name, 0o700)
+        os.environ['NOTEBOOKLM_HOME'] = self.private.name
+        self.engine = NotebookCloud('/auth', os.getenv('STORAGE_STATE_JSON', ''), daily_max=os.getenv('NOTEBOOKLM_DAILY_MAX', '6'), owner_uid=os.getenv('NOTEBOOKLM_OWNER_UID', 'owner'), owner_unlimited=os.getenv('NOTEBOOKLM_OWNER_UNLIMITED', '0') == '1', checkpoint=notebook_auth.commit.aio)
+
+    @modal.exit()
+    def exit(self):
+        self.private.cleanup()
+
+    async def publish_health(self):
+        health = self.engine.read_policy().get('health')
+        if health:
+            await state('notebook_health', health)
+
+    @modal.method()
+    async def health(self):
+        await notebook_auth.reload.aio()
+        health = await self.engine.health()
+        await self.publish_health()
+        await notebook_auth.commit.aio()
+        return health
+
+    @modal.method()
+    async def count(self):
+        await notebook_auth.reload.aio()
+        result = await self.engine.count()
+        await notebook_auth.commit.aio()
+        return result
+
+    @modal.method()
+    async def generate(self, job_id, uid, payload, gathered):
+        from engines import duration_seconds, run_process
+        from notebook_cloud import failure, rejected
+        await notebook_auth.reload.aio()
+        with tempfile.TemporaryDirectory(dir=self.private.name) as directory:
+            output = Path(directory, 'output.mp3')
+            result = await self.engine.generate(job_id, uid, payload, gathered, output, run_process, duration_seconds)
+            if result['ok']:
+                try:
+                    await audio_volume.reload.aio()
+                    shutil.copyfile(output, Path('/audio', job_id + '.mp3'))
+                    await audio_volume.commit.aio()
+                except Exception as exc:
+                    result = rejected(failure(exc))
+        await self.publish_health()
+        await notebook_auth.commit.aio()
+        return result
 
 
 @app.cls(image=gpu_image, gpu='L4', cpu=2, memory=12288, min_containers=0,
@@ -265,13 +324,13 @@ async def finish(job_id, title, lines, segments=None, cached_id=None):
     return {'durationSec': duration, 'seconds': time.monotonic() - started, 'bytes': output.stat().st_size}
 
 
-async def tracked(job_id, function, *args, timeout=600):
+async def tracked(job_id, function, *args, timeout=600, terminate_containers=True):
     call = await function.spawn.aio(*args)
     try:
         await state('call', job_id, call.object_id)
         return await call.get.aio(timeout=timeout)
     except BaseException:
-        await call.cancel.aio(terminate_containers=True)
+        await call.cancel.aio(terminate_containers=terminate_containers)
         raise
 
 
@@ -293,7 +352,7 @@ async def optional_llm(payload, gathered):
     return await write_script(Client(), request.title, gathered['text'], request.style, request.length, gathered['no_live_sources'])
 
 
-@app.function(image=base_image, cpu=0.25, memory=512, max_containers=2, timeout=1800,
+@app.function(image=base_image, cpu=0.25, memory=512, max_containers=2, timeout=3000,
               secrets=[studio_secret])
 async def pipeline(job_id):
     from cloud_budget import GPUBudget, GPUBudgetExceeded
@@ -312,6 +371,20 @@ async def pipeline(job_id):
         gathered = await tracked(job_id, source, payload, timeout=250)
         timings['source'] = gathered['seconds']
         await state('update', job_id, None, {'sources': gathered['sources']})
+        if payload['engine'] != 'local':
+            from notebook_cloud import failure, rejected, use_local
+            await state('update', job_id, 'generating', {'progress': 35, 'stage': 'Generating NotebookLM audio'})
+            before = time.monotonic()
+            try:
+                notebook_result = await tracked(job_id, NotebookLM().generate, job_id, job['owner_uid'], payload, gathered, timeout=2700, terminate_containers=False)
+            except Exception as exc:
+                notebook_result = rejected(failure(exc))
+            timings['notebooklm'] = time.monotonic() - before
+            if not use_local(payload['engine'], notebook_result):
+                timings['total'] = time.monotonic() - started
+                await state('update', job_id, 'ready', {'engine': 'notebooklm', 'progress': 100, 'stage': 'Ready', 'durationSec': notebook_result['durationSec'], 'transcript': None, '_timings': timings, '_bytes': notebook_result['bytes'], '_gpuSeconds': 0.0, '_gpuBudgetSeconds': 0.0, '_cacheHit': False})
+                return
+            await state('update', job_id, None, {'engine': 'local', '_notebookFailure': notebook_result['failure']})
         digest = content_hash(PodcastRequest(**payload), Gathered(gathered['text'], gathered['sources'], gathered['no_live_sources']), PIPELINE_VERSION)
         cached = await state('cache', job_id, digest)
         await state('update', job_id, 'writing', {'progress': 25, 'stage': "Writing Alex and Sam's dialogue"})
@@ -334,7 +407,7 @@ async def pipeline(job_id):
                 lines = await optional_llm(payload, gathered)
                 model_used = 'Optional API fallback'
             timings['script'] = time.monotonic() - before
-            if payload['engine'] == 'notebooklm':
+            if payload['engine'] != 'local':
                 lines.insert(0, {'speaker': 'HOST_A', 'text': 'This podcast was made with the local engine.'})
             transcript = '\n\n'.join(('Alex' if line['speaker'] == 'HOST_A' else 'Sam') + ': ' + line['text'] for line in lines)
             await state('update', job_id, 'generating', {'progress': 55, 'stage': 'Synthesizing two-host audio'})
@@ -350,13 +423,14 @@ async def pipeline(job_id):
             result = await tracked(job_id, finish, job_id, payload['title'], lines, segments)
         timings['finish'] = result['seconds']
         timings['total'] = time.monotonic() - started
-        await state('update', job_id, 'ready', {'progress': 100, 'stage': 'Ready', 'durationSec': result['durationSec'], 'transcript': transcript, '_timings': timings, '_gpuSeconds': budget.execution_seconds, '_gpuBudgetSeconds': budget.seconds, '_llmUsed': model_used, '_voicesUsed': voices_used, '_cacheHit': bool(cached), '_bytes': result['bytes']})
+        await state('update', job_id, 'ready', {'progress': 100, 'stage': 'Ready', 'engine': 'local', 'durationSec': result['durationSec'], 'transcript': transcript, '_timings': timings, '_gpuSeconds': budget.execution_seconds, '_gpuBudgetSeconds': budget.seconds, '_llmUsed': model_used, '_voicesUsed': voices_used, '_cacheHit': bool(cached), '_bytes': result['bytes']})
         print(json.dumps({'jobId': job_id, 'timings': timings, 'gpuSeconds': budget.execution_seconds, 'gpuBudgetSeconds': budget.seconds, 'cacheHit': bool(cached)}))
     except HTTPException as exc:
         if exc.status_code != 404:
             raise
     except Exception as exc:
-        error = 'GPU budget exceeded (900 seconds); generation stopped' if 'GPU budget exceeded' in str(exc) else 'Generation failed (' + type(exc).__name__ + '); check source or engine connectivity'
+        from notebook_cloud import MESSAGES
+        error = str(exc) if str(exc) in MESSAGES.values() else 'GPU budget exceeded (900 seconds); generation stopped' if 'GPU budget exceeded' in str(exc) else 'Generation failed (' + type(exc).__name__ + '); check source or engine connectivity'
         try:
             await state('update', job_id, 'failed', {'error': error, 'stage': 'Failed', '_timings': timings, '_gpuSeconds': budget.execution_seconds, '_gpuBudgetSeconds': budget.seconds})
         except HTTPException:
@@ -367,6 +441,25 @@ async def pipeline(job_id):
 class CloudManager:
     def __init__(self):
         self.audio_lock = asyncio.Lock()
+        self.health_lock = asyncio.Lock()
+        self.health_call = None
+
+    async def notebook_health(self):
+        snapshot = await state('notebook_health')
+        if time.time() - snapshot['checked_at'] < 300:
+            return snapshot['health']
+        async with self.health_lock:
+            try:
+                if self.health_call is None:
+                    self.health_call = await NotebookLM().health.spawn.aio()
+                result = await self.health_call.get.aio(timeout=25)
+                self.health_call = None
+                return result
+            except modal.exception.TimeoutError:
+                return snapshot['health']
+            except Exception:
+                self.health_call = None
+                return {'available': False, 'loggedIn': False, 'note': 'NotebookLM is temporarily unavailable'}
 
     async def start(self):
         pass
@@ -393,7 +486,7 @@ class CloudManager:
     async def delete(self, job_id, uid=None):
         calls = await state('delete', job_id, uid)
         for call_id in calls:
-            await modal.FunctionCall.from_id(call_id).cancel.aio(terminate_containers=True)
+            await modal.FunctionCall.from_id(call_id).cancel.aio(terminate_containers=False)
         await state('cleanup_audio', job_id)
 
     async def audio_path(self, job_id):

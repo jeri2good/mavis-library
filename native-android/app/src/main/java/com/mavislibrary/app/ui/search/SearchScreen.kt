@@ -85,7 +85,7 @@ import com.mavislibrary.app.ui.theme.LocalLookTokens
 private val SUGGESTIONS = listOf("Jane Austen", "Sherlock Holmes", "Psalms", "Fairy tales", "Dickens", "Poetry")
 
 @Composable
-fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (String) -> Unit = {}) {
+fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}) {
     val vm: SearchViewModel = viewModel(factory = viewModelFactory {
         initializer { SearchViewModel(container.searchRepository, container.shelfRepository) }
     })
@@ -93,7 +93,7 @@ fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (String) 
     val shelf by vm.shelfKeys.collectAsStateWithLifecycle()
     SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech)
     state.selected?.let { book ->
-        BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book.key) }, onDismiss = { vm.select(null) })
+        BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book) }, onDismiss = { vm.select(null) })
     }
 }
 

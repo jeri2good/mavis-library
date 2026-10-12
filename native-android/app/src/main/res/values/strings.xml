@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Mavis Library</string>
+    <string name="widget_continue_description">Continue reading from your adult shelf</string>
+    <string name="widget_verse_description">Verse of the day from the King James Version</string>
 </resources>

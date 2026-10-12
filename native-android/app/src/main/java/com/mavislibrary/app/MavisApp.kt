@@ -25,6 +25,12 @@ import com.mavislibrary.app.data.secure.SecureStore
 import com.mavislibrary.app.audio.ResumePositionStore
 import com.mavislibrary.app.audio.AudiobookRepository
 import com.mavislibrary.app.audio.AudioFileStore
+import com.mavislibrary.app.data.kids.kidsPrefs
+import com.mavislibrary.app.work.WidgetUpdater
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
@@ -77,6 +83,8 @@ class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Fac
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        WidgetUpdater.schedule(this)
+        container.scope.launch { kidsPrefs().state.map { it.enabled }.distinctUntilChanged().collect { WidgetUpdater.refresh(this@MavisApp) } }
     }
 
     override val workManagerConfiguration: Configuration

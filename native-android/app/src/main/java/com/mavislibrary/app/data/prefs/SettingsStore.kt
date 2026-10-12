@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.map
 class SettingsStore(private val store: DataStore<Preferences>) {
     val lookChoice: Flow<LookChoice> = store.data.map { LookChoice.parse(it[LOOK]) }
     val matchRoomLight: Flow<Boolean> = store.data.map { it[MATCH_ROOM_LIGHT] ?: false }
+    val lastOpenedBook: Flow<String?> = store.data.map { it[LAST_OPENED_BOOK] }
+    suspend fun setLastOpenedBook(key: String) = store.edit { it[LAST_OPENED_BOOK] = key }
     suspend fun setMatchRoomLight(enabled: Boolean) = store.edit { it[MATCH_ROOM_LIGHT] = enabled }
     val playback: Flow<PlaybackSettings> = store.data.map { prefs ->
         PlaybackSettings(
@@ -41,6 +43,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     private companion object {
         val LOOK = stringPreferencesKey("look")
         val MATCH_ROOM_LIGHT = booleanPreferencesKey("match_room_light")
+        val LAST_OPENED_BOOK = stringPreferencesKey("last_opened_adult_book")
         val DEFAULT_SLEEP = intPreferencesKey("audio_default_sleep_minutes")
         val DRIVE_MODE = booleanPreferencesKey("drive_mode_enabled")
         val VOLUME_PAGE_TURNS = booleanPreferencesKey("reader_volume_page_turns")

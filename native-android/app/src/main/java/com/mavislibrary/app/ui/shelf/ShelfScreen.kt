@@ -24,7 +24,7 @@ import com.mavislibrary.app.ui.common.BookTile
 import com.mavislibrary.app.ui.theme.LocalLookTokens
 
 @Composable
-fun ShelfScreen(container: AppContainer, onOpenBook: (String) -> Unit, onOpenWebShelf: () -> Unit) {
+fun ShelfScreen(container: AppContainer, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit, onOpenWebShelf: () -> Unit) {
     val vm: ShelfViewModel = viewModel(factory = viewModelFactory {
         initializer { ShelfViewModel(container.shelfRepository, container.searchRepository) }
     })
@@ -77,7 +77,7 @@ fun ShelfScreen(container: AppContainer, onOpenBook: (String) -> Unit, onOpenWeb
                         else LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.gridSpacing)) {
                             rowItems(books, key = { it.key }) { book ->
                                 Box(Modifier.width(tokens.coverMinWidth)) {
-                                    BookTile(book, onShelf = false, onClick = { onOpenBook(book.key) })
+                                    BookTile(book, onShelf = false, onClick = { onOpenBook(book) })
                                 }
                             }
                         }
@@ -87,7 +87,7 @@ fun ShelfScreen(container: AppContainer, onOpenBook: (String) -> Unit, onOpenWeb
         } else {
             items(state.books, key = { it.key }) { book ->
                 Column {
-                    BookTile(book, onShelf = true, onClick = { onOpenBook(book.key) })
+                    BookTile(book, onShelf = true, onClick = { onOpenBook(book) })
                     Box(Modifier.align(Alignment.End)) {
                         var menuOpen by remember { mutableStateOf(false) }
                         IconButton(onClick = { menuOpen = true }) {

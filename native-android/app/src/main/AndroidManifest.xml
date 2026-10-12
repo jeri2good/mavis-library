@@ -50,6 +50,15 @@
             </intent-filter>
         </service>
 
+        <receiver android:name=".work.ContinueReadingWidget" android:exported="true" android:label="Continue reading">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_continue" />
+        </receiver>
+        <receiver android:name=".work.VerseOfDayWidget" android:exported="true" android:label="Verse of the day">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_verse" />
+        </receiver>
+
         <receiver android:name=".web.ReaderMediaButtonReceiver" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MEDIA_BUTTON" /></intent-filter>
         </receiver>

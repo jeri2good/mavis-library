@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:background="@drawable/widget_paper_background">
+    <TextView
+        android:id="@+id/widget_heading"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Mavis Library"
+        android:textSize="12sp"
+        android:textColor="#7A3E1D" />
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="3"
+        android:text="Open Mavis"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="#2A211A" />
+    <TextView
+        android:id="@+id/widget_detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:textColor="#51463A"
+        android:textSize="11sp" />
+</LinearLayout>

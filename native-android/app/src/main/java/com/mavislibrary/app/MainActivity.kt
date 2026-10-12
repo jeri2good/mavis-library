@@ -43,6 +43,15 @@ import kotlinx.coroutines.delay
 import java.time.LocalTime
 
 class MainActivity : ComponentActivity() {
+    companion object { const val WIDGET_DESTINATION = "com.mavislibrary.app.WIDGET_DESTINATION" }
+    private var widgetDestination by mutableStateOf<String?>(null)
+    private var widgetRequest by mutableStateOf(0)
+
+    private fun acceptWidgetDestination(intent: android.content.Intent?) {
+        val requested = intent?.getStringExtra(WIDGET_DESTINATION)
+        widgetDestination = requested?.takeIf { it == "shelf" || it in (1..366).map { day -> com.mavislibrary.app.work.VerseOfDay.forDay(day).route } }
+        if (widgetDestination != null) widgetRequest++
+    }
     private var webHost: WebHost? = null
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private var driveEnabled = false
@@ -64,6 +73,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        acceptWidgetDestination(intent)
         pendingDebugDrive = BuildConfig.DEBUG && savedInstanceState == null && intent?.action == "com.mavislibrary.app.DEBUG_DRIVE"
         lifecycleScope.launch {
             kidsPrefs().state.collect { state ->
@@ -130,6 +140,8 @@ class MainActivity : ComponentActivity() {
                     driveModeActive = driveModeActive,
                     onDriveModeChange = ::configureDriveMode,
                     onCloseDriveMode = { setDriveScreen(false) },
+                    widgetDestination = widgetDestination,
+                    widgetRequest = widgetRequest,
                 )
             }
         }
@@ -171,6 +183,7 @@ class MainActivity : ComponentActivity() {
     /** Debug builds only: `am start -a com.mavislibrary.app.DEBUG_DRIVE` shows the drive screen without a car. */
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
+        acceptWidgetDestination(intent)
         if (BuildConfig.DEBUG && intent.action == "com.mavislibrary.app.DEBUG_DRIVE") {
             if (!kidsModeLoaded) pendingDebugDrive = true
             else if (!kidsModeEnabled) setDriveScreen(true)

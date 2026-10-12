@@ -51,6 +51,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.mavislibrary.app.AppContainer
+import com.mavislibrary.app.data.db.toEntity
+import com.mavislibrary.app.data.kids.kidsBook
+import com.mavislibrary.app.data.model.Book
+import com.mavislibrary.app.work.WidgetUpdater
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.mavislibrary.app.ui.shelf.ShelfScreen
 import com.mavislibrary.app.ui.search.SearchScreen
 import com.mavislibrary.app.ui.listen.ListenScreen
@@ -88,6 +95,8 @@ fun MavisRoot(
     driveModeActive: Boolean = false,
     onDriveModeChange: (Boolean) -> Unit = {},
     onCloseDriveMode: () -> Unit = {},
+    widgetDestination: String? = null,
+    widgetRequest: Int = 0,
 ) {
     val nav = rememberNavController()
     val context = LocalContext.current
@@ -103,8 +112,20 @@ fun MavisRoot(
     }
     val entry by nav.currentBackStackEntryAsState()
     val current = entry?.destination
-    val openBook: (String) -> Unit = { key ->
-        webHost?.openLater("#/book/" + java.net.URLEncoder.encode(key, "UTF-8").replace("+", "%20"))
+    LaunchedEffect(widgetRequest, loadedKids.enabled) {
+        if (widgetDestination != null && !loadedKids.enabled) {
+            val tab = if (widgetDestination.startsWith("#/bible/")) Tab.BIBLE.route else Tab.SHELF.route
+            nav.navigate(tab) { launchSingleTop = true }
+        }
+    }
+    val scope = rememberCoroutineScope()
+    val openBook: (Book) -> Unit = { book ->
+        if (!kidsBook(book.source.name.lowercase(), book.sourceId)) scope.launch {
+            container.database.books().upsert(book.toEntity(System.currentTimeMillis()))
+            container.settings.setLastOpenedBook(book.key)
+            WidgetUpdater.refresh(context)
+        }
+        webHost?.openLater("#/book/" + java.net.URLEncoder.encode(book.key, "UTF-8").replace("+", "%20"))
         nav.navigate(ROUTE_WEB_SHELF) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = false }
             launchSingleTop = true
@@ -147,7 +168,9 @@ fun MavisRoot(
                     composable(tab.route) {
                         if (webHost != null) {
                             BackHandler(enabled = webHost.canGoBack) { webHost.goBack() }
-                            WebScreen(webHost, tab.webRoute!!, Modifier.fillMaxSize())
+                            androidx.compose.runtime.key(if (tab == Tab.BIBLE) widgetRequest else 0) {
+                                WebScreen(webHost, if (tab == Tab.BIBLE && widgetDestination?.startsWith("#/bible/") == true) widgetDestination else tab.webRoute!!, Modifier.fillMaxSize())
+                            }
                         } else {
                             WebUnavailable(tab.label)
                         }

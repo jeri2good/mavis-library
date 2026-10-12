@@ -72,13 +72,22 @@ object NativeEpubText {
     }
 
     private fun parse(bytes: ByteArray, handler: DefaultHandler) {
+        // Parser-independent XXE/entity-bomb guard: Android's Expat-based parser rejects the Xerces-only
+        // security features below, so never rely on them alone. Reject any DTD/entity declaration outright.
+        val head = String(bytes, Charsets.ISO_8859_1)
+        if (head.contains("<!DOCTYPE", ignoreCase = true) || head.contains("<!ENTITY", ignoreCase = true)) {
+            throw IOException("EPUB XML with a DTD is not supported")
+        }
         val factory = SAXParserFactory.newInstance().apply {
             isNamespaceAware = true
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            setFeature("http://xml.org/sax/features/external-general-entities", false)
-            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-            setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
-            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+            // Best effort only: unsupported features throw on Android (SAXNotRecognizedException).
+            listOf(
+                "http://apache.org/xml/features/disallow-doctype-decl" to true,
+                "http://xml.org/sax/features/external-general-entities" to false,
+                "http://xml.org/sax/features/external-parameter-entities" to false,
+                "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
+                XMLConstants.FEATURE_SECURE_PROCESSING to true,
+            ).forEach { (name, value) -> runCatching { setFeature(name, value) } }
         }
         factory.newSAXParser().parse(ByteArrayInputStream(bytes), handler)
     }

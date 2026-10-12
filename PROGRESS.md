@@ -64,3 +64,8 @@ Tests run as `env -u TYPESAFE_API_KEY -u FISH_AUDIO_API_KEY npm run test:functio
 - Added SEND/VIEW handling with Kids-mode suppression, private imported-book section and snackbars, FileProvider restricted to cache/share, and Settings → Reading stats.
 - Adult tracking reuses ReadingAccumulator, observes stable media book keys, samples reader route while resumed, and flushes at state changes/30-second intervals.
 - Existing WebHost owner-code logic and all Kids files remain unchanged. Imported EPUBs are stored/listed; native-to-web imported-file reading is not implemented in this scope. No natural Shelf verse action exists, so ShareVerse stays an internal API.
+
+## Share/stats step 3 — boundary tests and verification fixes
+- Added Robolectric tests for theme bitmap dimensions/background, provider confinement, valid private import persistence, invalid-file cleanup, Kids import suppression and URI/action restrictions; added persistence/reader identity and Compose route tests.
+- Fixed Android ClipData's void setter, stale intent consumption, and ignored warm shares immediately when Kids mode is known enabled. Kept warm share payload separate from the original launch intent (ActivityScenario keys lifecycle events to that intent).
+- First Gradle run failed compilation on ClipData; second run was stopped after thread-dump diagnosis of lifecycle teardown waiting on changed launch intents. Final verification is pending; no passing counts claimed here.

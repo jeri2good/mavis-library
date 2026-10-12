@@ -36,7 +36,7 @@ class StatsAudioSource(context: Context, private val changed: () -> Unit) : Auto
                 result.addListener(listener)
                 refresh()
             }
-            override fun onFailure(t: Throwable) { playing = false; bookKey = null; changed() }
+            override fun onFailure(t: Throwable) { if (!closed) { playing = false; bookKey = null; changed() } }
         }, MoreExecutors.directExecutor()) }
     }
     override fun close() {

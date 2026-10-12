@@ -98,7 +98,7 @@ fun MavisRoot(
     webHost: WebHost?,
     online: Boolean,
     sharedIntent: android.content.Intent? = null,
-    onShareConsumed: () -> Unit = {},
+    onShareConsumed: (android.content.Intent) -> Unit = {},
     onFirstAudio: () -> Unit = {},
     driveModeActive: Boolean = false,
     onDriveModeChange: (Boolean) -> Unit = {},
@@ -113,7 +113,7 @@ fun MavisRoot(
     // Do not compose adult navigation until the persisted mode has been read.
     val loadedKids = kids ?: return
     LaunchedEffect(sharedIntent, loadedKids.enabled) {
-        if (loadedKids.enabled && sharedIntent != null) onShareConsumed()
+        if (loadedKids.enabled && sharedIntent != null) onShareConsumed(sharedIntent)
     }
     if (!adultRoutesAllowed(loadedKids.enabled)) {
         KidsRoot(container, kidsPrefs, loadedKids, playback)
@@ -132,7 +132,7 @@ fun MavisRoot(
         try {
             if (kidsPrefs.state.first().enabled) return@LaunchedEffect
             if (incoming.action == android.content.Intent.ACTION_SEND && incoming.type == "text/plain") {
-                val verse = parseBibleReference(incoming.getStringExtra(android.content.Intent.EXTRA_TEXT).orEmpty())
+                val verse = parseBibleReference(incoming.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString().orEmpty())
                 if (verse == null) snackbar.showSnackbar(SHARE_HELP)
                 else {
                     webHost?.openLater(verse.route)
@@ -154,7 +154,7 @@ fun MavisRoot(
             }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { snackbar.showSnackbar((e as? ImportRejected)?.message ?: "Mavis couldn't open that share. Please try again.") }
-        finally { onShareConsumed() }
+        finally { onShareConsumed(incoming) }
     }
     val openBook: (String) -> Unit = { key ->
         webHost?.openLater("#/book/" + java.net.URLEncoder.encode(key, "UTF-8").replace("+", "%20"))

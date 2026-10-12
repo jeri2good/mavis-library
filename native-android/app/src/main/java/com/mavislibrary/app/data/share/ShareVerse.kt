@@ -58,6 +58,7 @@ fun renderVerseCard(reference: String, text: String, look: Look): Bitmap {
     lines.forEachIndexed { i, line -> canvas.drawText(line, 96f, 120f + i * size * 1.35f, paint) }
     paint.color = colors.primary.toArgb(); paint.textSize = 34f
     while (paint.measureText(reference) > 888f && paint.textSize > 14f) paint.textSize -= 1f
+    require(paint.measureText(reference) <= 888f) { "Please use a shorter reference." }
     canvas.drawText(reference, 96f, 940f, paint)
     paint.textSize = 24f
     canvas.drawText("Mavis Library", 96f, 1010f, paint)
@@ -80,7 +81,7 @@ object ShareVerse {
         withContext(Dispatchers.Main) {
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.share", file)
             val send = Intent(Intent.ACTION_SEND).setType("image/png").putExtra(Intent.EXTRA_STREAM, uri)
-                .setClipData(ClipData.newRawUri("Verse card", uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                .apply { clipData = ClipData.newRawUri("Verse card", uri) }.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             context.startActivity(Intent.createChooser(send, "Share verse").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }

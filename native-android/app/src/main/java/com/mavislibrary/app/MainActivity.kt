@@ -109,7 +109,14 @@ class MainActivity : ComponentActivity() {
                 MavisRoot(
                     container, webHost, online,
                     sharedIntent = sharedIntent,
-                    onShareConsumed = { sharedIntent = null; setIntent(android.content.Intent(this@MainActivity, MainActivity::class.java)) },
+                    onShareConsumed = { consumed ->
+                        if (sharedIntent === consumed) {
+                            sharedIntent = null
+                            if (intent?.action in setOf(android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_VIEW)) {
+                                setIntent(android.content.Intent(android.content.Intent.ACTION_MAIN).setClass(this@MainActivity, MainActivity::class.java).addCategory(android.content.Intent.CATEGORY_LAUNCHER))
+                            }
+                        }
+                    },
                     onFirstAudio = ::requestNotificationPermission,
                     driveModeActive = driveModeActive,
                     onDriveModeChange = ::configureDriveMode,
@@ -155,9 +162,8 @@ class MainActivity : ComponentActivity() {
     /** Debug builds only: `am start -a com.mavislibrary.app.DEBUG_DRIVE` shows the drive screen without a car. */
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
         if (intent.action in setOf(android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_VIEW)) {
-            sharedIntent = android.content.Intent(intent)
+            sharedIntent = if (kidsModeLoaded && kidsModeEnabled) null else android.content.Intent(intent)
         }
         if (BuildConfig.DEBUG && intent.action == "com.mavislibrary.app.DEBUG_DRIVE") {
             if (!kidsModeLoaded) pendingDebugDrive = true

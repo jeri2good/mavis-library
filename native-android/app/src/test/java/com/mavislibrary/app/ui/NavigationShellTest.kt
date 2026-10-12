@@ -60,6 +60,31 @@ class NavigationShellTest {
     }
 
     @Test
+    fun sharedBibleReferenceNavigatesViaOnNewIntent() {
+        waitForTag("tab_settings")
+        compose.activityRule.scenario.onActivity { activity ->
+            MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
+                .invoke(activity, Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "John 3:16"))
+        }
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(androidx.compose.ui.test.hasText("Bible opens here in the full app.")).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("tab_bible").assertIsSelected()
+    }
+
+    @Test
+    fun readingStatsOpensFromSettings() {
+        waitForTag("tab_settings")
+        compose.onNodeWithTag("tab_settings").performClick()
+        waitForTag("open_stats")
+        compose.onNodeWithTag("open_stats").performClick()
+        compose.onNodeWithText("Today: 0 minutes").assertExists()
+        compose.onNodeWithText("Current streak: 0 days").assertExists()
+        compose.onNodeWithText("Back").performClick()
+        waitForTag("settings")
+    }
+
+    @Test
     fun showcaseOpensFromSettingsAndBackCloses() {
         waitForTag("tab_settings")
         compose.onNodeWithTag("tab_settings").performClick()
@@ -80,6 +105,8 @@ class NavigationShellTest {
             assertTrue(runBlocking { prefs.state.first().enabled })
             assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasTestTag("tab_settings")).fetchSemanticsNodes().isEmpty())
             compose.activityRule.scenario.onActivity {
+                MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
+                    .invoke(it, Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "John 3:16"))
                 sendDebugDrive(it)
                 assertEquals(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE, it.window.attributes.screenBrightness)
                 assertTrue(it.onBackPressedDispatcher.hasEnabledCallbacks())
@@ -90,6 +117,7 @@ class NavigationShellTest {
             assertEquals(PinResult.Correct, runBlocking { prefs.leave("1234") })
         }
         waitForTag("tab_settings")
+        compose.onNodeWithTag("tab_search").assertIsSelected()
         compose.activityRule.scenario.onActivity {
             sendDebugDrive(it)
             assertEquals(.12f, it.window.attributes.screenBrightness)

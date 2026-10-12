@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -109,8 +110,11 @@ fun ScanScreen(
                     drawRect(Color.Black.copy(alpha = .62f))
                     val width = size.width * .82f
                     val height = (size.height * .36f).coerceAtMost(width * .65f)
-                    drawRoundRect(Color.Transparent, Offset((size.width - width) / 2, (size.height - height) / 2),
-                        androidx.compose.ui.geometry.Size(width, height), CornerRadius(24.dp.toPx()), blendMode = BlendMode.Clear)
+                    val topLeft = Offset((size.width - width) / 2, (size.height - height) / 2)
+                    val frameSize = androidx.compose.ui.geometry.Size(width, height)
+                    val corner = CornerRadius(24.dp.toPx())
+                    drawRoundRect(Color.Transparent, topLeft, frameSize, corner, blendMode = BlendMode.Clear)
+                    drawRoundRect(Color.White, topLeft, frameSize, corner, style = Stroke(2.dp.toPx()))
                 }
             }
         } else {
@@ -118,6 +122,7 @@ fun ScanScreen(
                 Text(when {
                     cameraError -> "Camera isn't available. You can still type an ISBN below."
                     permanentlyDenied -> "Camera access is blocked. Open app settings to enable it, or type an ISBN."
+                    requested -> "Camera access was denied. You can try again or type an ISBN instead."
                     else -> "Mavis uses the camera only on this screen to read a barcode. Nothing is recorded or uploaded."
                 })
                 Spacer(Modifier.height(12.dp))
@@ -170,7 +175,7 @@ private fun CameraBarcodePreview(
     onCode: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val previewView = remember { PreviewView(context) }
+    val previewView = remember(context) { PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE } }
     val callback by rememberUpdatedState(onCode)
     val errorCallback by rememberUpdatedState(onError)
     val flashCallback by rememberUpdatedState(onFlash)

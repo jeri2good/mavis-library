@@ -54,3 +54,8 @@ Tests run as `env -u TYPESAFE_API_KEY -u FISH_AUDIO_API_KEY npm run test:functio
 - Fixed the `entries.takeLast` Kotlin compilation failure; tested PIN retry recovery after five misses and expiry. Commit de1e99b.
 - Kept Codex's existing Kids shell, curated Listen/Read repository path, Bible stories, and restricted WebView. Added selected-route denial tests and a Robolectric shell/Back test; stopped auto drive mode until the persisted Kids state is known, corrected the lifecycle audio-time snapshot, reduced reading-log writes to 30-second intervals, and enlarged setup controls.
 - Final background `./gradlew testDebugUnitTest assembleDebug --no-daemon -q` exited 0 with JDK 21 and Android SDK; 22 XML suites, 97 tests, 0 failures, 0 errors, 0 skipped. Debug APK built; no emulator, physical tablet, live LibriVox, or WebView runtime verification.
+
+## Share/stats step 1 — local data and pure helpers
+- Added bounded EPUB copying/ZIP validation, private import index, strict Bible-reference routes, and internal verse-card renderer/share helper.
+- Added adult-only stats DataStore, midnight accumulator reuse, streak/recap/goal math and JVM cases. No test result claimed yet.
+- Strict path allowlist currently keeps weekly goal in the stats DataStore; minimal SettingsStore exception requested.

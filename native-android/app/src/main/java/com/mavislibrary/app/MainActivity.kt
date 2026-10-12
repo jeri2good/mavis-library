@@ -6,7 +6,15 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.KeyEvent
-import androidx.activity.ComponentActivity
+import android.view.WindowManager
+import android.widget.Toast
+import androidx.fragment.app.FragmentActivity
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
+import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import com.mavislibrary.app.lock.LockPolicy
+import com.mavislibrary.app.lock.LockScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import androidx.lifecycle.lifecycleScope
@@ -44,8 +52,34 @@ import com.mavislibrary.app.drive.DriveModeMonitor
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 
-class MainActivity : ComponentActivity() {
-    companion object { const val WIDGET_DESTINATION = "com.mavislibrary.app.WIDGET_DESTINATION" }
+class MainActivity : FragmentActivity() {
+    companion object {
+        const val WIDGET_DESTINATION = "com.mavislibrary.app.WIDGET_DESTINATION"
+        private const val AUTHENTICATORS = BIOMETRIC_WEAK or DEVICE_CREDENTIAL
+    }
+    private val lockPolicy = LockPolicy()
+    private var lockSetting by mutableStateOf<Boolean?>(null)
+    private var lockState by mutableStateOf(LockPolicy.State.NEEDS_AUTH)
+    private var lockMessage by mutableStateOf<String?>(null)
+    private val prompt by lazy {
+        BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                lockPolicy.authenticated()
+                lockState = lockPolicy.state
+                lockMessage = null
+                webHost?.onResume()
+                lifecycleScope.launch { refreshOwnerCode() }
+            }
+            override fun onAuthenticationFailed() { lockMessage = "Not recognized. Try again or use your device PIN." }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                lockMessage = when (errorCode) {
+                    BiometricPrompt.ERROR_LOCKOUT, BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> "Too many attempts. Use your device PIN or try again later."
+                    BiometricPrompt.ERROR_NEGATIVE_BUTTON, BiometricPrompt.ERROR_USER_CANCELED, BiometricPrompt.ERROR_CANCELED -> "Unlock cancelled. Tap Unlock to try again."
+                    else -> "Couldn't unlock: $errString. Try again."
+                }
+            }
+        })
+    }
     private var widgetDestination by mutableStateOf<String?>(null)
     private var widgetRequest by mutableIntStateOf(0)
 
@@ -87,6 +121,7 @@ class MainActivity : ComponentActivity() {
             kidsPrefs().state.collect { state ->
                 kidsModeEnabled = state.enabled
                 kidsModeLoaded = true
+                refreshOwnerCode()
                 if (state.enabled) {
                     pendingDebugDrive = false
                     configureDriveMode(false)
@@ -99,8 +134,23 @@ class MainActivity : ComponentActivity() {
         val container = (application as MavisApp).container
         webHost = if (useWebHost) WebHost(this) else null
         lifecycleScope.launch {
+            container.settings.appLockEnabled.collect { enabled ->
+                if (enabled && BiometricManager.from(this@MainActivity).canAuthenticate(AUTHENTICATORS) != BiometricManager.BIOMETRIC_SUCCESS) {
+                    lockMessage = "Set up a device PIN, face, or fingerprint before using app lock. Lock has been turned off."
+                    container.settings.setAppLockEnabled(false)
+                    return@collect
+                }
+                if (enabled) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                lockPolicy.setEnabled(enabled)
+                lockState = lockPolicy.state
+                lockSetting = enabled
+                refreshOwnerCode()
+            }
+        }
+        lifecycleScope.launch {
             container.secureStore.has(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE).collect {
-                webHost?.setOwnerCode(container.secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE))
+                refreshOwnerCode()
             }
         }
 
@@ -139,6 +189,14 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             MavisTheme(resolved) {
+                if (lockSetting == null || kidsState == null) {
+                    Box(Modifier.fillMaxSize().background(colorResource(R.color.window_background)))
+                    return@MavisTheme
+                }
+                if (lockState != LockPolicy.State.UNLOCKED && kidsState?.enabled == false) {
+                    LockScreen(lockMessage, ::unlock)
+                    return@MavisTheme
+                }
                 LaunchedEffect(playbackSettings.driveModeEnabled, kidsState?.enabled) {
                     configureDriveMode(playbackSettings.driveModeEnabled && kidsState?.enabled == false)
                 }
@@ -155,6 +213,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onFirstAudio = ::requestNotificationPermission,
                     onEnableReminder = ::enableReadingReminder,
+                    onAppLockChange = ::changeAppLock,
                     driveModeActive = driveModeActive,
                     onDriveModeChange = ::configureDriveMode,
                     onCloseDriveMode = { setDriveScreen(false) },
@@ -163,6 +222,44 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    private suspend fun refreshOwnerCode() {
+        val allowed = lockSetting != null && lockState == LockPolicy.State.UNLOCKED && kidsModeLoaded && !kidsModeEnabled
+        if (!allowed) {
+            webHost?.setOwnerCode(null)
+            return
+        }
+        val code = (application as MavisApp).container.secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE)
+        if (lockSetting != null && lockState == LockPolicy.State.UNLOCKED && kidsModeLoaded && !kidsModeEnabled) webHost?.setOwnerCode(code)
+    }
+
+    private fun changeAppLock(enabled: Boolean) {
+        if (enabled && BiometricManager.from(this).canAuthenticate(AUTHENTICATORS) != BiometricManager.BIOMETRIC_SUCCESS) {
+            Toast.makeText(this, "Set up a device PIN, face, or fingerprint first. Lock is still off.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (enabled) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        lockPolicy.setEnabled(enabled)
+        lockState = lockPolicy.state
+        if (enabled) webHost?.setOwnerCode(null)
+        lifecycleScope.launch {
+            refreshOwnerCode()
+            (application as MavisApp).container.settings.setAppLockEnabled(enabled)
+        }
+    }
+
+    private fun unlock() {
+        if (BiometricManager.from(this).canAuthenticate(AUTHENTICATORS) != BiometricManager.BIOMETRIC_SUCCESS) {
+            lockMessage = "No device PIN, face, or fingerprint is available. App lock has been turned off so you aren't locked out."
+            changeAppLock(false)
+            return
+        }
+        prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Unlock Mavis")
+            .setAllowedAuthenticators(AUTHENTICATORS)
+            .build())
     }
 
     private fun enableReadingReminder() {
@@ -225,8 +322,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        lockPolicy.foreground()
+        lockState = lockPolicy.state
+        if (lockState != LockPolicy.State.UNLOCKED) webHost?.setOwnerCode(null)
+        super.onStart()
+    }
+
     override fun onResume() {
         super.onResume()
+        if (lockSetting == true && lockState != LockPolicy.State.UNLOCKED) return
         webHost?.onResume()
         readerKeys?.close()
         readerKeys = com.mavislibrary.app.web.ReaderMediaSession(this) { code ->
@@ -235,7 +340,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
-        if (webHost?.handlePageTurnKey(event) == true) true else super.onKeyDown(keyCode, event)
+        if (lockState == LockPolicy.State.UNLOCKED && webHost?.handlePageTurnKey(event) == true) true else super.onKeyDown(keyCode, event)
+
+    override fun onStop() {
+        lockPolicy.background()
+        super.onStop()
+    }
 
     override fun onPause() {
         readerKeys?.close(); readerKeys = null

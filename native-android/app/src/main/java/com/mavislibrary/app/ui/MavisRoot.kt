@@ -3,6 +3,7 @@ package com.mavislibrary.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -116,6 +117,7 @@ fun MavisRoot(
     onShareConsumed: (android.content.Intent) -> Unit = {},
     onFirstAudio: () -> Unit = {},
     onEnableReminder: () -> Unit = {},
+    onAppLockChange: (Boolean) -> Unit = {},
     driveModeActive: Boolean = false,
     onDriveModeChange: (Boolean) -> Unit = {},
     onCloseDriveMode: () -> Unit = {},
@@ -241,7 +243,9 @@ fun MavisRoot(
                             Text("Imported books · saved on this device", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
                             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 180.dp)) {
                                 items(importedBooks, key = { it.id }) { book ->
-                                    Text(book.title + " · EPUB", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                                    Text(book.title + " · EPUB", Modifier.fillMaxWidth().clickable {
+                                        if (importedRouteAllowed(book.id, importedBooks.map { it.id }, loadedKids.enabled)) nav.navigate("imported/${book.id}")
+                                    }.padding(horizontal = 16.dp, vertical = 8.dp))
                                 }
                             }
                         }
@@ -252,6 +256,13 @@ fun MavisRoot(
                     }, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
                         }
                     }
+                }
+                composable("imported/{id}") { route ->
+                    val id = route.arguments?.getString("id").orEmpty()
+                    val book = importedBooks.find { it.id == id }
+                    if (book != null && importedRouteAllowed(id, importedBooks.map { it.id }, loadedKids.enabled))
+                        ImportedReader(id, book.title, imports, onBack = { nav.popBackStack() })
+                    else LaunchedEffect(id) { nav.popBackStack() }
                 }
                 composable(ROUTE_WEB_SHELF) {
                     if (webHost != null) {
@@ -274,7 +285,7 @@ fun MavisRoot(
                     ) else LaunchedEffect(Unit) { nav.popBackStack() }
                 }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio) }
-                composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder, onOpenStats = { nav.navigate("stats") }) }
+                composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder, onOpenStats = { nav.navigate("stats") }, onAppLockChange = onAppLockChange) }
                 composable("stats") { StatsScreen(stats, onBack = { nav.popBackStack() }) }
                 composable(ROUTE_SHOWCASE) { ThemeShowcaseScreen(onBack = { nav.popBackStack() }) }
             }

@@ -75,6 +75,41 @@ class SecureStoreTest {
     }
 
     @Test
+    fun accountLifecycleKeepsRecoveryEphemeralRefreshesAndPreservesOwner() = runTest(UnconfinedTestDispatcher()) {
+        val ds = dataStore()
+        val store = SecureStore(ds, JvmGcmCipher(), JvmBase64)
+        store.write(Secret.OWNER_ACCESS_CODE, "fixture-owner")
+        var adult = true
+        var calls = 0
+        val api = com.mavislibrary.app.data.api.AccountsApi("https://site.example.org", execute = {
+            calls++
+            com.mavislibrary.app.data.podcast.fakeResponse(it, if (it.url.encodedPath.endsWith("/me"))
+                """{"token":"refreshed-fixture-session","user":{"id":"user1","email":"member@example.org"}}"""
+            else """{"token":"fixture-session","user":{"id":"user1","email":"member@example.org"},"recoveryCode":"fixture-recovery"}""")
+        }, token = { store.read(Secret.ACCOUNT_TOKEN) }, owner = { store.read(Secret.OWNER_ACCESS_CODE) })
+        val repo = com.mavislibrary.app.data.api.AccountRepository(api, store) { adult }
+        assertEquals("fixture-recovery", repo.authenticate("signup", "member@example.org", "fixture-password"))
+        assertEquals("fixture-session", store.read(Secret.ACCOUNT_TOKEN))
+        assertEquals("user1", store.read(Secret.ACCOUNT_USER_ID))
+        assertFalse(ds.data.first().asMap().values.joinToString().contains("fixture"))
+        repo.me()
+        assertEquals("refreshed-fixture-session", store.observe(Secret.ACCOUNT_TOKEN).first())
+        adult = false
+        val before = calls
+        assertTrue(runCatching { repo.authenticate("signin", "member@example.org", "fixture-password") }.isFailure)
+        assertTrue(runCatching { repo.signOut() }.isFailure)
+        assertTrue(runCatching { repo.requestAccess("") }.isFailure)
+        assertTrue(runCatching { repo.subscribers() }.isFailure)
+        assertTrue(runCatching { repo.decide("approve", "user1") }.isFailure)
+        assertEquals(before, calls)
+        adult = true
+        repo.signOut()
+        assertNull(store.read(Secret.ACCOUNT_TOKEN))
+        assertNull(store.read(Secret.ACCOUNT_USER_ID))
+        assertEquals("fixture-owner", store.read(Secret.OWNER_ACCESS_CODE))
+    }
+
+    @Test
     fun refusedEncryptionStoresNothing() = runTest(UnconfinedTestDispatcher()) {
         val ds = dataStore()
         val store = SecureStore(ds, RefusingCipher, JvmBase64)

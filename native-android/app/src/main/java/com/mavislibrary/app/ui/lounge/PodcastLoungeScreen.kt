@@ -35,21 +35,35 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
     if (!loungeRouteAllowed(kids?.enabled)) return
     val prefs by container.podcastSettings.preferences.collectAsStateWithLifecycle(initialValue = null)
-    val loaded = prefs ?: return
+    val signedIn by container.accounts.signedIn.collectAsStateWithLifecycle(initialValue = null)
+    val owner by container.secureStore.has(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE).collectAsStateWithLifecycle(initialValue = null)
+    if (signedIn == null || owner == null) return
+    if (signedIn != true && owner != true) {
+        Column(Modifier.fillMaxSize().padding(16.dp).testTag("podcast_lounge"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextButton(onClick = onBack) { Text("Back to Listen") }
+            Text("Podcast Lounge", style = MaterialTheme.typography.headlineLarge)
+            Text("Sign in to use Podcast Lounge")
+            Button(onClick = onSettings) { Text("Sign in in Settings") }
+        }
+        return
+    }
+    val loaded = (prefs ?: return).let { it.copy(address = com.mavislibrary.app.BuildConfig.API_BASE, style = it.style.takeIf { s -> s in podcastStyles } ?: "deep-dive") }
     val all by container.podcastSettings.library.collectAsStateWithLifecycle(initialValue = emptyList())
     val shelf by container.shelfRepository.shelfBooks.collectAsStateWithLifecycle(initialValue = emptyList())
     val imports = remember { EpubImports(context) }
     val imported by imports.books.collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val api = remember(loaded.address) { container.podcastApi(loaded.address) }
-    val repo = remember(loaded.address) { container.podcastRepository(loaded.address) }
+    val accountId by container.secureStore.observe(com.mavislibrary.app.data.secure.Secret.ACCOUNT_USER_ID).collectAsStateWithLifecycle(initialValue = null)
+    val identity = if (owner == true) "owner" else accountId
+    val api = remember(identity) { container.podcastApi() }
+    val repo = remember(identity) { container.podcastRepository() }
     var draft by remember(initial) { mutableStateOf(initial ?: PodcastDraft()) }
     var style by remember { mutableStateOf(loaded.style) }
     var length by remember { mutableStateOf(loaded.length) }
     var engine by remember { mutableStateOf(loaded.engine) }
-    var health by remember(loaded.address) { mutableStateOf<StudioHealth?>(null) }
-    var status by remember { mutableStateOf("Studio offline") }
+    var accessReady by remember(signedIn, owner) { mutableStateOf(false) }
+    var status by remember { mutableStateOf("Checking gateway…") }
     var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -60,32 +74,30 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val active = remember(loaded.address) { mutableMapOf<String, Job>() }
     var delete by remember { mutableStateOf<SavedPodcast?>(null) }
     var sharedConfirm by remember(initial) { mutableStateOf(initial?.confirmShare == true) }
-    val jobs = all.filter { (it.studio == loaded.address || it.localFile != null) && !podcastExpired(it.job, loaded.cleanupDays) }.sortedByDescending { it.job.createdAt }
+    val jobs = all.filter { (identity == "owner" || identity != null && it.accountId == identity) && (it.studio == loaded.address || it.localFile != null) && !podcastExpired(it.job, loaded.cleanupDays) }.sortedByDescending { it.job.createdAt }
 
     suspend fun allowed() = loungeRouteAllowed(context.kidsPrefs().state.first().enabled)
     suspend fun refreshStudio() {
-        health = null
         try {
             if (!allowed()) return
-            health = api.health(); status = health!!.label
             repo.refresh()
-            if (message?.startsWith("Studio offline") == true || message?.startsWith("Studio reached") == true) message = null
+            accessReady = true; status = "Gateway connected"; message = null
         } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            status = health?.label ?: "Studio offline"
-            message = if (health != null) "Studio reached, but jobs couldn't be loaded: ${e.message ?: "check the saved key"}"
-                else "Studio offline or unreachable. Saved podcasts still work; server jobs will reconnect when the studio returns. Check the address and key in Settings."
+            accessReady = false
+            status = "Gateway unavailable"
+            message = e.message ?: "Studio unavailable, try later"
         }
     }
-    LaunchedEffect(loaded.address, refresh, lifecycle) {
+    LaunchedEffect(loaded.address, identity, refresh, lifecycle) {
         if (loaded.address.isBlank()) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             try { coroutineScope {
                 launch { while (isActive) { refreshStudio(); delay(30_000) } }
                 launch {
                     container.podcastSettings.library.collect { list ->
-                        list.filter { it.studio == loaded.address && !it.job.terminal }.forEach { saved ->
+                        list.filter { (identity == "owner" || identity != null && it.accountId == identity) && it.studio == loaded.address && !it.job.terminal }.forEach { saved ->
                             if (saved.job.id !in active) active[saved.job.id] = launch {
-                                repo.poll(saved.job.id).catch { pollingMessages[saved.job.id] = "Couldn't track this job. Refresh to retry." }.collect { event ->
+                                repo.poll(saved.job.id).catch { pollingMessages[saved.job.id] = it.message ?: "Couldn't track this job. Refresh to retry." }.collect { event ->
                                     pollingMessages[saved.job.id] = when (event) {
                                         is PodcastPoll.Updated -> ""
                                         PodcastPoll.Unreachable -> "Studio unreachable · reconnecting with backoff"
@@ -104,7 +116,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { message = "Local cleanup couldn't finish. Your studio originals are unchanged." }
     }
-    DisposableEffect(loaded.address, refresh) { onDispose { active.values.forEach { it.cancel() }; active.clear() } }
+    DisposableEffect(loaded.address, identity, refresh) { onDispose { active.values.forEach { it.cancel() }; active.clear() } }
     fun act(action: suspend () -> Unit) {
         scope.launch {
             if (busy || !allowed()) return@launch
@@ -123,15 +135,8 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
             TextButton(onClick = onBack) { Text("Back to Listen") }
             Text("Podcast Lounge", style = MaterialTheme.typography.headlineLarge)
             AssistChip(onClick = { refresh++ }, label = { Text(status) })
-            health?.let { Text(listOf(it.engines.notebooklm.note, it.engines.local.note).filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.bodySmall) }
-            TextButton(onClick = { active.values.forEach { it.cancel() }; active.clear(); refresh++ }) { Text("Refresh studio and jobs") }
-        }
-        if (loaded.address.isBlank()) item {
-            Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Podcasts are made by your Mavis studio at home. Add its address and key in Settings.")
-                Text("Use your iMac studio's private LAN or Tailscale address, for example http://100.98.33.49:8140 over Tailscale. Nothing is sent until you confirm a podcast.")
-                Button(onClick = onSettings) { Text("Open Settings") }
-            } }
+            TextButton(onClick = { active.values.forEach { it.cancel() }; active.clear(); refresh++ }) { Text("Refresh jobs") }
+            if (message == "Request access" || message == "Sign in to use Podcast Lounge") Button(onClick = onSettings) { Text(message!!) }
         }
         message?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
         item {
@@ -164,8 +169,8 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                     Text("${draft.text.length} / 400,000 characters" + if (draft.originalChars > MAX_PODCAST_TEXT) " · trimmed from ${draft.originalChars}" else "", style = MaterialTheme.typography.bodySmall)
                 }
                 PodcastChoices(style, length, engine, { style = it }, { length = it }, { engine = it })
-                Text("Two-host audio. Auto uses NotebookLM when available; the studio may fall back to local voices. Sources are sent only to your configured studio.", style = MaterialTheme.typography.bodySmall)
-                Button(enabled = !busy && loaded.address.isNotBlank() && !sharedConfirm, onClick = { act { repo.create(draft.request(style, length, engine)); message = "Queued at your Mavis studio." } }) { Text(if (busy) "Working…" else "Make podcast") }
+                Text("Two-host audio. Auto uses NotebookLM when available; the studio may fall back to local voices. Sources are sent through the public Mavis gateway to the studio.", style = MaterialTheme.typography.bodySmall)
+                Button(enabled = !busy && accessReady && !sharedConfirm, onClick = { act { repo.create(draft.request(style, length, engine)); message = "Queued at your Mavis studio." } }) { Text(if (busy) "Working…" else "Make podcast") }
             } }
         }
         item { Text("Your podcasts", style = MaterialTheme.typography.titleLarge) }
@@ -179,7 +184,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                 Text("${job.kind} · ${podcastStyles[job.style] ?: job.style} · ${job.engineLabel}")
                 Text("${job.status} · ${job.stage}")
                 if (!job.terminal) {
-                    LinearProgressIndicator(progress = { (job.progress / if (job.progress > 1) 100 else 1).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                    LinearProgressIndicator(progress = { (job.progress / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
                     pollingMessages[job.id]?.takeIf(String::isNotBlank)?.let { Text(it) }
                 }
                 job.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

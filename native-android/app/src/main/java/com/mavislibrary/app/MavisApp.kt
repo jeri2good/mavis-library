@@ -27,6 +27,7 @@ import com.mavislibrary.app.audio.AudiobookRepository
 import com.mavislibrary.app.audio.AudioFileStore
 import com.mavislibrary.app.data.kids.kidsPrefs
 import com.mavislibrary.app.work.WidgetUpdater
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -70,6 +71,10 @@ class AppContainer(private val app: Application) {
     val feedDiscovery by lazy { com.mavislibrary.app.data.feeds.FeedDiscovery(feedFetcher) }
     val feedRepository by lazy { com.mavislibrary.app.data.feeds.FeedRepository(feedFetcher, connectivity::isOnline) }
     val secureStore: SecureStore by lazy { SecureStore(app.secureDataStore, KeystoreCipher()) }
+    val accountsApi by lazy { com.mavislibrary.app.data.api.AccountsApi(BuildConfig.API_BASE,
+        token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) },
+        owner = { secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE) }) }
+    val accounts by lazy { com.mavislibrary.app.data.api.AccountRepository(accountsApi, secureStore) { !app.kidsPrefs().state.first().enabled } }
     val api: MavisApi by lazy { MavisApi(apiHttp, BuildConfig.API_BASE) }
     val searchRepository: SearchRepository by lazy {
         SearchRepository(CachedFetcher(api, RoomResponseCache(database.cachedResponses()), connectivity::isOnline))
@@ -79,8 +84,13 @@ class AppContainer(private val app: Application) {
     val audiobookRepository: AudiobookRepository by lazy { AudiobookRepository(api) }
     val audioFiles: AudioFileStore by lazy { AudioFileStore(app.filesDir, okHttp) }
     val podcastSettings by lazy { com.mavislibrary.app.data.podcast.PodcastSettings(app.settingsDataStore, secureStore) }
-    fun podcastApi(base: String) = com.mavislibrary.app.data.podcast.PodcastApi(base) { podcastSettings.tokenFor(base) }
-    fun podcastRepository(base: String) = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(base), podcastSettings, base)
+    suspend fun podcastAccountId(): String? = if (secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE).isNullOrBlank())
+        secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_USER_ID) else "owner"
+    fun podcastApi() = com.mavislibrary.app.data.podcast.PodcastApi(BuildConfig.API_BASE,
+        owner = { secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE) },
+        adult = { !app.kidsPrefs().state.first().enabled },
+        token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) })
+    fun podcastRepository() = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(), podcastSettings, BuildConfig.API_BASE, ::podcastAccountId)
 }
 
 class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Factory {

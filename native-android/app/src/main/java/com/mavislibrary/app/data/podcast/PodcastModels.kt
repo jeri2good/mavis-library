@@ -7,7 +7,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import com.mavislibrary.app.data.kids.adultRoutesAllowed
 
 const val MAX_PODCAST_TEXT = 400_000
-val podcastStyles = linkedMapOf("deep-dive" to "Deep dive", "brief" to "Quick brief", "debate" to "Debate", "critique" to "Critique")
+val podcastStyles = linkedMapOf("deep-dive" to "Deep dive", "debate" to "Debate", "critique" to "Critique")
 val podcastLengths = linkedMapOf("short" to "Short ~8 min", "default" to "Standard ~14", "long" to "Long ~22")
 
 @Serializable
@@ -18,13 +18,16 @@ data class PodcastRequest(
 ) {
     fun validated(): PodcastRequest {
         require(kind in setOf("book", "chapter", "article", "topic") && title.isNotBlank()) { "Choose a subject and title." }
-        require(style in podcastStyles && length in podcastLengths && engine in setOf("auto", "notebooklm", "local") && language == "en")
-        require((text == null || text.length <= MAX_PODCAST_TEXT) && (query == null || query.length <= MAX_PODCAST_TEXT)) { "Text must be 400,000 characters or less." }
-        if (url != null) articleUrl(url)
+        require((style in podcastStyles || style == "brief") && length in podcastLengths && engine in setOf("auto", "notebooklm", "local") && language == "en")
+        require(title.codePointCount(0, title.length) <= 300) { "Use a title of 300 characters or less." }
+        require(text == null || text.codePointCount(0, text.length) <= MAX_PODCAST_TEXT) { "Text must be 400,000 characters or less." }
+        require(query == null || query.codePointCount(0, query.length) <= 300) { "Use a topic of 300 characters or less." }
+        require(gutenbergId == null || gutenbergId in 1..9_999_999) { "Choose a valid Gutenberg book." }
+        if (url != null) { require(url.length <= 2048) { "Use an article URL of 2,048 characters or less." }; articleUrl(url) }
         require(when (kind) {
-            "book" -> (gutenbergId != null && gutenbergId > 0) || !text.isNullOrBlank()
+            "book" -> (gutenbergId != null && gutenbergId > 0) || !text.isNullOrBlank() || url != null
             "chapter" -> !text.isNullOrBlank()
-            "article" -> url != null || !text.isNullOrBlank()
+            "article" -> !url.isNullOrBlank()
             else -> !query.isNullOrBlank()
         }) { "Add the source for this podcast." }
         return this
@@ -64,7 +67,7 @@ fun loungeRouteAllowed(kidsMode: Boolean?) = kidsMode != null && adultRoutesAllo
         else -> "Studio online · no engine ready"
     }
 }
-@Serializable data class SavedPodcast(val job: PodcastJob, val studio: String, val localFile: String? = null, val request: PodcastRequest? = null) {
+@Serializable data class SavedPodcast(val job: PodcastJob, val studio: String, val localFile: String? = null, val request: PodcastRequest? = null, val accountId: String? = null) {
     val key get() = "$studio/${job.id}"
     val resumeKey get() = "podcast:$key"
 }
@@ -91,7 +94,7 @@ object StudioAddress {
         it.query == null && it.fragment == null && it.encodedPath.matches(Regex("/v1/podcasts/[A-Za-z0-9_-]{1,128}/audio"))
     } == true
     fun safeId(id: String): String {
-        require(id.matches(Regex("[A-Za-z0-9_-]{1,128}"))) { "Invalid podcast ID." }
+        require(id.matches(Regex("[A-Za-z0-9_-]{1,100}"))) { "Invalid podcast ID." }
         return id
     }
 }

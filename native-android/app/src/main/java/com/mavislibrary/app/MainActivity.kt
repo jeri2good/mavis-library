@@ -152,9 +152,13 @@ class MainActivity : FragmentActivity() {
             }
         }
         lifecycleScope.launch {
-            container.secureStore.has(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE).collect {
+            container.secureStore.observe(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE).collect {
                 refreshOwnerCode()
             }
+        }
+
+        lifecycleScope.launch {
+            container.secureStore.observe(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN).collect { refreshOwnerCode() }
         }
 
         setContent {
@@ -229,11 +233,17 @@ class MainActivity : FragmentActivity() {
 
     private suspend fun refreshOwnerCode() {
         if (!ownerCodeAllowed(lockSetting, lockState, kidsModeLoaded, kidsModeEnabled)) {
+            webHost?.setAccountToken(null)
             webHost?.setOwnerCode(null)
             return
         }
-        val code = (application as MavisApp).container.secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE)
-        if (ownerCodeAllowed(lockSetting, lockState, kidsModeLoaded, kidsModeEnabled)) webHost?.setOwnerCode(code)
+        val secrets = (application as MavisApp).container.secureStore
+        val code = secrets.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE)
+        val token = secrets.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN)
+        if (ownerCodeAllowed(lockSetting, lockState, kidsModeLoaded, kidsModeEnabled)) {
+            webHost?.setAccountToken(token)
+            webHost?.setOwnerCode(code)
+        }
     }
 
     private fun changeAppLock(enabled: Boolean) {
@@ -245,7 +255,7 @@ class MainActivity : FragmentActivity() {
         else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         lockPolicy.setEnabled(enabled)
         lockState = lockPolicy.state
-        if (enabled) webHost?.setOwnerCode(null)
+        if (enabled) { webHost?.setAccountToken(null); webHost?.setOwnerCode(null) }
         lifecycleScope.launch {
             refreshOwnerCode()
             (application as MavisApp).container.settings.setAppLockEnabled(enabled)
@@ -327,7 +337,7 @@ class MainActivity : FragmentActivity() {
     override fun onStart() {
         lockPolicy.foreground()
         lockState = lockPolicy.state
-        if (lockState != LockPolicy.State.UNLOCKED) webHost?.setOwnerCode(null)
+        if (lockState != LockPolicy.State.UNLOCKED) { webHost?.setAccountToken(null); webHost?.setOwnerCode(null) }
         super.onStart()
     }
 

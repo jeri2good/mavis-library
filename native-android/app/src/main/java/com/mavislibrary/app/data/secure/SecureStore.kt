@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -75,6 +76,7 @@ object AndroidBase64 : Codec {
 enum class Secret(val id: String) {
     OWNER_ACCESS_CODE("owner_access_code"),
     ACCOUNT_TOKEN("account_token"),
+    ACCOUNT_USER_ID("account_user_id"),
     PODCAST_STUDIO_TOKEN("podcast_studio_token"),
 }
 
@@ -91,17 +93,25 @@ class SecureStore(
     fun has(secret: Secret): Flow<Boolean> =
         store.data.map { it[keyOf(secret)] != null }.catch { emit(false) }
 
-    suspend fun read(secret: Secret): String? {
-        val sealed = runCatching { store.data.first()[keyOf(secret)] }.getOrNull() ?: return null
-        return runCatching { cipher.decrypt(codec.decode(sealed), secret.id.toByteArray()).decodeToString() }.getOrNull()
-    }
+    fun observe(secret: Secret): Flow<String?> = store.data.map { preferences ->
+        preferences[keyOf(secret)]?.let { sealed ->
+            runCatching { cipher.decrypt(codec.decode(sealed), secret.id.toByteArray()).decodeToString() }.getOrNull()
+        }
+    }.catch { emit(null) }.distinctUntilChanged()
+
+    suspend fun read(secret: Secret): String? = observe(secret).first()
 
     /** Returns false when the device's secure hardware refused the operation. */
-    suspend fun write(secret: Secret, value: String): Boolean {
-        val sealed = runCatching { codec.encode(cipher.encrypt(value.toByteArray(), secret.id.toByteArray())) }.getOrNull()
-            ?: return false
-        store.edit { it[keyOf(secret)] = sealed }
+    suspend fun write(secret: Secret, value: String): Boolean = writeAll(mapOf(secret to value))
+
+    suspend fun writeAll(values: Map<Secret, String>): Boolean {
+        val sealed = runCatching { values.mapValues { (secret, value) -> codec.encode(cipher.encrypt(value.toByteArray(), secret.id.toByteArray())) } }.getOrNull() ?: return false
+        store.edit { preferences -> sealed.forEach { (secret, value) -> preferences[keyOf(secret)] = value } }
         return true
+    }
+
+    suspend fun clearAll(vararg secrets: Secret) {
+        store.edit { preferences -> secrets.forEach { preferences.remove(keyOf(it)) } }
     }
 
     suspend fun clear(secret: Secret) {

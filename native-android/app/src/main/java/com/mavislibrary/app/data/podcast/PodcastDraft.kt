@@ -24,5 +24,5 @@ fun routePodcastShare(text: String): PodcastShare {
     val trimmed = text.trim()
     if (trimmed.startsWith("https://", true)) return runCatching { PodcastShare.Lounge(PodcastDraft("article", url = articleUrl(trimmed), confirmShare = true)) }.getOrDefault(PodcastShare.Unsupported)
     if (trimmed.startsWith("http://", true) || trimmed.isBlank()) return PodcastShare.Unsupported
-    return PodcastShare.Lounge(PodcastDraft.extracted("article", "Shared text", trimmed).copy(confirmShare = true))
+    return PodcastShare.Lounge(PodcastDraft.extracted("chapter", "Shared text", trimmed).copy(confirmShare = true))
 }

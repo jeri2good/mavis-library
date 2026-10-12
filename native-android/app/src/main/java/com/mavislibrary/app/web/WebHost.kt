@@ -162,13 +162,16 @@ class WebHost(private val activity: ComponentActivity) {
                 androidx.webkit.WebSettingsCompat.setSafeBrowsingEnabled(settings, true)
             }
             if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                WebViewCompat.addDocumentStartJavaScript(this, nativeMarkerScript(), setOf(WEB_ORIGIN))
+                WebViewCompat.addDocumentStartJavaScript(this, nativeMarkerScript() + accountTransportScript(BuildConfig.API_BASE), setOf(WEB_ORIGIN))
             }
             addJavascriptInterface(NativeBridge(), "MavisAndroid")
             webViewClient = Client()
             webChromeClient = Chrome()
         }
     }
+
+    private fun accountTransportScript(base: String): String =
+        "window.MavisNativeApiBase=${JSONObject.quote(base)};" + activity.assets.open("native-account-transport.js").bufferedReader().use { it.readText() }
 
     private fun installServiceWorkerInterceptor() {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE) ||
@@ -198,10 +201,21 @@ class WebHost(private val activity: ComponentActivity) {
         pushOwnerCode()
     }
 
-    private fun pushOwnerCode() {
-        val code = ownerCode?.takeIf { it.isNotBlank() } ?: return
+    @Volatile private var accountToken: String? = null
+
+    fun setAccountToken(token: String?) {
+        accountToken = token
         activity.runOnUiThread {
-            if (isAppOrigin(webView.url)) {
+            if (loaded && isAppOrigin(webView.url)) {
+                webView.evaluateJavascript("window.MavisNativeAccount?.setToken(${JSONObject.quote(token.orEmpty())});", null)
+            }
+        }
+    }
+
+    private fun pushOwnerCode() {
+        val code = ownerCode.orEmpty()
+        activity.runOnUiThread {
+            if (loaded && isAppOrigin(webView.url)) {
                 webView.evaluateJavascript("window.MavisApp&&window.MavisApp.setAccessCode(${JSONObject.quote(code)});", null)
             }
         }
@@ -304,12 +318,15 @@ class WebHost(private val activity: ComponentActivity) {
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             // Fallback for old WebView builds without document-start scripts (best effort, may run after page scripts).
-            if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) view.evaluateJavascript(nativeMarkerScript(), null)
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) view.evaluateJavascript(nativeMarkerScript() + accountTransportScript(BuildConfig.API_BASE), null)
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
             // WebView delivers onPageFinished only for the main frame.
-            if (isAppOrigin(url) && isAppOrigin(view.url)) pushOwnerCode()
+            if (isAppOrigin(url) && isAppOrigin(view.url)) {
+                setAccountToken(accountToken)
+                pushOwnerCode()
+            }
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = updateBackState()

@@ -85,7 +85,7 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(PodcastDataSourceFactory(this, (application as MavisApp).container.podcastSettings))
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(PodcastDataSourceFactory(this, (application as MavisApp).container.podcastApi()))
                     // archive.org's CDN sometimes answers 500/503 for a moment; retry patiently instead of failing the book.
                     .setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(8)),
             )

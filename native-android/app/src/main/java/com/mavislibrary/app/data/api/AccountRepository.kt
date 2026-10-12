@@ -1,0 +1,45 @@
+package com.mavislibrary.app.data.api
+
+import com.mavislibrary.app.data.secure.Secret
+import com.mavislibrary.app.data.secure.SecureStore
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+class AccountRepository(private val api: AccountsApi, private val secrets: SecureStore, private val adult: suspend () -> Boolean) {
+    private val mutation = Mutex()
+    val signedIn = secrets.has(Secret.ACCOUNT_TOKEN)
+    private suspend fun requireAdult() { check(adult()) { "Leave Kids mode to manage accounts." } }
+    suspend fun authenticate(action: String, email: String, password: String, code: String = ""): String? = mutation.withLock {
+        requireAdult()
+        val session = api.authenticate(action, email, password, code)
+        requireAdult()
+        check(session.token.isNotBlank() && session.user.id.isNotBlank() && secrets.writeAll(mapOf(Secret.ACCOUNT_TOKEN to session.token, Secret.ACCOUNT_USER_ID to session.user.id))) { "Android refused to store the session securely. Please try again." }
+        session.recoveryCode
+    }
+    suspend fun me(): AccountUser = mutation.withLock {
+        requireAdult()
+        val session = api.me()
+        requireAdult()
+        val values = buildMap { put(Secret.ACCOUNT_USER_ID, session.user.id); session.token?.let { put(Secret.ACCOUNT_TOKEN, it) } }
+        check(secrets.writeAll(values)) { "Could not refresh the secure session." }
+        session.user
+    }
+    suspend fun signOut() = mutation.withLock { requireAdult(); secrets.clearAll(Secret.ACCOUNT_TOKEN, Secret.ACCOUNT_USER_ID) }
+    suspend fun status(): SubscriptionStatus { requireAdult(); return api.status() }
+    suspend fun requestAccess(message: String) { requireAdult(); api.requestAccess(message) }
+    suspend fun subscribers(): List<Subscriber> {
+        requireAdult()
+        val result = mutableListOf<Subscriber>()
+        val cursors = mutableSetOf<String>()
+        var cursor: String? = null
+        do {
+            requireAdult()
+            val page = api.adminList(cursor)
+            result += page.items.filter { it.state in setOf("pending", "active") }
+            cursor = page.cursor
+            check(cursor == null || cursors.add(cursor)) { "The approval list could not be completed. Refresh to retry." }
+        } while (cursor != null)
+        return result
+    }
+    suspend fun decide(action: String, userId: String) { requireAdult(); api.decide(action, userId) }
+}

@@ -22,18 +22,30 @@ class PodcastNavigationTest {
         MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
             .invoke(activity, Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text))
     }
-    @Test fun listenOpensLoungeWithBlankStudioAndOnlyFiveTabs() {
+    @Test fun listenOpensSignInGateAndOnlyFiveTabs() {
         waitFor("tab_listen"); compose.onNodeWithTag("tab_listen").performClick()
         compose.onNodeWithText("Open Podcast Lounge").performClick(); waitFor("podcast_lounge")
-        compose.onNodeWithText("Podcasts are made by your Mavis studio at home. Add its address and key in Settings.").assertExists()
+        compose.onNodeWithText("Sign in to use Podcast Lounge").assertExists()
         assertEquals(5, Tab.entries.size)
-        compose.onNodeWithText("Open Settings").performClick(); waitFor("settings")
+        compose.onNodeWithText("Sign in in Settings").performClick(); waitFor("settings")
+        compose.onNodeWithTag("account_settings").performScrollTo().assertExists()
         compose.onNodeWithTag("podcast_settings").performScrollTo().assertExists()
     }
-    @Test fun httpsShareConfirmsBeforeCreationAndKidsNeverReachLounge() {
+    @Test fun settingsHasNativeAccountRecoveryAndNoAnonymousApprovals() {
+        waitFor("tab_settings"); compose.onNodeWithTag("tab_settings").performClick(); waitFor("settings")
+        compose.onNodeWithTag("account_settings").performScrollTo()
+        compose.onNodeWithTag("account_email").assertExists()
+        compose.onNodeWithText("Create account").performScrollTo().performClick()
+        compose.onNodeWithTag("account_submit").assertIsNotEnabled()
+        compose.onNodeWithText("Forgot password").performScrollTo().performClick()
+        compose.onNodeWithTag("account_recovery").assertExists()
+        compose.onNodeWithText("New password").assertExists()
+        compose.onNodeWithTag("owner_approvals").assertDoesNotExist()
+    }
+    @Test fun httpsShareRequiresSignInAndKidsNeverReachLounge() {
         waitFor("tab_listen"); compose.waitForIdle(); share("https://example.org/article"); compose.waitForIdle()
-        waitFor("podcast_lounge"); compose.onNodeWithText("Podcast this?").assertExists()
-        compose.onNodeWithText("Review podcast").performClick()
+        waitFor("podcast_lounge"); compose.onNodeWithText("Sign in to use Podcast Lounge").assertExists()
+        compose.onNodeWithText("Make podcast").assertDoesNotExist()
         val prefs = compose.activity.kidsPrefs()
         runBlocking { prefs.start("Sam", 15, "1234") }
         try {
@@ -42,6 +54,8 @@ class PodcastNavigationTest {
             compose.onNodeWithTag("podcast_lounge").assertDoesNotExist()
             compose.onNodeWithText("Podcast this?").assertDoesNotExist()
             compose.onNodeWithTag("tab_listen").assertDoesNotExist()
+            compose.onNodeWithTag("account_settings").assertDoesNotExist()
+            compose.onNodeWithTag("owner_approvals").assertDoesNotExist()
         } finally { runBlocking { prefs.leave("1234") } }
     }
 }

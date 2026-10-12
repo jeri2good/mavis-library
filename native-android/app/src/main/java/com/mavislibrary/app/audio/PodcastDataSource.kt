@@ -67,15 +67,14 @@ class PodcastDataSource(private val api: PodcastApi) : BaseDataSource(true) {
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
-class PodcastDataSourceFactory(context: Context, private val settings: PodcastSettings) : DataSource.Factory {
+class PodcastDataSourceFactory(context: Context, private val api: PodcastApi) : DataSource.Factory {
     private val fallback = DefaultDataSource.Factory(context)
     override fun createDataSource(): DataSource = object : DataSource {
         private var delegate: DataSource? = null
         private val listeners = mutableListOf<androidx.media3.datasource.TransferListener>()
         override fun addTransferListener(listener: androidx.media3.datasource.TransferListener) { listeners += listener; delegate?.addTransferListener(listener) }
         override fun open(dataSpec: DataSpec): Long {
-            val base = runBlocking { settings.address() }
-            delegate = if (StudioAddress.audioAllowed(base, dataSpec.uri.toString())) PodcastDataSource(PodcastApi(base) { settings.tokenFor(base) }) else fallback.createDataSource()
+            delegate = if (api.isAudioUrl(dataSpec.uri.toString())) PodcastDataSource(api) else fallback.createDataSource()
             listeners.forEach { delegate!!.addTransferListener(it) }
             return delegate!!.open(dataSpec)
         }

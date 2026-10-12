@@ -75,6 +75,8 @@ const val PRIVACY_URL = "https://mavis-library.netlify.app/privacy"
 fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}, onEnableReminder: () -> Unit = {}, onOpenStats: () -> Unit = {}, onAppLockChange: (Boolean) -> Unit = {}, voice: com.mavislibrary.app.voice.VoiceUi? = null) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
+    if (kids?.enabled != false) return
     val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = LookChoice.Automatic)
     val matchRoomLight by container.settings.matchRoomLight.collectAsStateWithLifecycle(initialValue = false)
     val appLockEnabled by container.settings.appLockEnabled.collectAsStateWithLifecycle(initialValue = false)
@@ -130,6 +132,7 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
             )
         }
 
+        AccountSettingsSection(container, hasCode)
         com.mavislibrary.app.ui.lounge.PodcastSettingsSection(container)
 
         Section("Listening", Icons.Outlined.Headphones) {

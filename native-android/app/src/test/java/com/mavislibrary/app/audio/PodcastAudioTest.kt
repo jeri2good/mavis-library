@@ -28,36 +28,38 @@ class PodcastAudioTest {
         assertNotEquals(first.resumeKey, second.resumeKey)
         assertTrue(first.resumeKey.startsWith("podcast:"))
     }
-    @Test fun datasourceSendsOnlyStudioKeyAndRangeThenReadsPartialAudio() {
+    @Test fun datasourceResolvesSignedAudioWithoutLeakingAccountHeaders() {
         val seen = mutableListOf<Request>()
         val api = PodcastApi("https://studio.example.org", execute = { request ->
-            seen += request; fakeResponse(request, "456789", 206, "audio/mpeg", Headers.headersOf("Content-Range", "bytes 4-9/10"))
+            seen += request; fakeSignedAudio(request) ?: fakeResponse(request, "456789", 206, "audio/mpeg", Headers.headersOf("Content-Range", "bytes 4-9/10"))
         }, token = { "fixture-key" })
         val source = PodcastDataSource(api)
         assertEquals(6L, source.open(DataSpec.Builder().setUri(Uri.parse(api.audioUrl("job1"))).setPosition(4).build()))
         val bytes = ByteArray(6); assertEquals(6, source.read(bytes, 0, 6)); assertEquals("456789", bytes.decodeToString())
         assertEquals(-1, source.read(bytes, 0, 6)); source.close()
-        assertEquals("bytes=4-", seen.single().header("Range")); assertEquals("Bearer fixture-key", seen.single().header("Authorization"))
-        assertNull(seen.single().header("x-mavis-access"))
+        assertEquals("bytes=4-", seen.last().header("Range")); assertNull(seen.last().header("Authorization"))
+        assertEquals("Bearer fixture-key", seen.first().header("Authorization"))
+        assertNull(seen.last().header("x-mavis-access"))
         assertTrue(runCatching { source.open(DataSpec(Uri.parse("https://foreign.example.org/v1/podcasts/job1/audio"))) }.isFailure)
-        assertEquals(1, seen.size)
+        assertEquals(2, seen.size)
     }
     @Test fun datasourceDoesNotFollowCrossHostRedirect() {
         val seen = mutableListOf<Request>()
-        val api = PodcastApi("https://studio.example.org", execute = { request -> seen += request; fakeResponse(request, "", 302, headers = Headers.headersOf("Location", "https://foreign.example.org/v1/podcasts/job1/audio")) }, token = { "fixture-key" })
+        val api = PodcastApi("https://studio.example.org", execute = { request -> seen += request; fakeSignedAudio(request) ?: fakeResponse(request, "", 302, headers = Headers.headersOf("Location", "https://foreign.example.org/v1/podcasts/job1/audio")) }, token = { "fixture-key" })
         assertTrue(runCatching { PodcastDataSource(api).open(DataSpec(Uri.parse(api.audioUrl("job1")))) }.isFailure)
-        assertEquals(1, seen.size); assertEquals("studio.example.org", seen.single().url.host)
+        assertEquals(2, seen.size); assertEquals("audio.example.org", seen.last().url.host)
+        assertNull(seen.last().header("Authorization"))
     }
     @Test fun ignoredRangeIsSkippedAndInvalidRangeIsRejected() {
-        val api = PodcastApi("https://studio.example.org", execute = { fakeResponse(it, "0123456789", type = "audio/mpeg") }, token = { "fixture-key" })
+        val api = PodcastApi("https://studio.example.org", execute = { fakeSignedAudio(it) ?: fakeResponse(it, "0123456789", type = "audio/mpeg") }, token = { "fixture-key" })
         val source = PodcastDataSource(api)
         assertEquals(6L, source.open(DataSpec.Builder().setUri(api.audioUrl("job1")).setPosition(4).build()))
         val bytes = ByteArray(6); source.read(bytes, 0, 6); assertEquals("456789", bytes.decodeToString()); source.close()
-        val invalid = PodcastApi("https://studio.example.org", execute = { fakeResponse(it, "012345", 206, "audio/mpeg", Headers.headersOf("Content-Range", "bytes 0-5/10")) }, token = { "fixture" })
+        val invalid = PodcastApi("https://studio.example.org", execute = { fakeSignedAudio(it) ?: fakeResponse(it, "012345", 206, "audio/mpeg", Headers.headersOf("Content-Range", "bytes 0-5/10")) }, token = { "fixture" })
         assertTrue(runCatching { PodcastDataSource(invalid).open(DataSpec.Builder().setUri(invalid.audioUrl("job1")).setPosition(4).build()) }.isFailure)
     }
     @Test fun downloadedCopyIsPrivateCompletedAndSeparatedByStudio() = runTest {
-        val api = PodcastApi("https://studio.example.org", execute = { fakeResponse(it, "fake-mp3-bytes", type = "audio/mpeg") }, token = { "fixture-key" })
+        val api = PodcastApi("https://studio.example.org", execute = { fakeSignedAudio(it) ?: fakeResponse(it, "fake-mp3-bytes", type = "audio/mpeg") }, token = { "fixture-key" })
         val store = AudioFileStore(tmp.root, OkHttpClient())
         val file = store.downloadPodcast(api, "job1")
         assertTrue(file.canonicalPath.startsWith(tmp.root.canonicalPath + "/audio/podcasts/"))
@@ -67,7 +69,7 @@ class PodcastAudioTest {
     }
     @Test fun badDownloadNeverBecomesPlayableAndCleanupIsLocalFinishedOnly() = runTest {
         val store = AudioFileStore(tmp.root, OkHttpClient())
-        val bad = PodcastApi("https://studio.example.org", execute = { fakeResponse(it, "<html>not audio</html>", type = "text/html") }, token = { "fixture-key" })
+        val bad = PodcastApi("https://studio.example.org", execute = { fakeSignedAudio(it) ?: fakeResponse(it, "<html>not audio</html>", type = "text/html") }, token = { "fixture-key" })
         assertTrue(runCatching { store.downloadPodcast(bad, "job1") }.isFailure)
         assertNull(store.podcastLocal(bad.address, "job1"))
         val cache = MemoryPodcastLibrary()

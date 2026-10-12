@@ -235,3 +235,31 @@ console errors: []
   - the application ID `com.mavislibrary.app` still needs the owner's confirmation.
 - `docs/HANDOFF.md`, `README.md` and `docs/STATUS.md` weren't updated. That's a PRD deliverable for the full project, not part of this brief.
 - Group posts aren't deleted along with an account. That is existing server behaviour, which I documented rather than changed.
+
+## Native share intake + adult reading stats (branch `codex/share-stats`)
+
+Implementation commits: `89bb958`, `b4d6b9b`, `3712a71`; completion commit: `6fb1ced`. No push or deployment.
+
+### Files in this feature
+- Share intake/card: `native-android/app/src/main/java/com/mavislibrary/app/data/share/{BibleReference,EpubImport,ShareVerse}.kt`, `MainActivity.kt`, `ui/MavisRoot.kt`, `app/src/main/AndroidManifest.xml`, `app/src/main/res/xml/share_paths.xml`.
+- Adult stats: `native-android/app/src/main/java/com/mavislibrary/app/data/stats/{StatsRepository,StatsAudioSource}.kt`, `ui/stats/{AdultReadingTracker,StatsScreen}.kt`, `ui/settings/SettingsScreen.kt`, `ui/MavisRoot.kt`.
+- JVM tests: `native-android/app/src/test/java/com/mavislibrary/app/data/share/{ShareCoreTest,ShareAndroidTest}.kt`, `data/stats/{StatsTest,StatsPersistenceTest}.kt`, `ui/stats/ReaderIdentityTest.kt`, `ui/NavigationShellTest.kt`; progress: `PROGRESS.md`; this receipt: `RECEIPT.md`.
+
+### What is implemented
+- `ACTION_SEND` text/EPUB and content-URI `ACTION_VIEW` EPUB enter the existing singleTop activity. Bible references use existing `#/bible/...` routes; other text shows the supported-share hint. Kids mode is checked from persisted Kids preferences before acting. A stale activity-side Kids flag no longer drops an adult share. Share navigation runs on Android's main dispatcher; the prior swallowed main-thread lifecycle exception was reproduced from JUnit output and fixed.
+- EPUB import accepts only content URIs with declared EPUB MIME and ZIP magic plus the EPUB mimetype entry. Input copying is capped at 60 MiB even if provider metadata lies; ZIP entry sizes/count are bounded without extraction. Successful files and a title index stay in app-private storage; failures clean up the partial file. The native Shelf tab lists imported titles and confirms import with a snackbar.
+- `renderVerseCard` draws a 1080×1080 bitmap with current Look colours, wrapped verse text, reference and Mavis Library footer. `ShareVerse` writes a cache-only PNG and uses a non-exported FileProvider with URI read grants. It remains an internal API: the native Shelf has books, not a selected verse, so **there is no verse-card button**.
+- Settings opens Reading stats. The adult-only stats repository records local-date reading/listening durations and touched-book keys separately from Kids data; the screen shows today, streaks, a labelled seven-day chart, Monday-to-today recap and configurable weekly-minute goal.
+
+### Verification actually run
+- JDK 21 (`~/.local/jdks/jdk-21.0.12.1+1`), `ANDROID_HOME=~/Android/Sdk`; background command `./gradlew testDebugUnitTest assembleDebug --no-daemon -q` in `native-android/` exited **0 twice** after the final code change, with a targeted `NavigationShellTest` run between them (also exit 0). No emulator was started.
+- Counts read from the final `native-android/app/build/test-results/testDebugUnitTest/TEST-*.xml`: **30 suites, 133 tests, 0 failures, 0 errors, 0 skipped**. The result includes full-suite share navigation, Kids-mode isolation, import/MIME/magic/size limits, provider path confinement, verse rendering, stats persistence and streak/goal math.
+- `native-android/app/build/outputs/apk/debug/app-debug.apk` exists (38 MB as reported by `ls -lh`). `git diff --check` passed before committing the implementation.
+- **New permissions: none.** The manifest adds SEND/VIEW filters to the existing exported MainActivity and a non-exported FileProvider restricted to `cache/share/` with per-URI read grants.
+
+### Not verified / known limits
+- No physical-device or emulator check of Android share sheets, MIME/file-provider compatibility, EPUB display/reading, actual Bible WebView passage navigation, long-lived media playback tracking, verse-image chooser delivery, screenshots or accessibility. Robolectric uses a placeholder instead of Chromium.
+- Imported EPUBs are **listed and stored**, but cannot yet be opened in the hosted reader; bridging app-private imports into that reader was not implemented within this brief's file allowlist.
+- The weekly goal works and persists, but is stored in the **adult stats DataStore**, not `SettingsStore` as the brief specifies. Changing `SettingsStore.kt`/`MavisApp.kt` would exceed the explicit edit allowlist; this is a spec deviation, not completed work.
+- No Shelf verse-card action is wired; call the internal `ShareVerse` API from a future selected-verse UI. No on-device verification of whether that placement is natural.
+- The two pre-staged input files `BRIEF.md` and `BRIEF-finish.md` were left staged, not included in the implementation commit.

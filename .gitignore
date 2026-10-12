@@ -1,5 +1,8 @@
 .venv/
 __pycache__/
 *.pyc
-data/jobs*
-data/*.mp3.tmp
+data/*
+!data/.gitkeep
+.pytest_cache/
+.env
+*.local.json

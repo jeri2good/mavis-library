@@ -235,3 +235,39 @@ console errors: []
   - the application ID `com.mavislibrary.app` still needs the owner's confirmation.
 - `docs/HANDOFF.md`, `README.md` and `docs/STATUS.md` weren't updated. That's a PRD deliverable for the full project, not part of this brief.
 - Group posts aren't deleted along with an account. That is existing server behaviour, which I documented rather than changed.
+
+## Camera barcode scan receipt (2026-10-12; branch `devin/cover-scan`)
+
+This section records the native Android barcode-scan addition; the older Phase A receipt above remains unchanged. No push or deployment was performed.
+
+### Files
+
+- `native-android/gradle/libs.versions.toml`, `native-android/app/build.gradle.kts`: camera and barcode dependencies.
+- `native-android/app/src/main/AndroidManifest.xml`: optional camera hardware and CAMERA permission.
+- `native-android/app/src/main/java/com/mavislibrary/app/ui/MavisRoot.kt`: guarded scan route, entry points, pending-ISBN retry on reconnection.
+- `native-android/app/src/main/java/com/mavislibrary/app/ui/search/SearchScreen.kt`, `ui/shelf/ShelfScreen.kt`: Scan buttons, hidden in Kids mode and when there is no camera feature.
+- `native-android/app/src/main/java/com/mavislibrary/app/ui/scan/BarcodeFrameDecoder.kt`, `PendingScans.kt`, `ScanLogic.kt`, `ScanScreen.kt`: on-device ZXing decoding, DataStore queue, ISBN checks/debounce/resolver, CameraX preview and UI.
+- `native-android/app/src/test/java/com/mavislibrary/app/ui/scan/BarcodeFrameDecoderTest.kt`, `OpenLibraryScanResolverTest.kt`, `ScanLogicTest.kt`, `ScanManifestTest.kt`: 10 JVM tests across four suites.
+- This root `RECEIPT.md`: final verification and limitations.
+
+### Behavior and dependencies
+
+- First-use camera rationale precedes the runtime permission prompt; denied and permanently denied paths offer retry or app settings respectively. Scanner has manual ISBN entry, flash-conditional torch, viewfinder, lookup states and haptic feedback. Camera binding and analysis executor are released on composition disposal. Kids mode uses `adultRoutesAllowed` at the entry points and route; a JVM test checks the gate.
+- A valid ISBN-10 normalizes to ISBN-13; valid 978/979 EAN-13s are accepted. The only search request is the existing `/api/openlibrary?q=isbn:<normalized digits>&page=1`; no image/frame is uploaded. Open Library's existing `q` search is reused; the Netlify function was not changed. Lookup may show a discovered listing, not a freely readable book.
+- Offline ISBNs are stored only when the user chooses Save ISBN for later; while the adult app is open, going online retries pending entries, saves found books to the shelf, reports missing books, and leaves transient failures pending. This is not a background WorkManager job.
+- New direct dependencies: `androidx.camera:camera-core:1.4.2`, `androidx.camera:camera-camera2:1.4.2`, `androidx.camera:camera-lifecycle:1.4.2`, `androidx.camera:camera-view:1.4.2`, `com.google.zxing:core:3.5.3`. The bundled on-device ML Kit candidate was rejected: the resume brief reports a +23.2 MiB measurement from the previous attempt, which this run did not remeasure. ZXing decoding itself is on-device and needs neither Google Play Services nor network access.
+- New permission: `android.permission.CAMERA` (requested from the scan screen only after the rationale). New feature declaration: `android.hardware.camera` with `required="false"`. The built merged debug manifest has this optional feature and no other new permission; existing Internet, network state, foreground media service, notifications, Bluetooth, vibrate, microphone, wake/boot and dynamic-receiver permissions remain.
+
+### Verified locally
+
+- Ran `./gradlew testDebugUnitTest assembleDebug --no-daemon -q` in the background with JDK 21 and Android SDK configured, logging to `native-android/.gradle/scan-build.log`; final command exited 0. Initial run failed two decoder tests because ZXing's YUV source cannot rotate; rotating luminance bytes fixed both, and two subsequent full runs passed.
+- Read `native-android/app/build/test-results/testDebugUnitTest/TEST-*.xml`: **37 suites, 152 tests, 0 failures, 0 errors, 0 skipped**. The four scan suites contain 1 manifest + 2 decoder + 5 logic + 2 resolver tests = **10 scan tests**. These verify synthetic EAN-13 rotation, ISBN checks, debounce/repeats, fake resolver states, endpoint parameters and Kids/no-camera route gating; they do not exercise a physical camera.
+- Final `native-android/app/build/outputs/apk/debug/app-debug.apk`: **42,113,566 bytes**. Supplied baseline: **39,345,477 bytes**. Difference: **+2,768,089 bytes (+2.64 MiB)**, below the 8 MiB threshold. Package/version in built metadata: `com.mavislibrary.app`, `0.6.0-m2`, code 2.
+- `git diff --check` passed for implementation before committing. Implementation commits: `22e0d1d`, `11702a7`; this receipt is the final separate commit.
+
+### Not verified / deferred
+
+- No emulator or physical Android device was run: real-camera focus, barcode decoding, orientation, overlay/torch appearance, haptic feel, hardware absence, permission dialogs and permanently denied behavior remain unverified on-device.
+- No live Open Library/Netlify lookup, offline-to-online retry or shelf save was tested end-to-end from the APK. DataStore pending persistence and reconnect behavior were not independently exercised in a JVM test; no background retry after a closed app is provided.
+- Only ISBN barcode scanning is implemented. Recognizing a title from a cover image (OCR/visual cover search) is deferred; image data is never sent for scanning.
+- Lint, accessibility, APK installation and release signing were not run in this session. The old Phase A limitations above describe a separate historical scope.

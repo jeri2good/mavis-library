@@ -111,8 +111,9 @@ export function signToken(user) {
 }
 
 export function readToken(token) {
-  const [v, payload, sig] = String(token || '').split('.');
-  if (v !== 'v1' || !payload || !sig) return null;
+  const parts = String(token || '').split('.');
+  const [v, payload, sig] = parts;
+  if (parts.length !== 3 || v !== 'v1' || !payload || !sig) return null;
   const want = createHmac('sha256', secret()).update(payload).digest();
   const got = Buffer.from(sig, 'base64url');
   if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
@@ -165,6 +166,8 @@ export async function updateUser(id, change) {
 }
 
 export async function deleteUser(user) {
+  const { removeSubscription } = await import('./subs.mjs');
+  await removeSubscription(user.id);
   const users = kv('mavis-users');
   const data = kv('mavis-data');
   const { blobs } = await data.list({ prefix: `${user.id}/` });

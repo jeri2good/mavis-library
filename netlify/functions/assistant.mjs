@@ -10,7 +10,8 @@
 // Requires the owner access code. Only the passage the reader is on (and any
 // selected text) is sent, and only when they ask a question.
 
-import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { json, fail, onlyPost, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { requireAccess, chargeAccess } from '../lib/access.mjs';
 import { withCors } from '../lib/cors.mjs';
 import { KIDS_RULES } from '../lib/llm.mjs';
 
@@ -131,8 +132,10 @@ async function callOpenAI(cfg, system, messages) {
 }
 
 const handler = async (req, context) => {
-  const bad = onlyPost(req) || await requireOwner(req);
+  const bad = onlyPost(req);
   if (bad) return bad;
+  const access = await requireAccess(req, { feature: 'assistant' });
+  if (access instanceof Response) return access;
   const cfg = llmConfig();
   if (!cfg) return fail(503, 'not_configured', 'The AI assistant is not set up. Add LLM_API_KEY in Netlify.');
   if (softLimit(`ai:${clientKey(req, context)}`, { limit: 20 })) return fail(429, 'rate_limited', 'Too many questions in a short time. Wait a minute.');
@@ -141,6 +144,8 @@ const handler = async (req, context) => {
   const messages = cleanMessages(body.messages);
   if (!messages.length) return fail(400, 'bad_request', 'Ask a question.');
   const ctx = body.context && typeof body.context === 'object' ? body.context : {};
+  const limited = await chargeAccess(access);
+  if (limited) return limited;
   try {
     const system = systemPrompt(ctx, { kids: req.headers.get('x-mavis-kids') === '1' });
     const out = cfg.provider === 'openai' ? await callOpenAI(cfg, system, messages) : await callAnthropic(cfg, system, messages);

@@ -11,7 +11,8 @@
 //   GET  ?picture=<id>                                                  → { status, image?, revised?, error? }
 // Only the text the reader has reached is sent, so answers can't spoil what comes later.
 
-import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, clean } from '../lib/shared.mjs';
+import { json, fail, onlyPost, readJson, softLimit, clientKey, clean } from '../lib/shared.mjs';
+import { requireAccess, chargeAccess } from '../lib/access.mjs';
 import { withCors } from '../lib/cors.mjs';
 import { complete, startImage, pollImage, KIDS_RULES } from '../lib/llm.mjs';
 import { vocabulary, dropUnseen, supportedName } from '../lib/textcheck.mjs';
@@ -192,8 +193,8 @@ Make exactly ${want} shots. "from" is the number of the sentence where the shot 
 
 const handler = async (req, context) => {
   if (req.method === 'GET') {
-    const bad = await requireOwner(req);
-    if (bad) return bad;
+    const access = await requireAccess(req, { feature: 'study' });
+    if (access instanceof Response) return access;
     const sp = new URL(req.url).searchParams;
     if (sp.has('motion')) {
       const job = sp.get('motion') || '';
@@ -204,13 +205,17 @@ const handler = async (req, context) => {
     if (!/^resp_[A-Za-z0-9]{10,100}$/.test(id)) return fail(400, 'bad_request', 'Unknown picture.');
     try { return json(await pollImage(id)); } catch (err) { return fail(err.status || 502, 'picture_failed', err.message); }
   }
-  const bad = onlyPost(req) || await requireOwner(req);
+  const bad = onlyPost(req);
   if (bad) return bad;
+  const access = await requireAccess(req, { feature: 'study' });
+  if (access instanceof Response) return access;
   if (softLimit(`study:${clientKey(req, context)}`, { limit: 40 })) return fail(429, 'rate_limited', 'Too many requests in a short time. Wait a minute.');
   let body;
   try { body = await readJson(req, 400_000); } catch (err) { return fail(err.status || 400, 'bad_request', err.message); }
   const fn = body && Object.hasOwn(tasks, body.task) ? tasks[body.task] : null;
   if (!fn) return fail(400, 'bad_request', 'Unknown task.');
+  const limited = await chargeAccess(access);
+  if (limited) return limited;
   try {
     return json(await fn(body, { kids: req.headers.get('x-mavis-kids') === '1' }));
   } catch (err) {

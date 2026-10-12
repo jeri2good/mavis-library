@@ -84,9 +84,19 @@ object FeedParser {
         } catch (e: IOException) { throw e } catch (e: Exception) { throw IOException("This feed contains invalid or incomplete XML.", e) }
     }
 
-    private fun clean(value: String) = value.replace(Regex("<[^>]*>"), " ")
-        .replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-        .replace("&quot;", "\"").replace("&#39;", "'").replace(Regex("\\s+"), " ").trim()
+    private fun clean(value: String) = decodeEntities(value.replace(Regex("<[^>]*>"), " "))
+        .replace(Regex("\\s+"), " ").trim()
+
+    /** Numeric (&#128202; / &#x1F4CA;) and common named entities; &amp; last so "&amp;lt;" stays literal text. */
+    internal fun decodeEntities(value: String): String {
+        val numeric = Regex("&#(x[0-9a-fA-F]{1,6}|[0-9]{1,7});").replace(value) { m ->
+            val raw = m.groupValues[1]
+            val cp = runCatching { if (raw[0] == 'x' || raw[0] == 'X') raw.substring(1).toInt(16) else raw.toInt() }.getOrNull()
+            if (cp == null || cp !in 0x20..0x10FFFF || cp in 0xD800..0xDFFF) "" else String(Character.toChars(cp))
+        }
+        return numeric.replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">")
+            .replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+    }
     private fun parseDate(value: String): Long? = runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
         ?: runCatching { ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() }.getOrNull()
         ?: runCatching { ZonedDateTime.parse(value, DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss Z", Locale.US)).toInstant().toEpochMilli() }.getOrNull()

@@ -41,4 +41,13 @@ class FeedParserTest {
         assertEquals(101, feed.itemCount); assertEquals(40, feed.stories.size)
         assertTrue(feed.stories.zipWithNext().all { (a, b) -> a.published!! >= b.published!! })
     }
+
+    @Test fun numericEntitiesDecodeToEmojiAndAmpersandIsLast() {
+        assertEquals("Claude Builds Live Dashboards \uD83D\uDCCA, GPT-6.1 Sol Goes Ultrafast \u26A1",
+            FeedParser.decodeEntities("Claude Builds Live Dashboards &#128202;, GPT-6.1 Sol Goes Ultrafast &#x26A1;"))
+        assertEquals("Q&A &lt;b&gt;", FeedParser.decodeEntities("Q&amp;A &amp;lt;b&amp;gt;"))
+        assertEquals("ab", FeedParser.decodeEntities("a&#0;b"))
+        assertEquals("ab", FeedParser.decodeEntities("a&#xD800;b"))
+        assertEquals("ab", FeedParser.decodeEntities("a&#1114112;b"))
+    }
 }

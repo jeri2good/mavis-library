@@ -271,3 +271,10 @@ This section records the native Android barcode-scan addition; the older Phase A
 - No live Open Library/Netlify lookup, offline-to-online retry or shelf save was tested end-to-end from the APK. DataStore pending persistence and reconnect behavior were not independently exercised in a JVM test; no background retry after a closed app is provided.
 - Only ISBN barcode scanning is implemented. Recognizing a title from a cover image (OCR/visual cover search) is deferred; image data is never sent for scanning.
 - Lint, accessibility, APK installation and release signing were not run in this session. The old Phase A limitations above describe a separate historical scope.
+
+## Hermes verification - My tech sites (Codex gpt-6-astra wrote it; hit its usage limit before building/receipt, Hermes built, tested, fixed)
+- Own build: 265 tests, 0 fail/0 err (264 from Codex + 1 Hermes regression test).
+- Emulator, live internet: "+ Add site" in Discover -> dialog ("Fetched by your phone directly from the site") -> "Try World of AI" -> Find feed -> "Found: World of AI / 118 posts, newest Oct 9, 2026 / https://rss.beehiiv.com/ai_podcasts/5F2wtaPWzH.xml" (the Cloudflare-blocked, no-<link rel=alternate> case) -> Add -> "World of AI" + "Mine" chips + "Manage sites"; stories list with descriptions.
+- Refused with "Use an HTTPS address with a public site name, without credentials": 192.168.1.1, http://example.com, localhost, 10.0.0.5/feed, https://127.0.0.1/, https://169.254.169.254/latest.
+- BUG found on device: numeric entities in titles showed literally ("&#128202;"). Fix: FeedParser.decodeEntities (numeric dec/hex, surrogate/out-of-range rejected, &amp; last) + test; re-tested, emoji render.
+- NOT verified: Manage sites rename/disable/remove on device, "Mine" merge with 2+ sources, offline cache, DNS-rebinding refusal against a real hostile resolver (UrlPolicy.requirePublic runs in the OkHttp Dns hook, JVM-tested only), Kids-mode hiding on device (JVM gate test only), real phone.

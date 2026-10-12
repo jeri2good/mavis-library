@@ -1,6 +1,8 @@
 # Podcast Lounge project rules
 
-- Scope: this backend only; do not modify Android or other Mavis services.
+- Scope: this Modal backend worktree on branch `modal` only; do not modify Android, Netlify, the iMac service, or other Mavis services.
+- Modal deployment targets only the new `mavis-podcast-studio` app and `podcast-studio` Secret. Never modify pre-existing Modal resources.
+- Baseline verified on 2026-10-12: 213 pytest tests pass. Cloud-specific tests must preserve `docs/STUDIO-CONTRACT.md`; GPU/provider generation must run on Modal, never locally.
 - Use `.venv/bin/python -m pytest -q` and `.venv/bin/pip check` for verification.
 - Validate deployment with `systemd-analyze verify deploy/podcast-lounge.service`.
 - Ad-hoc testing binds 127.0.0.1:8141, never the operator's production port 8140.

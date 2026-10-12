@@ -11,3 +11,4 @@ dist-android/
 .DS_Store
 __pycache__/
 *.pyc
+BRIEF*.md

@@ -85,13 +85,13 @@ import com.mavislibrary.app.ui.theme.LocalLookTokens
 private val SUGGESTIONS = listOf("Jane Austen", "Sherlock Holmes", "Psalms", "Fairy tales", "Dickens", "Poetry")
 
 @Composable
-fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}) {
+fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}, onScan: (() -> Unit)? = null) {
     val vm: SearchViewModel = viewModel(factory = viewModelFactory {
         initializer { SearchViewModel(container.searchRepository, container.shelfRepository) }
     })
     val state by vm.state.collectAsStateWithLifecycle()
     val shelf by vm.shelfKeys.collectAsStateWithLifecycle()
-    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech)
+    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech, onScan)
     state.selected?.let { book ->
         BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book) }, onDismiss = { vm.select(null) })
     }
@@ -110,6 +110,7 @@ private fun SearchContent(
     onSelect: (Book) -> Unit,
     onRetryDiscover: () -> Unit = {},
     onTech: (String) -> Unit = {},
+    onScan: (() -> Unit)? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val tokens = LocalLookTokens.current
@@ -125,7 +126,10 @@ private fun SearchContent(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Find a book", style = MaterialTheme.typography.headlineMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Find a book", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                    if (onScan != null) OutlinedButton(onClick = onScan, modifier = Modifier.testTag("search_scan")) { Text("Scan") }
+                }
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = onQuery,

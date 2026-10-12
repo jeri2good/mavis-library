@@ -24,7 +24,7 @@ import com.mavislibrary.app.ui.common.BookTile
 import com.mavislibrary.app.ui.theme.LocalLookTokens
 
 @Composable
-fun ShelfScreen(container: AppContainer, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit, onOpenWebShelf: () -> Unit) {
+fun ShelfScreen(container: AppContainer, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit, onOpenWebShelf: () -> Unit, onScan: (() -> Unit)? = null) {
     val vm: ShelfViewModel = viewModel(factory = viewModelFactory {
         initializer { ShelfViewModel(container.shelfRepository, container.searchRepository) }
     })
@@ -52,6 +52,7 @@ fun ShelfScreen(container: AppContainer, onOpenBook: (com.mavislibrary.app.data.
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Make room for your next great read.", style = MaterialTheme.typography.titleMedium)
+                    if (onScan != null) OutlinedButton(onClick = onScan, modifier = Modifier.testTag("shelf_scan")) { Text("Scan a book barcode") }
                     Text("Save books from Search to see them here. Explore these popular picks to get started.",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Popular picks", style = MaterialTheme.typography.headlineSmall)

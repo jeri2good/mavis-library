@@ -60,6 +60,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import com.mavislibrary.app.ui.shelf.ShelfScreen
 import com.mavislibrary.app.ui.search.SearchScreen
+import com.mavislibrary.app.ui.scan.OpenLibraryScanResolver
+import com.mavislibrary.app.ui.scan.PendingScans
+import com.mavislibrary.app.ui.scan.ScanLookup
+import com.mavislibrary.app.ui.scan.ScanScreen
+import com.mavislibrary.app.ui.scan.scanRouteAllowed
 import com.mavislibrary.app.ui.listen.ListenScreen
 import com.mavislibrary.app.ui.listen.MiniPlayer
 import com.mavislibrary.app.ui.listen.DriveModeScreen
@@ -95,6 +100,7 @@ enum class Tab(val route: String, val label: String, val icon: ImageVector, val 
 const val ROUTE_WEB_SHELF = "web_shelf"
 
 const val ROUTE_SHOWCASE = "showcase"
+const val ROUTE_SCAN = "scan"
 
 /**
  * App shell. Back order: open dialogs and sheets consume Back themselves (they are separate windows),
@@ -141,9 +147,27 @@ fun MavisRoot(
         }
     }
     val stats = remember { context.statsRepository() }
+    val pendingScans = remember { PendingScans(context.applicationContext) }
+    val scanResolver = remember(container) { OpenLibraryScanResolver(container.searchRepository) }
+    val canScan = remember(context) { context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY) }
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(online, loadedKids.enabled) {
+        if (online && adultRoutesAllowed(loadedKids.enabled)) pendingScans.isbns.collect { scans ->
+            scans.forEach { isbn ->
+                when (val found = scanResolver.resolve(isbn)) {
+                    is ScanLookup.Found -> {
+                        container.shelfRepository.add(found.book)
+                        pendingScans.remove(isbn)
+                        snackbar.showSnackbar("Found ${found.book.title} from your saved ISBN and added it to your shelf")
+                    }
+                    ScanLookup.NotFound -> { pendingScans.remove(isbn); snackbar.showSnackbar("No book found for saved ISBN $isbn") }
+                    ScanLookup.Offline, ScanLookup.Error -> Unit
+                }
+            }
+        }
+    }
     val imports = remember { EpubImports(context) }
     val importedBooks by imports.books.collectAsState(initial = emptyList())
-    val snackbar = remember { SnackbarHostState() }
     AdultReadingTracker(container, stats, webHost,
         current?.route == ROUTE_WEB_SHELF || current?.route == Tab.BIBLE.route)
     LaunchedEffect(widgetRequest, loadedKids.enabled) {
@@ -169,7 +193,7 @@ fun MavisRoot(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            Column {
+            if (current?.route != ROUTE_SCAN) Column {
                 MiniPlayer(playback, Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh))
                 NavigationBar {
                     Tab.entries.forEach { tab ->
@@ -225,7 +249,7 @@ fun MavisRoot(
                     ShelfScreen(container, onOpenBook = openBook, onOpenWebShelf = {
                         webHost?.openLater("#/shelf")
                         nav.navigate(ROUTE_WEB_SHELF) { launchSingleTop = true }
-                    })
+                    }, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
                         }
                     }
                 }
@@ -238,7 +262,16 @@ fun MavisRoot(
                     }
                 }
                 composable(Tab.SEARCH.route) {
-                    SearchScreen(container, online, onOpenBook = openBook)
+                    SearchScreen(container, online, onOpenBook = openBook, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
+                }
+                composable(ROUTE_SCAN) {
+                    if (scanRouteAllowed(loadedKids.enabled, canScan)) ScanScreen(
+                        scanResolver, pendingScans, online,
+                        onBack = { nav.popBackStack() },
+                        onOpenBook = openBook,
+                        onSaveBook = container.shelfRepository::add,
+                        onSearch = { goTab(Tab.SEARCH.route) },
+                    ) else LaunchedEffect(Unit) { nav.popBackStack() }
                 }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio) }
                 composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder, onOpenStats = { nav.navigate("stats") }) }

@@ -51,11 +51,12 @@ const handler = async (req, context) => {
       const bad = onlyPost(req);
       if (bad) return bad;
       const body = validateCreate(await readJson(req, 1700000));
-      if (!access.owner) await refreshSlots(cfg, uid);
-      const reservation = access.owner ? null : await reserveSlot(uid, false);
+      const free = access.owner || access.unlimited;
+      if (!free) await refreshSlots(cfg, uid);
+      const reservation = free ? null : await reserveSlot(uid, false);
       let quota, dispatched = false, accepted = false;
       try {
-        quota = access.owner ? null : await reservePodcastQuota(uid);
+        quota = free ? null : await reservePodcastQuota(uid);
         dispatched = true;
         const result = await studioJson(cfg, '', uid, {
           method: 'POST', body,

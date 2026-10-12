@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { json, fail, onlyPost, readJson, requireOwner, sameOrigin, softLimit, clientKey, env } from '../lib/shared.mjs';
 import { withCors } from '../lib/cors.mjs';
 import { createUser, validEmail, getUser, findByEmail, updateUser, hashSecret, newRecoveryCode, normRecovery } from '../lib/accounts.mjs';
-import { sessionAccess } from '../lib/access.mjs';
+import { sessionAccess, isOwnerEmail } from '../lib/access.mjs';
 import { subStore, getSub, transition, usage, limitRequests, unavailable } from '../lib/subs.mjs';
 
 async function body(req) {
@@ -78,6 +78,11 @@ const handler = async (req, context) => {
     if (action === 'status') {
       if (req.method !== 'GET') return fail(405, 'method_not_allowed', 'Use GET.');
       const sub = await getSub(ctx.user.id);
+      if (isOwnerEmail(ctx.user.email)) {
+        const u = await usage(ctx.user.id);
+        for (const k of Object.keys(u)) u[k].cap = 999999;
+        return json({ state: 'active', plan: 'owner', unlimited: true, signedIn: true, podcastEnabled: Boolean(env('STUDIO_URL')), since: sub?.decidedAt || null, expiresAt: null, usage: u });
+      }
       return json({ state: sub?.state || 'none', plan: sub?.plan || null, signedIn: true, podcastEnabled: Boolean(env('STUDIO_URL')), since: sub?.decidedAt || null, expiresAt: sub?.expiresAt ?? null, usage: await usage(ctx.user.id) });
     }
     const b = await body(req);

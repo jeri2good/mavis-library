@@ -1,4 +1,10 @@
-import { requireOwner } from './shared.mjs';
+import { requireOwner, env } from './shared.mjs';
+
+/** Accounts listed in OWNER_EMAILS (comma-separated) are the owner: never capped, never gated. */
+export function isOwnerEmail(email) {
+  const list = String(env('OWNER_EMAILS') || '').toLowerCase().split(',').map((s) => s.trim()).filter(Boolean);
+  return Boolean(email) && list.includes(String(email).toLowerCase());
+}
 import { readToken, getUser } from './accounts.mjs';
 import { getSub, consume, subError, unavailable } from './subs.mjs';
 
@@ -18,6 +24,7 @@ export async function requireAccess(req, { feature } = {}) {
   if (!(await requireOwner(req))) return { owner: true, feature };
   const ctx = await sessionAccess(req);
   if (ctx instanceof Response) return ctx;
+  if (isOwnerEmail(ctx.user.email)) return { ...ctx, feature, owner: false, unlimited: true };
   try {
     const sub = await getSub(ctx.user.id);
     const expired = sub?.expiresAt != null && (!Number.isFinite(sub.expiresAt) || sub.expiresAt <= Date.now());
@@ -29,6 +36,6 @@ export async function requireAccess(req, { feature } = {}) {
   }
 }
 export async function chargeAccess(ctx, feature = ctx.feature) {
-  if (ctx.owner) return null;
+  if (ctx.owner || ctx.unlimited) return null;
   try { return await consume(ctx.user.id, feature); } catch { return unavailable(); }
 }

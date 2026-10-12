@@ -133,6 +133,13 @@ fun MavisRoot(
     }
     val entry by nav.currentBackStackEntryAsState()
     val current = entry?.destination
+    val goTab: (String) -> Unit = { route ->
+        nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
     val stats = remember { context.statsRepository() }
     val imports = remember { EpubImports(context) }
     val importedBooks by imports.books.collectAsState(initial = emptyList())
@@ -142,7 +149,7 @@ fun MavisRoot(
     LaunchedEffect(widgetRequest, loadedKids.enabled) {
         if (widgetDestination != null && !loadedKids.enabled) {
             val tab = if (widgetDestination.startsWith("#/bible/")) Tab.BIBLE.route else Tab.SHELF.route
-            nav.navigate(tab) { launchSingleTop = true }
+            goTab(tab)
         }
     }
     val scope = rememberCoroutineScope()
@@ -255,7 +262,7 @@ fun MavisRoot(
                         webHost?.openLater(verse.route)
                         // show() also consumes pending routes if the Bible tab is already attached.
                         if (nav.currentDestination?.route == Tab.BIBLE.route) webHost?.show(verse.route)
-                        nav.navigate(Tab.BIBLE.route) { launchSingleTop = true }
+                        goTab(Tab.BIBLE.route)
                     }
                 }
             } else {
@@ -267,7 +274,7 @@ fun MavisRoot(
                     if (book != null) {
                         val navigated = withContext(Dispatchers.Main.immediate) {
                             if (kidsPrefs.state.first().enabled) false
-                            else { nav.navigate(Tab.SHELF.route) { launchSingleTop = true }; true }
+                            else { goTab(Tab.SHELF.route); true }
                         }
                         if (navigated) snackbar.showSnackbar("Added ${book.title} to your shelf")
                     }

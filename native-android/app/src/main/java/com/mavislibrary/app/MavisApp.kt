@@ -78,6 +78,9 @@ class AppContainer(private val app: Application) {
     val resumePositionStore: ResumePositionStore by lazy { ResumePositionStore(database.audioResume()) }
     val audiobookRepository: AudiobookRepository by lazy { AudiobookRepository(api) }
     val audioFiles: AudioFileStore by lazy { AudioFileStore(app.filesDir, okHttp) }
+    val podcastSettings by lazy { com.mavislibrary.app.data.podcast.PodcastSettings(app.settingsDataStore, secureStore) }
+    fun podcastApi(base: String) = com.mavislibrary.app.data.podcast.PodcastApi(base) { podcastSettings.tokenFor(base) }
+    fun podcastRepository(base: String) = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(base), podcastSettings, base)
 }
 
 class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Factory {

@@ -85,7 +85,7 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(PodcastDataSourceFactory(this, (application as MavisApp).container.podcastSettings))
                     // archive.org's CDN sometimes answers 500/503 for a moment; retry patiently instead of failing the book.
                     .setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(8)),
             )
@@ -107,6 +107,7 @@ class PlaybackService : MediaLibraryService() {
                     publishSleepButton()
                 }
 
+                override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) savePosition() }
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) = savePosition()
                 override fun onPlaybackStateChanged(playbackState: Int) { if (playbackState == Player.STATE_ENDED) savePosition() }
             })

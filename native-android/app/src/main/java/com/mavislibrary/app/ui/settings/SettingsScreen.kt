@@ -130,6 +130,8 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
             )
         }
 
+        com.mavislibrary.app.ui.lounge.PodcastSettingsSection(container)
+
         Section("Listening", Icons.Outlined.Headphones) {
             voice?.let { com.mavislibrary.app.voice.VoiceSettings(it) }
             Text("Default sleep timer", style = MaterialTheme.typography.titleMedium)

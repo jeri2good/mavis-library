@@ -87,7 +87,7 @@ import com.mavislibrary.app.ui.theme.LocalLookTokens
 private val SUGGESTIONS = listOf("Jane Austen", "Sherlock Holmes", "Psalms", "Fairy tales", "Dickens", "Poetry")
 
 @Composable
-fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}, onScan: (() -> Unit)? = null) {
+fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}, onScan: (() -> Unit)? = null, onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null) {
     val appContext = LocalContext.current.applicationContext
     val kidsPrefs = remember(appContext) { appContext.kidsPrefs() }
     val kids by kidsPrefs.state.collectAsStateWithLifecycle(initialValue = null)
@@ -97,9 +97,9 @@ fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavi
     })
     val state by vm.state.collectAsStateWithLifecycle()
     val shelf by vm.shelfKeys.collectAsStateWithLifecycle()
-    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech, onScan, { MyTechSites(state, vm) })
+    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech, onScan, { MyTechSites(state, vm) }, onPodcast)
     state.selected?.let { book ->
-        BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book) }, onDismiss = { vm.select(null) })
+        BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book) }, onDismiss = { vm.select(null) }, onPodcast = onPodcast?.let { callback -> { vm.select(null); callback(com.mavislibrary.app.data.podcast.PodcastDraft.book(book)) } })
     }
 }
 
@@ -118,6 +118,7 @@ private fun SearchContent(
     onTech: (String) -> Unit = {},
     onScan: (() -> Unit)? = null,
     customSites: @Composable () -> Unit = {},
+    onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val tokens = LocalLookTokens.current
@@ -165,6 +166,9 @@ private fun SearchContent(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (state.submittedQuery != null && onPodcast != null) OutlinedButton(onClick = {
+                    onPodcast(com.mavislibrary.app.data.podcast.PodcastDraft("topic", "About ${state.submittedQuery}", state.submittedQuery))
+                }) { Text("Podcast about ${state.submittedQuery}") }
                 state.savedAt?.let { at ->
                     Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = MaterialTheme.shapes.small) {
                         Text(
@@ -250,6 +254,9 @@ private fun SearchContent(
                                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             if (item.summary.isNotBlank()) Text(item.summary, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            if (onPodcast != null) TextButton(onClick = {
+                                onPodcast(com.mavislibrary.app.data.podcast.PodcastDraft("article", item.title, url = item.url))
+                            }) { Text("Podcast this") }
                         }
                     }
                 }
@@ -292,7 +299,7 @@ private fun Centered(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun BookDetailSheet(book: Book, onShelf: Boolean, onToggleShelf: () -> Unit, onOpen: () -> Unit, onDismiss: () -> Unit) {
+private fun BookDetailSheet(book: Book, onShelf: Boolean, onToggleShelf: () -> Unit, onOpen: () -> Unit, onDismiss: () -> Unit, onPodcast: (() -> Unit)? = null) {
     val context = LocalContext.current
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
@@ -320,6 +327,7 @@ private fun BookDetailSheet(book: Book, onShelf: Boolean, onToggleShelf: () -> U
                 Text("Open Library is for discovery. A listing here does not mean the book is free or available.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (onPodcast != null) OutlinedButton(onClick = onPodcast, modifier = Modifier.fillMaxWidth()) { Text("Make a podcast") }
             Button(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("open_book_button")) {
                 Icon(Icons.Outlined.OpenInBrowser, contentDescription = null)
                 Spacer(Modifier.width(8.dp))

@@ -26,7 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
-fun ImportedReader(id: String, title: String, imports: EpubImports, onBack: () -> Unit) {
+fun ImportedReader(id: String, title: String, imports: EpubImports, onBack: () -> Unit, onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null) {
     var chapters by remember(id) { mutableStateOf<List<String>?>(null) }
     var page by remember(id) { mutableStateOf(0) }
     var failed by remember(id) { mutableStateOf(false) }
@@ -45,6 +45,20 @@ fun ImportedReader(id: String, title: String, imports: EpubImports, onBack: () -
             failed -> Text("This EPUB couldn't be read here. Try another DRM-free EPUB.")
             content == null -> Text("Opening book…")
             else -> {
+                if (onPodcast != null) {
+                    var menu by remember { mutableStateOf(false) }
+                    androidx.compose.foundation.layout.Box {
+                        TextButton(onClick = { menu = true }) { Text("Make a podcast") }
+                        androidx.compose.material3.DropdownMenu(menu, { menu = false }) {
+                            androidx.compose.material3.DropdownMenuItem(text = { Text("This chapter") }, onClick = {
+                                menu = false; onPodcast(com.mavislibrary.app.data.podcast.PodcastDraft.extracted("chapter", "$title · Chapter ${page + 1}", content[page]))
+                            })
+                            androidx.compose.material3.DropdownMenuItem(text = { Text("Whole book") }, onClick = {
+                                menu = false; onPodcast(com.mavislibrary.app.data.podcast.PodcastDraft.extracted("book", title, content.joinToString("\n\n")))
+                            })
+                        }
+                    }
+                }
                 Text("Chapter ${page + 1} of ${content.size}")
                 Text(content[page], Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodyLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

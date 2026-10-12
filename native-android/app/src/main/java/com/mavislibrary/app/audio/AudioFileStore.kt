@@ -3,6 +3,9 @@ package com.mavislibrary.app.audio
 import android.net.Uri
 import com.mavislibrary.app.data.api.LibriVoxVersion
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -16,6 +19,7 @@ class AudioFileStore(
     private val client: OkHttpClient,
     private val sleeper: suspend (Long) -> Unit = { delay(it) },
 ) {
+    private val podcastDownloadLock = kotlinx.coroutines.sync.Mutex()
     private class HttpFailure(val status: Int) : IOException("HTTP $status")
     private val retryDelays = longArrayOf(1_000, 3_000, 8_000)
     private fun safe(value: String) = value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(100)
@@ -24,6 +28,36 @@ class AudioFileStore(
     fun playableUri(versionId: String, chapter: Int, streamUrl: String): Uri {
         val local = file(versionId, chapter)
         return if (local.isFile && local.length() > 0) Uri.fromFile(local) else Uri.parse(streamUrl.replaceFirst("://www.archive.org/", "://archive.org/"))
+    }
+
+    private fun podcastFile(studio: String, id: String): File {
+        com.mavislibrary.app.data.podcast.StudioAddress.safeId(id)
+        val origin = java.security.MessageDigest.getInstance("SHA-256").digest(studio.toByteArray()).joinToString("") { "%02x".format(it) }
+        return root.resolve("audio/podcasts/$origin/$id.mp3")
+    }
+
+    fun podcastLocal(studio: String, id: String): File? = podcastFile(studio, id).takeIf { it.isFile && it.length() > 0 }
+
+    suspend fun downloadPodcast(api: com.mavislibrary.app.data.podcast.PodcastApi, id: String): File = withContext(Dispatchers.IO) { podcastDownloadLock.withLock {
+        val target = podcastFile(api.address, id)
+        podcastLocal(api.address, id)?.let { return@withLock it }
+        target.parentFile?.mkdirs()
+        val part = File(target.parentFile, "${target.name}.part")
+        try {
+            part.outputStream().use { api.copyAudio(id, it) }
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            if (!part.renameTo(target)) throw IOException("Could not finish the podcast download.")
+            target
+        } finally { part.delete() }
+    } }
+
+    fun deletePodcastCopy(studio: String, id: String) { podcastFile(studio, id).delete() }
+
+    suspend fun cleanupPodcasts(store: com.mavislibrary.app.data.podcast.PodcastLibrary, days: Int, now: java.time.Instant = java.time.Instant.now()): Int = withContext(Dispatchers.IO) {
+        if (days <= 0) return@withContext 0
+        val expired = store.library.first().filter { com.mavislibrary.app.data.podcast.podcastExpired(it.job, days, now) }
+        expired.forEach { deletePodcastCopy(it.studio, it.job.id); store.remove(it.job.id, it.studio) }
+        expired.size
     }
 
     fun isComplete(version: LibriVoxVersion): Boolean =

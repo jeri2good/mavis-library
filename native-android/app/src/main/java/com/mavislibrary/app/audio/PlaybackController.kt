@@ -96,6 +96,18 @@ class PlaybackController(context: Context, connect: Boolean = android.os.Build.F
         player.play()
     }
 
+    fun playPodcast(saved: com.mavislibrary.app.data.podcast.SavedPodcast, uri: android.net.Uri, resume: ResumePosition?) {
+        val player = controller ?: return
+        val extras = Bundle().apply { putString(PlaybackService.EXTRA_BOOK_KEY, saved.resumeKey) }
+        val item = MediaItem.Builder().setMediaId(saved.resumeKey).setUri(uri).setMimeType("audio/mpeg")
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(saved.job.title).setArtist("Mavis Podcast Lounge")
+                .setSubtitle(saved.job.engineLabel).setArtworkData(PodcastArtwork.create(saved.job.title), MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                .setExtras(extras).setIsPlayable(true).build()).build()
+        player.setMediaItems(listOf(item), 0, resume?.positionMs ?: 0)
+        player.playbackParameters = PlaybackParameters(resume?.speed ?: 1f)
+        player.prepare(); player.play()
+    }
+
     fun resume() { controller?.let { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() } }
     fun pause() { controller?.pause() }
     fun stop() { controller?.stop() }

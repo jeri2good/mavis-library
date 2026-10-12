@@ -1,0 +1,8 @@
+{"items":[
+{"id":"job1","status":"queued","progress":0,"stage":"Queued at studio","engine":"","title":"A book","kind":"book","style":"deep-dive","createdAt":"2026-10-12T08:00:00Z","sources":[]},
+{"id":"job1","status":"sourcing","progress":0.1,"stage":"Finding sources","engine":"notebooklm","title":"A book","kind":"book","style":"deep-dive","sources":[{"title":"Gutenberg","url":"https://www.gutenberg.org/ebooks/1342"}]},
+{"id":"job1","status":"writing","progress":0.3,"stage":"Writing two-host script","engine":"local","title":"A book","kind":"book","style":"deep-dive","sources":[]},
+{"id":"job1","status":"generating","progress":0.7,"stage":"Generating voices","engine":"local","title":"A book","kind":"book","style":"deep-dive","sources":[]},
+{"id":"job1","status":"ready","progress":1,"stage":"Ready to listen","engine":"local","title":"A book","kind":"book","style":"deep-dive","durationSec":840,"createdAt":"2026-10-12T08:00:00Z","transcript":"Host A: Welcome.\nHost B: Let's discuss.","sources":[{"title":"Book text"}]},
+{"id":"job1","status":"failed","progress":0.5,"stage":"Voice generation failed","engine":"notebooklm","title":"A book","kind":"book","style":"deep-dive","error":"NotebookLM is not logged in.","sources":[]}
+]}

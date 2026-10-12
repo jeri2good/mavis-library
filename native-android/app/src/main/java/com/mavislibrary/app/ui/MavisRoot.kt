@@ -189,6 +189,15 @@ fun MavisRoot(
         }
     }
     val scope = rememberCoroutineScope()
+    var podcastDraft by remember { mutableStateOf<com.mavislibrary.app.data.podcast.PodcastDraft?>(null) }
+    var podcastRequest by remember { mutableIntStateOf(0) }
+    val openLounge: (com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit = { draft ->
+        if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) {
+            podcastDraft = draft
+            podcastRequest++
+            nav.navigate("lounge") { launchSingleTop = true }
+        }
+    }
     val openBook: (Book) -> Unit = { book ->
         if (!kidsBook(book.source.name.lowercase(), book.sourceId)) scope.launch {
             container.database.books().upsert(book.toEntity(System.currentTimeMillis()))
@@ -262,7 +271,7 @@ fun MavisRoot(
                             }
                         }
                         Box(Modifier.weight(1f)) {
-                    ShelfScreen(container, onOpenBook = openBook, onOpenWebShelf = {
+                    ShelfScreen(container, onOpenBook = openBook, onPodcast = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft.book(it)) }, onOpenWebShelf = {
                         webHost?.openLater("#/shelf")
                         nav.navigate(ROUTE_WEB_SHELF) { launchSingleTop = true }
                     }, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
@@ -273,7 +282,7 @@ fun MavisRoot(
                     val id = route.arguments?.getString("id").orEmpty()
                     val book = importedBooks.find { it.id == id }
                     if (book != null && importedRouteAllowed(id, importedBooks.map { it.id }, loadedKids.enabled))
-                        ImportedReader(id, book.title, imports, onBack = { nav.popBackStack() })
+                        ImportedReader(id, book.title, imports, onBack = { nav.popBackStack() }, onPodcast = openLounge)
                     else LaunchedEffect(id) { nav.popBackStack() }
                 }
                 composable(ROUTE_WEB_SHELF) {
@@ -285,7 +294,7 @@ fun MavisRoot(
                     }
                 }
                 composable(Tab.SEARCH.route) {
-                    SearchScreen(container, online, onOpenBook = openBook, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
+                    SearchScreen(container, online, onOpenBook = openBook, onPodcast = openLounge, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
                 }
                 composable(ROUTE_SCAN) {
                     if (scanRouteAllowed(loadedKids.enabled, canScan)) ScanScreen(
@@ -296,7 +305,14 @@ fun MavisRoot(
                         onSearch = { goTab(Tab.SEARCH.route) },
                     ) else LaunchedEffect(Unit) { nav.popBackStack() }
                 }
-                composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice) }
+                composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice, onLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) }) }
+                composable("lounge") {
+                    if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) key(podcastRequest) {
+                        com.mavislibrary.app.ui.lounge.PodcastLoungeScreen(
+                            container, playback, podcastDraft, onSettings = { goTab(Tab.SETTINGS.route) }, onBack = { nav.popBackStack() }, onFirstPlay = onFirstAudio,
+                        )
+                    } else LaunchedEffect(Unit) { nav.popBackStack() }
+                }
                 composable(Tab.SETTINGS.route) { SettingsScreen(container, voice = voice, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder, onOpenStats = { nav.navigate("stats") }, onAppLockChange = onAppLockChange) }
                 composable("stats") { StatsScreen(stats, onBack = { nav.popBackStack() }) }
                 composable(ROUTE_SHOWCASE) { ThemeShowcaseScreen(onBack = { nav.popBackStack() }) }
@@ -309,18 +325,21 @@ fun MavisRoot(
         val incoming = sharedIntent ?: return@LaunchedEffect
         try {
             if (kidsPrefs.state.first().enabled) return@LaunchedEffect
+            nav.currentBackStackEntryFlow.first().lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) }
+            if (kidsPrefs.state.first().enabled) return@LaunchedEffect
             if (incoming.action == android.content.Intent.ACTION_SEND && incoming.type == "text/plain") {
-                val verse = parseBibleReference(incoming.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString().orEmpty())
-                if (verse == null) snackbar.showSnackbar(SHARE_HELP)
-                else {
+                val shared = com.mavislibrary.app.data.podcast.routePodcastShare(incoming.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString().orEmpty())
+                if (shared is com.mavislibrary.app.data.podcast.PodcastShare.Bible) {
                     withContext(Dispatchers.Main.immediate) {
                         if (kidsPrefs.state.first().enabled) return@withContext
-                        webHost?.openLater(verse.route)
+                        webHost?.openLater(shared.route)
                         // show() also consumes pending routes if the Bible tab is already attached.
-                        if (nav.currentDestination?.route == Tab.BIBLE.route) webHost?.show(verse.route)
+                        if (nav.currentDestination?.route == Tab.BIBLE.route) webHost?.show(shared.route)
                         goTab(Tab.BIBLE.route)
                     }
-                }
+                } else if (shared is com.mavislibrary.app.data.podcast.PodcastShare.Lounge) withContext(Dispatchers.Main.immediate) {
+                    if (!kidsPrefs.state.first().enabled) openLounge(shared.draft)
+                } else snackbar.showSnackbar(SHARE_HELP)
             } else {
                 val uri = sharedEpubUri(incoming)
                 val mime = incoming.type ?: uri?.let { context.contentResolver.getType(it) }

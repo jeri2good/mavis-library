@@ -62,7 +62,7 @@ import com.mavislibrary.app.data.model.BookSource
 import kotlinx.coroutines.launch
 
 @Composable
-fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirstPlay: () -> Unit, voice: com.mavislibrary.app.voice.VoiceUi? = null) {
+fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirstPlay: () -> Unit, voice: com.mavislibrary.app.voice.VoiceUi? = null, onLounge: (() -> Unit)? = null) {
     val playback by controller.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
@@ -79,6 +79,13 @@ fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirs
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item { Spacer(Modifier.height(4.dp)); Text("Listen", style = MaterialTheme.typography.headlineLarge) }
+        if (onLounge != null) item {
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) {
+                Text("Podcast Lounge", style = MaterialTheme.typography.titleLarge)
+                Text("Turn a book, chapter, article or topic into a two-host podcast.")
+                Button(onClick = onLounge) { Text("Open Podcast Lounge") }
+            } }
+        }
         item { com.mavislibrary.app.voice.VoiceMic(voice) }
         if (playback.chapterCount > 0) item {
             NativePlayer(
@@ -183,7 +190,8 @@ private fun NativePlayer(
 ) {
     var sleepOpen by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Cover(playback.artwork, playback.title, Modifier.size(width = 150.dp, height = 210.dp))
+        if (playback.chapter.startsWith("Made with")) com.mavislibrary.app.ui.lounge.PodcastCover(playback.title)
+        else Cover(playback.artwork, playback.title, Modifier.size(width = 150.dp, height = 210.dp))
         Text(playback.title, style = MaterialTheme.typography.headlineSmall)
         Text(playback.chapter, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Slider(

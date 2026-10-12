@@ -24,7 +24,7 @@ import com.mavislibrary.app.ui.common.BookTile
 import com.mavislibrary.app.ui.theme.LocalLookTokens
 
 @Composable
-fun ShelfScreen(container: AppContainer, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit, onOpenWebShelf: () -> Unit, onScan: (() -> Unit)? = null) {
+fun ShelfScreen(container: AppContainer, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit, onOpenWebShelf: () -> Unit, onScan: (() -> Unit)? = null, onPodcast: ((com.mavislibrary.app.data.model.Book) -> Unit)? = null) {
     val vm: ShelfViewModel = viewModel(factory = viewModelFactory {
         initializer { ShelfViewModel(container.shelfRepository, container.searchRepository) }
     })
@@ -95,6 +95,7 @@ fun ShelfScreen(container: AppContainer, onOpenBook: (com.mavislibrary.app.data.
                             Icon(Icons.Outlined.MoreVert, contentDescription = "Options for ${book.title}")
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            if (onPodcast != null) DropdownMenuItem(text = { Text("Make a podcast") }, onClick = { menuOpen = false; onPodcast(book) })
                             DropdownMenuItem(text = { Text("Remove from shelf") }, onClick = {
                                 menuOpen = false
                                 vm.remove(book)

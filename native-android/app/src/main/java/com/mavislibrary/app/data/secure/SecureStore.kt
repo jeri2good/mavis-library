@@ -75,6 +75,7 @@ object AndroidBase64 : Codec {
 enum class Secret(val id: String) {
     OWNER_ACCESS_CODE("owner_access_code"),
     ACCOUNT_TOKEN("account_token"),
+    PODCAST_STUDIO_TOKEN("podcast_studio_token"),
 }
 
 /**

@@ -6,6 +6,7 @@ import { gutendexBook, openLibrarySearch, makeFixtureEpub, opdsSearchFeed, opdsB
 const xml = (body, status = 200) => new Response(body, { status, headers: { 'content-type': 'application/atom+xml; charset=UTF-8' } });
 
 const originalFetch = globalThis.fetch;
+for (const name of ['TYPESAFE_API_KEY', 'JEV_MODEL', 'LLM_BASE_URL', 'LLM_REASONING_EFFORT', 'IMAGE_LLM_MODEL', 'IMAGE_QUALITY', 'IMAGE_MODEL']) delete process.env[name];
 const calls = [];
 let routes = [];
 globalThis.fetch = async (url, opts = {}) => {

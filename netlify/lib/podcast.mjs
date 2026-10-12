@@ -76,9 +76,8 @@ export async function studioJson(cfg, path, uid, { method = 'GET', body } = {}) 
       chunks.push(value);
     }
     const text = Buffer.concat(chunks).toString('utf8');
-    if (text.includes(cfg.secret)) throw unavailable();
     const j = JSON.parse(text);
-    if (!j || typeof j !== 'object' || Array.isArray(j)) throw unavailable();
+    if (!j || typeof j !== 'object' || Array.isArray(j) || JSON.stringify(j).includes(cfg.secret)) throw unavailable();
     return j;
   } catch (err) {
     if (err.response) throw err;
@@ -100,7 +99,7 @@ export async function changeSlots(uid, change) {
   throw problem(503, 'podcast_busy', 'Your podcast jobs are busy. Try again.');
 }
 export async function reserveSlot(uid, owner) {
-  const reservation = `reserve-${randomUUID()}`;
+  const reservation = `~reserve-${randomUUID()}`;
   await changeSlots(uid, (slots) => {
     if (!owner && slots.length >= 2) throw problem(429, 'active_limit', 'You already have two active podcasts. Wait for one to finish.');
     return [...slots, reservation];

@@ -22,8 +22,8 @@ export async function requireAccess(req, { feature } = {}) {
     const sub = await getSub(ctx.user.id);
     const expired = sub?.expiresAt != null && (!Number.isFinite(sub.expiresAt) || sub.expiresAt <= Date.now());
     if (sub?.state === 'active' && !expired) return { ...ctx, sub, feature, owner: false };
-    const state = ['pending', 'denied', 'revoked', 'active'].includes(sub?.state) ? sub.state : 'none';
-    return subError(403, 'subscription_required', state === 'pending' ? 'Your request is waiting for approval.' : expired ? 'Your subscription has expired. Ask the owner for access.' : 'Ask the owner for access.', { state });
+    const state = ['pending', 'denied', 'revoked'].includes(sub?.state) ? sub.state : 'none';
+    return subError(403, 'subscription_required', state === 'pending' ? 'Your request is waiting for approval.' : expired ? 'Your subscription has expired. Ask the owner for access.' : 'Ask the owner for access.', { state, ...(expired ? { expired: true } : {}) });
   } catch {
     return unavailable();
   }

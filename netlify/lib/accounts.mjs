@@ -113,13 +113,13 @@ export function signToken(user) {
 export function readToken(token) {
   const parts = String(token || '').split('.');
   const [v, payload, sig] = parts;
-  if (parts.length !== 3 || v !== 'v1' || !payload || !sig) return null;
+  if (parts.length !== 3 || v !== 'v1' || !/^[A-Za-z0-9_-]+$/.test(payload || '') || !/^[A-Za-z0-9_-]+$/.test(sig || '')) return null;
   const want = createHmac('sha256', secret()).update(payload).digest();
   const got = Buffer.from(sig, 'base64url');
   if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
   try {
     const p = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    if (!p.u || typeof p.e !== 'number' || p.e < Date.now()) return null;
+    if (!p.u || !Number.isSafeInteger(p.v) || p.v < 0 || !Number.isFinite(p.e) || p.e <= Date.now()) return null;
     return p;
   } catch { return null; }
 }

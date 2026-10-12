@@ -30,7 +30,6 @@ async function ownedJob(uid, owner, id) {
 async function refreshSlots(cfg, uid) {
   const slots = (await subStore().get(`pod-active/${uid}`, { type: 'json' }))?.slots || [];
   for (const id of slots.filter(validJobId)) {
-    if (id.startsWith('reserve-')) continue;
     const job = publicJob(await studioJson(cfg, `/${id}`, uid), id);
     if (terminalStatus(job.status)) await releaseSlot(uid, id);
   }
@@ -58,8 +57,9 @@ const handler = async (req, context) => {
       if (limited) { if (reservation) await releaseSlot(uid, reservation); return limited; }
       const out = publicJob(await studioJson(cfg, '', uid, { method: 'POST', body }));
       const row = { id: out.id, userId: uid, createdAt: Date.now() };
-      const claimed = await subStore().setJSON(`pod/${uid}/${out.id}`, row, { onlyIfNew: true });
+      const claimed = await subStore().setJSON(`pod-id/${out.id}`, row, { onlyIfNew: true });
       if (!claimed.modified) return subError(502, 'studio_unavailable', 'The studio returned a duplicate job. Please contact the owner.');
+      await subStore().setJSON(`pod/${uid}/${out.id}`, row, { onlyIfNew: true });
       if (reservation) await changeSlots(uid, (slots) => slots.map((x) => x === reservation ? out.id : x));
       if (terminalStatus(out.status) && reservation) await releaseSlot(uid, out.id);
       return json({ id: out.id, status: out.status }, { status: 201 });

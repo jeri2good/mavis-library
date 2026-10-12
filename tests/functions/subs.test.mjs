@@ -12,8 +12,9 @@ server.put = async (req) => {
   const key = new URL(req.url).pathname;
   const previous = locks.get(key) || Promise.resolve();
   const next = previous.then(() => put(req));
-  locks.set(key, next.catch(() => {}));
-  try { return await next; } finally { if (locks.get(key) === next) locks.delete(key); }
+  const tail = next.catch(() => {});
+  locks.set(key, tail);
+  try { return await next; } finally { if (locks.get(key) === tail) locks.delete(key); }
 };
 const { port } = await server.start();
 process.env.MAVIS_BLOBS_URL = `http://localhost:${port}`;
@@ -39,6 +40,8 @@ globalThis.fetch = async (url, opts = {}) => {
     if (studioMode === 'malformed') return new Response('{', { headers: { 'content-type': 'application/json' } });
     if (studioMode === 'huge') return reply({ junk: 'x'.repeat(256001) });
     if (studioMode === 'secret') return reply({ id: 'j1', status: 'ready', title: process.env.STUDIO_SHARED_SECRET });
+    if (studioMode === 'escaped-secret') return new Response(JSON.stringify({ id: 'j1', status: 'ready', title: process.env.STUDIO_SHARED_SECRET }).replaceAll('s', '\\u0073'), { headers: { 'content-type': 'application/json' } });
+    if (studioMode === 'duplicate') return reply({ id: 'j1', status: 'queued' });
     const id = u.split('/').pop();
     if (opts.method === 'POST') {
       const j = { id: `j${++serial}`, status: 'queued', title: JSON.parse(opts.body).title, uid: opts.headers['X-Mavis-User'] };
@@ -311,6 +314,37 @@ try {
     assert.equal(out.headers.get('access-control-allow-origin'), 'https://localhost');
     assert.equal((await sub('unknown', {}, a.token)).status, 404);
   });
+  await test('subscriber access still works with absent or incorrect owner code; active request is idempotent', async () => {
+    const old = process.env.MAVIS_ACCESS_CODE;
+    delete process.env.MAVIS_ACCESS_CODE;
+    assert.equal((await access(a.token)).owner, false);
+    process.env.MAVIS_ACCESS_CODE = old;
+    assert.equal((await access(a.token, { 'x-mavis-access': 'wrong' })).owner, false);
+    const before = (await subStore().list({ prefix: 'log/' })).blobs.length;
+    assert.equal((await sub('request', {}, a.token)).body.state, 'active');
+    assert.equal((await subStore().list({ prefix: 'log/' })).blobs.length, before);
+  });
+  await test('parallel initial subscription requests produce one transition and audit event', async () => {
+    const c = await make('parallel-requests@example.test');
+    const before = (await subStore().list({ prefix: 'log/' })).blobs.length;
+    const out = await Promise.all(Array.from({ length: 8 }, () => transition(c.user, 'request')));
+    assert.equal(out.filter((x) => x.changed).length, 1);
+    assert.equal((await subStore().list({ prefix: 'log/' })).blobs.length, before + 1);
+  });
+  await test('AI endpoint daily limits prevent all provider calls, while study GET does not consume', async () => {
+    const before = aiCalls.length;
+    for (const [fn, path, feature, body] of [[assistant, '/api/assistant', 'assistant', { messages: [{ role: 'user', content: 'Hi' }] }], [rank, '/api/rank', 'rank', { candidates: [{ id: 'a', title: 'A' }] }], [tts, '/api/tts', 'tts', { text: 'Hello' }], [study, '/api/study', 'study', { task: 'word', word: 'amble' }]]) {
+      const name = `SUB_CAP_${feature.toUpperCase()}`;
+      process.env[name] = '0';
+      const out = await call(fn, path, 'POST', body, a.token);
+      assert.equal(out.status, 429); assert.equal(out.body.code, 'daily_limit');
+      delete process.env[name];
+    }
+    assert.equal(aiCalls.length, before);
+    const beforeUsage = (await usage(a.user.id)).study.used;
+    assert.equal((await call(study, '/api/study?picture=x', 'GET', undefined, a.token)).status, 400);
+    assert.equal((await usage(a.user.id)).study.used, beforeUsage);
+  });
   const base = { kind: 'topic', title: 'Test podcast', query: 'Volcanoes' };
   await test('podcast requires subscriber access even when the studio is unconfigured', async () => {
     assert.equal((await pod('list', 'GET')).status, 401);
@@ -381,7 +415,8 @@ try {
   });
   await test('audio pure signing matches an independent HMAC vector and rejects tampering/expiry/wrong uid', async () => {
     const now = 1800000000000, exp = 1800000600, id = 'job-vector', uid = 'owner', secret = 'vector-secret';
-    const want = createHmac('sha256', secret).update('job-vector.1800000600.owner').digest('hex');
+    const want = '92eff03c6dda51ba238460e571ec6c47632852c48812f32afbc67167c3dde4ce';
+    assert.equal(createHmac('sha256', secret).update('job-vector.1800000600.owner').digest('hex'), want);
     const sig = signAudio(secret, id, exp, uid);
     assert.equal(sig, want); assert.equal(verifyAudio(secret, id, exp, uid, sig, now), true);
     assert.equal(verifyAudio(secret, 'other', exp, uid, sig, now), false);
@@ -392,7 +427,7 @@ try {
     assert.equal(verifyAudio(secret, '../bad', exp, uid, sig, now), false);
   });
   await test('studio failures, redirects, invalid JSON, oversize responses, secret echoes map to friendly 502', async () => {
-    for (const mode of ['throw', '500', 'redirect', 'text', 'malformed', 'huge', 'secret']) {
+    for (const mode of ['throw', '500', 'redirect', 'text', 'malformed', 'huge', 'secret', 'escaped-secret']) {
       studioMode = mode;
       const out = await pod(`job/${jobA}`, 'GET', undefined, a.token);
       assert.equal(out.status, 502, mode); assert.equal(out.body.code, 'studio_unavailable');
@@ -405,6 +440,34 @@ try {
     assert.equal(out.status, 200);
     assert.equal((await pod(`job/${jobA}`, 'GET', undefined, a.token)).status, 404);
     assert.ok(!(await subStore().get(`pod-active/${a.user.id}`, { type: 'json' })).slots.includes(jobA));
+  });
+  await test('studio duplicate IDs cannot transfer another subscriber job into a new ownership index', async () => {
+    const c = await make('pod-duplicate@example.test'); await transition(c.user, 'add');
+    studioMode = 'duplicate';
+    assert.equal((await pod('create', 'POST', base, c.token)).status, 502);
+    studioMode = 'ok';
+    assert.equal((await pod('job/j1', 'GET', undefined, c.token)).status, 404);
+    assert.equal(await subStore().get(`pod/${c.user.id}/j1`, { type: 'json' }), null);
+  });
+  await test('upstream deadline aborts a stalled fetch and maps to studio_unavailable', async () => {
+    const saved = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => new Promise((resolve, reject) => {
+      opts.signal.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
+    });
+    try {
+      await assert.rejects(studioJson({ base: process.env.STUDIO_URL, secret: process.env.STUDIO_SHARED_SECRET, deadline: Date.now() + 20 }, '', 'owner'), (e) => e.response.status === 502);
+    } finally { globalThis.fetch = saved; }
+  });
+  await test('podcast same-origin, unsupported methods, invalid config, and CORS boundaries', async () => {
+    assert.equal((await pod('create', 'POST', base, a.token, { origin: 'https://evil.test' })).status, 403);
+    assert.equal((await pod('create', 'GET', undefined, a.token)).status, 405);
+    assert.equal((await pod('list', 'POST', {}, a.token)).status, 405);
+    const response = await podcast(req('/api/podcast/list', 'OPTIONS', undefined, null, { origin: 'https://localhost' }));
+    assert.equal(response.status, 204); assert.match(response.headers.get('access-control-allow-methods'), /DELETE/);
+    const old = process.env.STUDIO_URL;
+    process.env.STUDIO_URL = 'http://studio.example.test';
+    assert.equal((await pod('list', 'GET', undefined, a.token)).body.code, 'studio_not_configured');
+    process.env.STUDIO_URL = old;
   });
   await test('features preserves owner semantics and toggles subscription/podcast flags without secrets', async () => {
     const out = await call(features, '/api/features', 'GET', undefined, null, owner);

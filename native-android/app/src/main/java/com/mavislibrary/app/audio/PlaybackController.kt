@@ -95,6 +95,14 @@ class PlaybackController(context: Context, connect: Boolean = android.os.Build.F
         player.play()
     }
 
+    fun resume() { controller?.let { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() } }
+    fun pause() { controller?.pause() }
+    fun stop() { controller?.stop() }
+    fun sleepMinutes(minutes: Int) {
+        require(minutes in 1..120)
+        controller?.sendCustomCommand(SessionCommand(AudioCommands.SLEEP_MINUTES, Bundle.EMPTY), Bundle().apply { putInt("minutes", minutes) })
+    }
+
     fun toggle() { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
     fun seekBy(ms: Long) { controller?.let { it.seekTo((it.currentPosition + ms).coerceAtLeast(0)) } }
     fun seekTo(ms: Long) { controller?.seekTo(ms.coerceAtLeast(0)) }

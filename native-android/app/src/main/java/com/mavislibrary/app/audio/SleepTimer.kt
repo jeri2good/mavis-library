@@ -26,7 +26,7 @@ object SleepTimer {
     const val SHAKE_EXTENSION_MS = 10 * 60_000L
 
     fun afterMinutes(minutes: Int, nowMs: Long): SleepTimerState {
-        require(minutes in setOf(15, 30, 45, 60))
+        require(minutes in 1..120)
         return SleepTimerState(SleepTarget.At(nowMs + minutes * 60_000L))
     }
 

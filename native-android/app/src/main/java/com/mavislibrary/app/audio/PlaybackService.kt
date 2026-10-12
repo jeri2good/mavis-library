@@ -32,6 +32,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 object AudioCommands {
+    const val SLEEP_MINUTES = "mavis.sleep.minutes"
     const val SLEEP_15 = "mavis.sleep.15"
     const val SLEEP_30 = "mavis.sleep.30"
     const val SLEEP_45 = "mavis.sleep.45"
@@ -41,7 +42,7 @@ object AudioCommands {
     const val SLEEP_EXTEND = "mavis.sleep.extend"
     const val SEEK_BACK = "mavis.seek.back15"
     const val SEEK_FORWARD = "mavis.seek.forward30"
-    val all = setOf(SLEEP_15, SLEEP_30, SLEEP_45, SLEEP_60, SLEEP_CHAPTER, SLEEP_CANCEL, SLEEP_EXTEND, SEEK_BACK, SEEK_FORWARD)
+    val all = setOf(SLEEP_MINUTES, SLEEP_15, SLEEP_30, SLEEP_45, SLEEP_60, SLEEP_CHAPTER, SLEEP_CANCEL, SLEEP_EXTEND, SEEK_BACK, SEEK_FORWARD)
 }
 
 /**
@@ -166,6 +167,15 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private inner class LibraryCallback : MediaLibraryService.MediaLibrarySession.Callback {
+        override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean {
+            @Suppress("DEPRECATION")
+            val event = intent.getParcelableExtra<android.view.KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            if (event != null && com.mavislibrary.app.voice.VoiceHeadset.handle(event) {
+                    if (player.playWhenReady) player.pause() else { player.prepare(); player.play() }
+                }) return true
+            return super.onMediaButtonEvent(session, controllerInfo, intent)
+        }
+
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             val base = super.onConnect(session, controller)
             val commands = base.availableSessionCommands.buildUpon().apply {
@@ -205,6 +215,11 @@ class PlaybackService : MediaLibraryService() {
             args: Bundle,
         ): ListenableFuture<SessionResult> {
             when (customCommand.customAction) {
+                AudioCommands.SLEEP_MINUTES -> {
+                    val minutes = args.getInt("minutes")
+                    if (minutes !in 1..120) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
+                    sleepState = SleepTimer.afterMinutes(minutes, SystemClock.elapsedRealtime())
+                }
                 AudioCommands.SLEEP_15 -> sleepState = SleepTimer.afterMinutes(15, SystemClock.elapsedRealtime())
                 AudioCommands.SLEEP_30 -> sleepState = SleepTimer.afterMinutes(30, SystemClock.elapsedRealtime())
                 AudioCommands.SLEEP_45 -> sleepState = SleepTimer.afterMinutes(45, SystemClock.elapsedRealtime())

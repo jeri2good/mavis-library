@@ -17,6 +17,10 @@
 
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
+    <queries>
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
+    </queries>
+
     <application
         android:name=".MavisApp"
         android:allowBackup="false"

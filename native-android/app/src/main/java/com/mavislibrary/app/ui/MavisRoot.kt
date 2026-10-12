@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -139,6 +140,15 @@ fun MavisRoot(
     }
     val entry by nav.currentBackStackEntryAsState()
     val current = entry?.destination
+    val voice = com.mavislibrary.app.voice.rememberVoiceUi(playback, loadedKids.enabled) { next ->
+        val view = webHost?.webView
+        val url = view?.url
+        if (current?.route == ROUTE_WEB_SHELF && com.mavislibrary.app.web.isAppOrigin(url) &&
+            android.net.Uri.parse(url).fragment.orEmpty().startsWith("/read/")) {
+            webHost?.turnReaderPage(if (next) "next" else "prev")
+            true
+        } else false
+    }
     val goTab: (String) -> Unit = { route ->
         nav.navigate(route) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -194,7 +204,7 @@ fun MavisRoot(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (current?.route != ROUTE_SCAN) Column {
-                MiniPlayer(playback, Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh))
+                MiniPlayer(playback, Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh), voice)
                 NavigationBar {
                     Tab.entries.forEach { tab ->
                         NavigationBarItem(
@@ -222,6 +232,8 @@ fun MavisRoot(
                 .consumeWindowInsets(padding),
         ) {
             OfflineBanner(visible = !online)
+            if (voice.message.isNotEmpty()) Text(voice.message, Modifier.fillMaxWidth().padding(12.dp)
+                .semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
             NavHost(nav, startDestination = Tab.SEARCH.route, modifier = Modifier.fillMaxSize()) {
                 Tab.entries.filter { it.webRoute != null }.forEach { tab ->
                     composable(tab.route) {
@@ -273,8 +285,8 @@ fun MavisRoot(
                         onSearch = { goTab(Tab.SEARCH.route) },
                     ) else LaunchedEffect(Unit) { nav.popBackStack() }
                 }
-                composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio) }
-                composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder, onOpenStats = { nav.navigate("stats") }) }
+                composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice) }
+                composable(Tab.SETTINGS.route) { SettingsScreen(container, voice = voice, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder, onOpenStats = { nav.navigate("stats") }) }
                 composable("stats") { StatsScreen(stats, onBack = { nav.popBackStack() }) }
                 composable(ROUTE_SHOWCASE) { ThemeShowcaseScreen(onBack = { nav.popBackStack() }) }
             }

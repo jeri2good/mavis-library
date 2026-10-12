@@ -72,7 +72,7 @@ import kotlinx.coroutines.launch
 const val PRIVACY_URL = "https://mavis-library.netlify.app/privacy"
 
 @Composable
-fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}, onEnableReminder: () -> Unit = {}, onOpenStats: () -> Unit = {}) {
+fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}, onEnableReminder: () -> Unit = {}, onOpenStats: () -> Unit = {}, voice: com.mavislibrary.app.voice.VoiceUi? = null) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = LookChoice.Automatic)
@@ -126,6 +126,7 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
         }
 
         Section("Listening", Icons.Outlined.Headphones) {
+            voice?.let { com.mavislibrary.app.voice.VoiceSettings(it) }
             Text("Default sleep timer", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(15, 30, 45, 60).forEach { minutes ->

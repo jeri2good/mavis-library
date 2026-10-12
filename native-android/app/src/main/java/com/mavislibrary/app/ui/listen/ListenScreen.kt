@@ -62,7 +62,7 @@ import com.mavislibrary.app.data.model.BookSource
 import kotlinx.coroutines.launch
 
 @Composable
-fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirstPlay: () -> Unit) {
+fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirstPlay: () -> Unit, voice: com.mavislibrary.app.voice.VoiceUi? = null) {
     val playback by controller.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
@@ -79,6 +79,7 @@ fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirs
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item { Spacer(Modifier.height(4.dp)); Text("Listen", style = MaterialTheme.typography.headlineLarge) }
+        item { com.mavislibrary.app.voice.VoiceMic(voice) }
         if (playback.chapterCount > 0) item {
             NativePlayer(
                 playback = playback,
@@ -243,7 +244,7 @@ private fun ShakeToExtend(controller: PlaybackController) {
 }
 
 @Composable
-fun MiniPlayer(controller: PlaybackController, modifier: Modifier = Modifier) {
+fun MiniPlayer(controller: PlaybackController, modifier: Modifier = Modifier, voice: com.mavislibrary.app.voice.VoiceUi? = null) {
     val state by controller.state.collectAsStateWithLifecycle()
     if (state.chapterCount == 0) return
     Row(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -252,6 +253,7 @@ fun MiniPlayer(controller: PlaybackController, modifier: Modifier = Modifier) {
             Text(state.title, maxLines = 1, style = MaterialTheme.typography.labelLarge)
             Text(state.chapter, maxLines = 1, style = MaterialTheme.typography.labelSmall)
         }
+        com.mavislibrary.app.voice.VoiceMic(voice)
         IconButton(onClick = controller::toggle) { Icon(if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, null) }
     }
 }

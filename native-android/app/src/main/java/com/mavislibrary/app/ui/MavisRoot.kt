@@ -198,6 +198,20 @@ fun MavisRoot(
             nav.navigate("lounge") { launchSingleTop = true }
         }
     }
+    var article by remember { mutableStateOf<com.mavislibrary.app.data.podcast.PodcastDraft?>(null) }
+    val openArticle: (com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit = { source ->
+        if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) {
+            article = source
+            nav.navigate("article") { launchSingleTop = true }
+        }
+    }
+    val latestLounge by rememberUpdatedState(openLounge)
+    val latestArticle by rememberUpdatedState(openArticle)
+    DisposableEffect(webHost) {
+        webHost?.onPodcast = { latestLounge(it) }
+        webHost?.onArticle = { latestArticle(it) }
+        onDispose { webHost?.onPodcast = null; webHost?.onArticle = null }
+    }
     val openBook: (Book) -> Unit = { book ->
         if (!kidsBook(book.source.name.lowercase(), book.sourceId)) scope.launch {
             container.database.books().upsert(book.toEntity(System.currentTimeMillis()))
@@ -294,7 +308,7 @@ fun MavisRoot(
                     }
                 }
                 composable(Tab.SEARCH.route) {
-                    SearchScreen(container, online, onOpenBook = openBook, onPodcast = openLounge, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
+                    SearchScreen(container, online, onOpenBook = openBook, onPodcast = openLounge, onOpenArticle = openArticle, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
                 }
                 composable(ROUTE_SCAN) {
                     if (scanRouteAllowed(loadedKids.enabled, canScan)) ScanScreen(
@@ -306,10 +320,15 @@ fun MavisRoot(
                     ) else LaunchedEffect(Unit) { nav.popBackStack() }
                 }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice, onLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) }) }
+                composable("article") {
+                    article?.takeIf { com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled) }?.let {
+                        ArticleScreen(it, onBack = { nav.popBackStack() }, onPodcast = openLounge)
+                    } ?: LaunchedEffect(Unit) { nav.popBackStack() }
+                }
                 composable("lounge") {
                     if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) key(podcastRequest) {
                         com.mavislibrary.app.ui.lounge.PodcastLoungeScreen(
-                            container, playback, podcastDraft, onSettings = { goTab(Tab.SETTINGS.route) }, onBack = { nav.popBackStack() }, onFirstPlay = onFirstAudio,
+                            container, playback, podcastDraft, onSettings = { goTab(Tab.SETTINGS.route) }, onBack = { nav.popBackStack() }, onFirstPlay = onFirstAudio, onOpenArticle = openArticle,
                         )
                     } else LaunchedEffect(Unit) { nav.popBackStack() }
                 }
@@ -328,7 +347,10 @@ fun MavisRoot(
             nav.currentBackStackEntryFlow.first().lifecycle.currentStateFlow.first { it.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) }
             if (kidsPrefs.state.first().enabled) return@LaunchedEffect
             if (incoming.action == android.content.Intent.ACTION_SEND && incoming.type == "text/plain") {
-                val shared = com.mavislibrary.app.data.podcast.routePodcastShare(incoming.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString().orEmpty())
+                val shared = com.mavislibrary.app.data.podcast.routePodcastShare(
+                    incoming.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString().orEmpty(),
+                    incoming.getStringExtra(android.content.Intent.EXTRA_TITLE) ?: incoming.getStringExtra(android.content.Intent.EXTRA_SUBJECT).orEmpty(),
+                )
                 if (shared is com.mavislibrary.app.data.podcast.PodcastShare.Bible) {
                     withContext(Dispatchers.Main.immediate) {
                         if (kidsPrefs.state.first().enabled) return@withContext

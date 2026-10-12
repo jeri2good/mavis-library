@@ -1,0 +1,80 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="/src/styles/app.css"></head><body><main id="root"></main>
+<script type="module">
+import JSZip from 'jszip';
+import * as store from '/src/lib/store.js';
+import { render } from '/src/views/reader.js';
+import { render as renderHome } from '/src/views/home.js';
+
+const check = (value, message) => { if (!value) throw new Error(message); };
+const waitFor = async (fn) => {
+  for (let i = 0; i < 200; i++) { if (fn()) return; await new Promise(resolve => setTimeout(resolve, 50)); }
+  throw new Error('Timed out waiting for shortcut');
+};
+window.fetch = async () => new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+window.MavisNative = { platform: 'android' };
+const messages = [];
+window.MavisPodcast = { postMessage: message => messages.push(JSON.parse(message)) };
+let cleanup;
+try {
+  await store.loadSettings();
+  await store.setSetting('kidsMode', false);
+  await store.setSetting('motion', 'off');
+  const zip = new JSZip();
+  zip.file('mimetype', 'application/epub+zip');
+  zip.file('META-INF/container.xml', '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
+  zip.file('book.opf', '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">shortcut-test</dc:identifier><dc:title>Test Book</dc:title><dc:language>en</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" properties="nav" media-type="application/xhtml+xml"/><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="one"/></spine></package>');
+  zip.file('nav.xhtml', '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="one.xhtml#one">Chapter One</a></li><li><a href="one.xhtml#two">Chapter Two</a></li></ol></nav></body></html>');
+  zip.file('one.xhtml', `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Book</title></head><body><h1 id="one">Chapter One</h1><p>FIRST PAGE</p><p>${'Later page. '.repeat(3000)}</p><p>FULL CHAPTER END</p><h1 id="two">Chapter Two</h1><p>EXCLUDED NEXT CHAPTER</p></body></html>`);
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const root = document.getElementById('root');
+  const item = { key: 'gutenberg:1342', source: 'gutenberg', sourceId: '1342', title: 'Test Book', authors: [], format: 'epub' };
+  await store.saveToShelf(item);
+  await store.saveFile(item.key, blob, 'application/epub+zip');
+  cleanup = await render(root, { segs: [item.key] }, { navigate: () => {} });
+  check(window.MavisReader, 'Reader failed to open');
+  const button = root.querySelector('[data-podcast-chapter]');
+  check(button && button.getBoundingClientRect().height > 0, 'Chapter button must be visible');
+  button.click();
+  await waitFor(() => messages.length === 1);
+  check(messages[0].kind === 'chapter', 'Default must be chapter');
+  check(messages[0].chapter === 'Chapter One', 'Current chapter title');
+  check(messages[0].text.includes('FIRST PAGE') && messages[0].text.includes('FULL CHAPTER END'), 'Full chapter across pages');
+  check(messages[0].text.length > 24000, 'Must not use recap truncation');
+  check(!messages[0].text.includes('EXCLUDED NEXT CHAPTER'), 'Chapter boundary must exclude next chapter');
+  check(!messages[0].gutenbergId, 'Default chapter must not send whole book ID');
+  root.querySelector('[data-podcast-book]').click();
+  check(messages[1].kind === 'book' && messages[1].gutenbergId === 1342, 'Explicit whole-book choice');
+  await cleanup(); cleanup = null;
+  await store.setSetting('kidsMode', true);
+  cleanup = await render(root, { segs: [item.key] }, { navigate: () => {} });
+  check(!root.querySelector('[data-podcast-chapter]') && !root.querySelector('[data-podcast-book]'), 'Kids must not see shortcuts');
+  await cleanup(); cleanup = null;
+  await store.setSetting('kidsMode', false);
+  const imported = { ...item, key: 'import:shortcut-test', source: 'import', title: 'Imported Test Book' };
+  await store.saveToShelf(imported);
+  await store.saveFile(imported.key, blob, 'application/epub+zip');
+  cleanup = await render(root, { segs: [imported.key] }, { navigate: () => {} });
+  check(root.querySelector('[data-podcast-chapter]') && !root.querySelector('[data-podcast-book]'), 'Web-imported EPUB has chapter shortcut, not Gutenberg ID');
+  root.querySelector('[data-podcast-chapter]').click();
+  await waitFor(() => messages.length === 3);
+  check(messages[2].book === imported.title && messages[2].text.includes('FULL CHAPTER END'), 'Web-imported full chapter payload');
+  await cleanup(); cleanup = null;
+  delete window.IntersectionObserver;
+  window.fetch = async url => new Response(JSON.stringify(String(url).includes('/api/tech')
+    ? { items: [{ id: 'article-1', title: 'Test AI article', url: 'https://example.org/story', source: 'Fixture' }] }
+    : { books: [], shelves: [] }), { headers: { 'Content-Type': 'application/json' } });
+  cleanup = await renderHome(root, {}, { navigate: () => {}, token: () => true });
+  await waitFor(() => root.querySelector('[data-tech-podcast]'));
+  root.querySelector('[data-tech-podcast]').click();
+  check(messages[3].kind === 'article' && messages[3].title === 'Test AI article' && messages[3].url === 'https://example.org/story', 'Web feed article prefill');
+  root.querySelector('[data-tech-open]').click();
+  check(messages[4].action === 'openArticle', 'Web feed opens native article reader');
+  await cleanup(); cleanup = null;
+  document.body.textContent = 'PASS: WebView chapter shortcut, full chapter boundaries, explicit whole-book payload, web-imported EPUB, web feed article prefill/open, Kids hiding. No live jobs.';
+} catch (error) {
+  document.body.textContent = `FAIL: ${error.stack}`;
+} finally {
+  await cleanup?.();
+}
+</script></body></html>

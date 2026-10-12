@@ -253,12 +253,24 @@ export async function render(root, _route, ctx) {
       if (!token()) return;
       const items = (data.items || []).slice(0, 12);
       if (!items.length) { techBox.innerHTML = String(stateBlock({ title: 'Nothing new right now', text: 'Check back in a little while.' })); return; }
-      techBox.innerHTML = String(html`<ul class="tech-list" style="list-style:none;padding:0;margin:0;display:grid;gap:10px">${items.map((i) => html`
+      techBox.innerHTML = String(html`<ul class="tech-list" style="list-style:none;padding:0;margin:0;display:grid;gap:10px">${items.map((i, index) => html`
         <li class="card" style="padding:12px 14px">
-          <a href="${i.url}" target="_blank" rel="noopener noreferrer" style="font-weight:650;text-decoration:none">${i.title}</a>
+          <a href="${i.url}" data-tech-open="${index}" target="_blank" rel="noopener noreferrer" style="font-weight:650;text-decoration:none">${i.title}</a>
           <div class="small faint" style="margin-top:4px">${i.source}${i.points ? ` · ▲ ${i.points}` : ''}${i.comments ? ` · ${i.comments} comments` : ''}</div>
           ${i.summary ? html`<p class="small muted" style="margin:6px 0 0">${i.summary}</p>` : ''}
+          ${window.MavisPodcast && !isKids() ? html`<button class="btn btn-sm" type="button" data-tech-podcast="${index}">Make podcast</button>` : ''}
         </li>`)}</ul>`);
+      if (window.MavisPodcast && !isKids()) {
+        const send = (index, action) => {
+          if (isKids()) return;
+          const article = items[Number(index)];
+          window.MavisPodcast.postMessage(JSON.stringify({ kind: 'article', title: article.title, url: article.url, action }));
+        };
+        techBox.querySelectorAll('[data-tech-podcast]').forEach((button) => button.addEventListener('click', () => send(button.dataset.techPodcast, 'lounge')));
+        techBox.querySelectorAll('[data-tech-open]').forEach((link) => link.addEventListener('click', (event) => {
+          event.preventDefault(); send(link.dataset.techOpen, 'openArticle');
+        }));
+      }
     } catch (err) {
       if (err.name === 'AbortError' || !token()) return;
       techBox.innerHTML = String(stateBlock({

@@ -39,8 +39,10 @@ import com.mavislibrary.app.BuildConfig
 import org.json.JSONObject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.mavislibrary.app.MavisApp
+import com.mavislibrary.app.data.kids.kidsPrefs
 
 /** Origin of the bundled web app. Already an allowed CORS origin on the Netlify functions. */
 const val WEB_ORIGIN = "https://localhost"
@@ -107,6 +109,9 @@ class WebHost(private val activity: ComponentActivity) {
     var pendingMicRequest by mutableStateOf<PermissionRequest?>(null)
         private set
 
+    var onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null
+    var onArticle: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null
+
     private var baseHistoryIndex = 0
     private var loaded = false
     private var fileCallback: ValueCallback<Array<Uri>>? = null
@@ -163,6 +168,19 @@ class WebHost(private val activity: ComponentActivity) {
             }
             if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 WebViewCompat.addDocumentStartJavaScript(this, nativeMarkerScript() + accountTransportScript(BuildConfig.API_BASE), setOf(WEB_ORIGIN))
+            }
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+                WebViewCompat.addWebMessageListener(this, "MavisPodcast", setOf(WEB_ORIGIN)) { view, message, origin, mainFrame, _ ->
+                    if (mainFrame && isAppOrigin(origin.toString()) && isAppOrigin(view.url)) activity.lifecycleScope.launch {
+                        val kids = activity.kidsPrefs().state.first()
+                        if (!com.mavislibrary.app.data.podcast.loungeRouteAllowed(kids.enabled)) return@launch
+                        runCatching { PodcastWebShortcut.parse(message.data.orEmpty()) }.onSuccess {
+                            if (it.openArticle) onArticle?.invoke(it.draft) else onPodcast?.invoke(it.draft)
+                        }.onFailure {
+                            Toast.makeText(activity, it.message ?: "Could not prepare that source.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
             }
             addJavascriptInterface(NativeBridge(), "MavisAndroid")
             webViewClient = Client()

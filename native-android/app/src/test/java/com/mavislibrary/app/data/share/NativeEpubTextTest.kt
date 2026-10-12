@@ -47,6 +47,25 @@ class NativeEpubTextTest {
         assertFalse(text.contains("alert('bad')"))
     }
 
+    @Test fun fullImportedSectionIncludesAllPagesButNoHeadOrHiddenText() {
+        val epub = temp.newFile("full-section.epub")
+        val laterPages = "Later page. ".repeat(5000).trim()
+        ZipOutputStream(epub.outputStream()).use { zip ->
+            mapOf(
+                "mimetype" to EPUB_MIME,
+                "META-INF/container.xml" to "<container><rootfile full-path=\"book.opf\"/></container>",
+                "book.opf" to "<package><manifest><item id=\"a\" href=\"section.xhtml\" media-type=\"application/xhtml+xml\"/></manifest><spine><itemref idref=\"a\"/></spine></package>",
+                "section.xhtml" to "<html><head><title>Metadata</title></head><body><h1>Chapter 1</h1><p>Opening page.</p><div hidden=\"hidden\"><p>Invisible</p></div><p>$laterPages</p></body></html>",
+            ).forEach { (name, value) -> zip.putNextEntry(ZipEntry(name)); zip.write(value.toByteArray()); zip.closeEntry() }
+        }
+        val text = NativeEpubText.read(epub).single()
+        assertTrue(text.startsWith("Chapter 1\n\nOpening page."))
+        assertTrue(text.endsWith(laterPages))
+        assertTrue(text.length > 24_000)
+        assertFalse(text.contains("Metadata"))
+        assertFalse(text.contains("Invisible"))
+    }
+
     @Test fun traversalEntryIsRejectedEvenWhenUnreferenced() {
         val epub = temp.newFile("traversal.epub")
         ZipOutputStream(epub.outputStream()).use { zip ->

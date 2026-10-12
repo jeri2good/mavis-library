@@ -30,7 +30,7 @@ import kotlinx.coroutines.flow.catch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onBack: () -> Unit, onFirstPlay: () -> Unit) {
+fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onBack: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null) {
     val context = LocalContext.current
     val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
     if (!loungeRouteAllowed(kids?.enabled)) return
@@ -159,9 +159,12 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                     results.forEach { book -> TextButton(onClick = { draft = PodcastDraft.book(book) }) { Text(book.title) } }
                     draft.gutenbergId?.let { Text("Gutenberg book $it selected") }
                 }
-                if (draft.kind == "chapter" && draft.text.isBlank()) Text("Open an imported book in the native Reader, then choose Make a podcast → This chapter. Or paste chapter text here.")
+                if (draft.kind == "chapter" && draft.text.isBlank()) Text("Open a book and choose Make podcast of this chapter. Or paste chapter text here.")
                 OutlinedTextField(draft.title, { draft = draft.copy(title = it.take(200)) }, label = { Text("Podcast title") }, modifier = Modifier.fillMaxWidth())
-                if (draft.kind == "article") OutlinedTextField(draft.url, { draft = draft.copy(url = it.take(4096)) }, label = { Text("HTTPS article or website URL") }, modifier = Modifier.fillMaxWidth())
+                if (draft.kind == "article") {
+                    OutlinedTextField(draft.url, { draft = draft.copy(url = it.take(4096)) }, label = { Text("HTTPS article or website URL") }, modifier = Modifier.fillMaxWidth())
+                    if (onOpenArticle != null && draft.url.isNotBlank()) TextButton(onClick = { onOpenArticle(draft) }) { Text("Read article") }
+                }
                 if (draft.gutenbergId == null) {
                     if (draft.kind in setOf("book", "chapter") && draft.text.length > 600 && !editingSource) {
                         Text(draft.text.take(600) + "…", maxLines = 6)

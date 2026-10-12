@@ -51,11 +51,12 @@ object NativeEpubText {
             parse(entry(resolved), object : DefaultHandler() {
                 private var hiddenDepth = 0
                 override fun startElement(uri: String?, localName: String?, qName: String?, attrs: Attributes) {
-                    if (hiddenDepth > 0 || localName in setOf("script", "style")) { hiddenDepth++; return }
+                    if (hiddenDepth > 0 || localName in setOf("head", "script", "style", "noscript") || attrs.getIndex("hidden") >= 0 || attrs.getValue("aria-hidden") == "true") { hiddenDepth++; return }
                     if (localName in setOf("p", "h1", "h2", "h3", "h4", "br", "li", "div")) text.append('\n')
                 }
                 override fun endElement(uri: String?, localName: String?, qName: String?) {
                     if (hiddenDepth > 0) hiddenDepth--
+                    else if (localName in setOf("p", "h1", "h2", "h3", "h4", "li", "div")) text.append('\n')
                 }
                 override fun characters(ch: CharArray, start: Int, length: Int) {
                     if (hiddenDepth > 0) return

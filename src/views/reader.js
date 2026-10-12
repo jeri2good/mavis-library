@@ -18,6 +18,7 @@ import { openAssistant } from '../lib/assistant-ui.js';
 import { loadFeatures, can, features } from '../lib/features.js';
 import { copyQuote, shareQuote } from '../lib/quotes.js';
 import { manifest as audiobookManifest, summarize as audiobookSummary } from '../lib/audiobook.js';
+import { extractPodcastChapter } from '../lib/podcast-chapter.js';
 
 export const title = () => 'Reading';
 
@@ -123,6 +124,10 @@ async function renderEpub(root, item, file, close, route) {
       <button class="icon-btn" type="button" data-act="next" aria-label="Next page">${icon('chevronR')}</button>
     </footer>
     <section class="tts-bar" id="tts" aria-label="Read aloud" hidden></section>
+    ${window.MavisPodcast && !isKids() ? html`<div class="reader-bar" style="grid-column:1/-1;flex-wrap:wrap">
+      <button class="btn btn-sm" type="button" data-podcast-chapter>Make podcast of this chapter</button>
+      ${item.source === 'gutenberg' ? html`<button class="btn btn-sm btn-quiet" type="button" data-podcast-book>Whole book podcast</button>` : ''}
+    </div>` : ''}
   </div>`);
 
   const readerEl = root.querySelector('.reader');
@@ -528,6 +533,27 @@ async function renderEpub(root, item, file, close, route) {
   const nativeReader = Object.freeze({ nextPage: () => turn('next'), prevPage: () => turn('prev') });
   window.MavisReader = nativeReader;
   cleanups.push(() => { if (window.MavisReader === nativeReader) delete window.MavisReader; });
+  root.querySelector('[data-podcast-chapter]')?.addEventListener('click', async (event) => {
+    if (isKids()) return;
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const loc = rendition.location || lastLoc;
+      const section = book.spine.get(loc?.start?.index);
+      if (!section) throw new Error('Wait for the chapter to finish opening, then try again.');
+      await section.load(book.load.bind(book));
+      let currentNode = null;
+      try { currentNode = new EpubCFI(loc.start.cfi).toRange(section.document).startContainer; } catch {}
+      const sectionToc = toc.filter((entry) => book.spine.get(entry.href.split('#')[0])?.index === section.index);
+      const chapter = extractPodcastChapter(section.document, sectionToc, currentNode, `Section ${section.index + 1}`);
+      if (!chapter.text) throw new Error('This section has no readable text. Try another chapter.');
+      if (!destroyed && !isKids()) window.MavisPodcast?.postMessage(JSON.stringify({ kind: 'chapter', book: item.title, chapter: chapter.label, text: chapter.text.slice(0, 400000), originalChars: chapter.text.length }));
+    } catch (err) { toast(err.message || 'Could not read this chapter.', { tone: 'error' }); }
+    finally { button.disabled = false; }
+  });
+  root.querySelector('[data-podcast-book]')?.addEventListener('click', () => {
+    if (!isKids()) window.MavisPodcast?.postMessage(JSON.stringify({ kind: 'book', title: item.title, gutenbergId: Number(item.sourceId || item.key.split(':').at(-1)) }));
+  });
   function motionMode() {
     const app = store.getSetting('motion', 'system');
     if (app === 'off' || prefersReducedMotion() && app !== 'on') return 'none';

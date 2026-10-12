@@ -48,11 +48,11 @@ fun ImportedReader(id: String, title: String, imports: EpubImports, onBack: () -
                 if (onPodcast != null) {
                     var menu by remember { mutableStateOf(false) }
                     androidx.compose.foundation.layout.Box {
-                        TextButton(onClick = { menu = true }) { Text("Make a podcast") }
+                        Column {
+                            TextButton(onClick = { onPodcast(com.mavislibrary.app.data.podcast.PodcastDraft.chapter(title, "Chapter ${page + 1}", content[page])) }) { Text("Make podcast of this chapter") }
+                            TextButton(onClick = { menu = true }) { Text("More podcast options") }
+                        }
                         androidx.compose.material3.DropdownMenu(menu, { menu = false }) {
-                            androidx.compose.material3.DropdownMenuItem(text = { Text("This chapter") }, onClick = {
-                                menu = false; onPodcast(com.mavislibrary.app.data.podcast.PodcastDraft.extracted("chapter", "$title · Chapter ${page + 1}", content[page]))
-                            })
                             androidx.compose.material3.DropdownMenuItem(text = { Text("Whole book") }, onClick = {
                                 menu = false; onPodcast(com.mavislibrary.app.data.podcast.PodcastDraft.extracted("book", title, content.joinToString("\n\n")))
                             })

@@ -87,7 +87,7 @@ import com.mavislibrary.app.ui.theme.LocalLookTokens
 private val SUGGESTIONS = listOf("Jane Austen", "Sherlock Holmes", "Psalms", "Fairy tales", "Dickens", "Poetry")
 
 @Composable
-fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}, onScan: (() -> Unit)? = null, onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null) {
+fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}, onScan: (() -> Unit)? = null, onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null, onOpenArticle: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null) {
     val appContext = LocalContext.current.applicationContext
     val kidsPrefs = remember(appContext) { appContext.kidsPrefs() }
     val kids by kidsPrefs.state.collectAsStateWithLifecycle(initialValue = null)
@@ -97,7 +97,7 @@ fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavi
     })
     val state by vm.state.collectAsStateWithLifecycle()
     val shelf by vm.shelfKeys.collectAsStateWithLifecycle()
-    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech, onScan, { MyTechSites(state, vm) }, onPodcast)
+    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech, onScan, { MyTechSites(state, vm) }, onPodcast, onOpenArticle)
     state.selected?.let { book ->
         BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book) }, onDismiss = { vm.select(null) }, onPodcast = onPodcast?.let { callback -> { vm.select(null); callback(com.mavislibrary.app.data.podcast.PodcastDraft.book(book)) } })
     }
@@ -119,6 +119,7 @@ private fun SearchContent(
     onScan: (() -> Unit)? = null,
     customSites: @Composable () -> Unit = {},
     onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null,
+    onOpenArticle: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val tokens = LocalLookTokens.current
@@ -243,7 +244,8 @@ private fun SearchContent(
                 item(key = "tech-${state.techKind}-${item.id}", span = { GridItemSpan(maxLineSpan) }) {
                     Card(
                         onClick = {
-                            try { context.startActivity(Intent(Intent.ACTION_VIEW, item.url.toUri()).addCategory(Intent.CATEGORY_BROWSABLE)) } catch (_: ActivityNotFoundException) { }
+                            if (onOpenArticle != null) onOpenArticle(com.mavislibrary.app.data.podcast.PodcastDraft.article(item.title, item.url))
+                            else try { context.startActivity(Intent(Intent.ACTION_VIEW, item.url.toUri()).addCategory(Intent.CATEGORY_BROWSABLE)) } catch (_: ActivityNotFoundException) { }
                         },
                         modifier = Modifier.fillMaxWidth().testTag("tech_item"),
                     ) {
@@ -255,8 +257,8 @@ private fun SearchContent(
                             )
                             if (item.summary.isNotBlank()) Text(item.summary, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                             if (onPodcast != null) TextButton(onClick = {
-                                onPodcast(com.mavislibrary.app.data.podcast.PodcastDraft("article", item.title, url = item.url))
-                            }) { Text("Podcast this") }
+                                onPodcast(com.mavislibrary.app.data.podcast.PodcastDraft.article(item.title, item.url))
+                            }) { Text("Make podcast") }
                         }
                     }
                 }

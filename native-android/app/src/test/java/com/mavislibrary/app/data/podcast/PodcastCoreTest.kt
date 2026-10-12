@@ -64,7 +64,7 @@ class PodcastCoreTest {
     @Test fun shareRoutingAndKidsGate() {
         assertTrue(routePodcastShare("John 3:16") is PodcastShare.Bible)
         assertTrue(routePodcastShare("https://example.org/article") is PodcastShare.Lounge)
-        assertTrue((routePodcastShare("https://example.org/article") as PodcastShare.Lounge).draft.confirmShare)
+        assertFalse((routePodcastShare("https://example.org/article") as PodcastShare.Lounge).draft.confirmShare)
         assertEquals(PodcastShare.Unsupported, routePodcastShare("http://example.org"))
         assertEquals(PodcastShare.Unsupported, routePodcastShare("https://user:pass@example.org"))
         assertEquals("chapter", (routePodcastShare("Shared article text") as PodcastShare.Lounge).draft.kind)

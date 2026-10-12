@@ -10,7 +10,7 @@
         android:id="@+id/widget_heading"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Mavis Library"
+        android:text="@string/widget_paper_heading"
         android:textSize="12sp"
         android:textColor="#7A3E1D" />
     <TextView
@@ -20,7 +20,7 @@
         android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="3"
-        android:text="Open Mavis"
+        android:text="@string/widget_paper_placeholder"
         android:textSize="16sp"
         android:textStyle="bold"
         android:textColor="#2A211A" />

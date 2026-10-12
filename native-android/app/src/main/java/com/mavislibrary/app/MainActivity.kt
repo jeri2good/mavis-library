@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -46,7 +47,7 @@ import java.time.LocalTime
 class MainActivity : ComponentActivity() {
     companion object { const val WIDGET_DESTINATION = "com.mavislibrary.app.WIDGET_DESTINATION" }
     private var widgetDestination by mutableStateOf<String?>(null)
-    private var widgetRequest by mutableStateOf(0)
+    private var widgetRequest by mutableIntStateOf(0)
 
     private fun acceptWidgetDestination(intent: android.content.Intent?) {
         val requested = intent?.getStringExtra(WIDGET_DESTINATION)

@@ -158,3 +158,9 @@ This receipt is committed separately and last. No push was performed.
   - Long press on text: no selection toolbar or handles (screenshot 103). Reader still works: cover then page 3 of 27 text (screenshots 102, 104).
 - Exit via PIN pad still returns to the adult shell. Kids WebView does not receive the owner code.
 - NOT verified: EPUB subframe links (no EPUB tested; Peter Rabbit is HTML); real tablet; system Home/Recents (needs Android screen pinning, not app code); findings 5 (shared media service) and 6 (4-digit PIN KDF) deferred; Listen audio and goal star still untested.
+
+## Hermes round 14 - merge of sensors/widgets/reminders + share/stats + barcode scan
+- Merged tree (bf5b3d6 + 76f29a6 nav fix + devin/cover-scan): own build, 152 tests, 0 fail/0 err. Debug APK 42.1 MB (ZXing core + CameraX; bundled ML Kit measured +23.2 MiB and rejected).
+- Emulator: Search has a Scan button; rationale screen shows BEFORE the system permission prompt; typed ISBN 9780547928227 -> live /api/openlibrary lookup -> "Found: The Hobbit by J.R.R. Tolkien" with Open book / Save to shelf; bad-checksum ISBN rejected with "Check the ISBN digits and checksum"; with CAMERA granted, CameraX opens (state OPEN) and the virtual-scene preview shows under the viewfinder overlay.
+- Shared "John 3:16" opens Bible at John 3 after the tab-navigation fix; shared valid EPUB lists under Imported books; fake EPUB rejected.
+- NOT verified: ZXing decoding a real barcode through the camera (headless emulator could not aim the virtual camera at a test barcode; the decoder has JVM tests only); torch; Match-the-room-light and reminder rows; widgets on a launcher; real phone/tablet.

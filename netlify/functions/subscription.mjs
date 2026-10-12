@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { json, fail, onlyPost, readJson, requireOwner, sameOrigin, softLimit, clientKey } from '../lib/shared.mjs';
+import { json, fail, onlyPost, readJson, requireOwner, sameOrigin, softLimit, clientKey, env } from '../lib/shared.mjs';
 import { withCors } from '../lib/cors.mjs';
 import { createUser, validEmail, getUser, findByEmail } from '../lib/accounts.mjs';
 import { sessionAccess } from '../lib/access.mjs';
@@ -68,7 +68,7 @@ const handler = async (req, context) => {
     if (action === 'status') {
       if (req.method !== 'GET') return fail(405, 'method_not_allowed', 'Use GET.');
       const sub = await getSub(ctx.user.id);
-      return json({ state: sub?.state || 'none', plan: sub?.plan || null, since: sub?.decidedAt || null, expiresAt: sub?.expiresAt ?? null, usage: await usage(ctx.user.id) });
+      return json({ state: sub?.state || 'none', plan: sub?.plan || null, signedIn: true, podcastEnabled: Boolean(env('STUDIO_URL')), since: sub?.decidedAt || null, expiresAt: sub?.expiresAt ?? null, usage: await usage(ctx.user.id) });
     }
     const b = await body(req);
     const limited = await limitRequests(ctx.user.id);

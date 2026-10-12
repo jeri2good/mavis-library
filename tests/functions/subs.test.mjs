@@ -41,15 +41,20 @@ globalThis.fetch = async (url, opts = {}) => {
     if (studioMode === 'huge') return reply({ junk: 'x'.repeat(256001) });
     if (studioMode === 'secret') return reply({ id: 'j1', status: 'ready', title: process.env.STUDIO_SHARED_SECRET });
     if (studioMode === 'escaped-secret') return new Response(JSON.stringify({ id: 'j1', status: 'ready', title: process.env.STUDIO_SHARED_SECRET }).replaceAll('s', '\\u0073'), { headers: { 'content-type': 'application/json' } });
-    if (studioMode === 'duplicate') return reply({ id: 'j1', status: 'queued' });
-    const id = u.split('/').pop();
+    if (studioMode === '422') return reply({ detail: 'Please\u0000 choose a source.\n' + 'x'.repeat(500) }, 422);
+    if (studioMode === '429') return reply({ detail: 'Busy' }, 429);
+    if (studioMode === 'duplicate') return reply({ id: 'j1', status: 'queued' }, 202);
+    if (studioMode === 'wrong-create-status') return reply({ id: 'wrong', status: 'queued' });
+    if (studioMode === 'accepted-malformed') return new Response('{', { status: 202, headers: { 'content-type': 'application/json' } });
+    const id = new URL(u).pathname.split('/').pop();
     if (opts.method === 'POST') {
-      const j = { id: `j${++serial}`, status: 'queued', title: JSON.parse(opts.body).title, uid: opts.headers['X-Mavis-User'] };
+      const input = JSON.parse(opts.body);
+      const j = { id: `j${++serial}`, status: 'queued', progress: 0, stage: 'Queued', engine: input.engine, title: input.title, kind: input.kind, style: input.style, createdAt: new Date().toISOString(), sources: [{ title: 'Source', url: 'https://example.test/source', internal: 'discarded' }], uid: opts.headers['X-Mavis-User'], private: 'discarded', transcript: 'Owner transcript' };
       jobs.set(j.id, j);
-      return reply({ ...j, private: 'discarded' });
+      return reply({ id: j.id, status: j.status }, 202);
     }
-    if (!jobs.has(id)) return reply({}, 404);
-    if (opts.method === 'DELETE') jobs.get(id).status = 'cancelled';
+    if (!jobs.has(id) || jobs.get(id).uid !== opts.headers['X-Mavis-User']) return reply({}, 404);
+    if (opts.method === 'DELETE') { jobs.delete(id); return new Response(null, { status: 204 }); }
     return reply(jobs.get(id));
   }
   if (u.includes('api.openai.com')) {
@@ -214,6 +219,10 @@ try {
     assert.equal(status.status, 200);
     assert.equal(status.body.state, 'active');
     assert.equal(status.body.usage.assistant.cap, 150);
+    assert.equal(status.body.signedIn, true); assert.equal(status.body.podcastEnabled, true);
+    const studio = process.env.STUDIO_URL; delete process.env.STUDIO_URL;
+    assert.equal((await sub('status', undefined, a.token)).body.podcastEnabled, false);
+    process.env.STUDIO_URL = studio;
     assert.ok(!JSON.stringify(status.body).includes(b.user.email));
     const page = await admin('list?state=all&limit=1');
     assert.equal(page.status, 200); assert.equal(page.body.items.length, 1); assert.ok(page.body.cursor);
@@ -360,7 +369,12 @@ try {
     for (const data of [null, [], {}, { ...base, kind: 'bad' }, { ...base, title: '' }, { ...base, query: 'x'.repeat(301) }, { ...base, text: 'x' }, { ...base, url: 'https://example.test' }, { ...base, extra: true }, { ...base, engine: [] }, { ...base, length: -1 }, { kind: 'chapter', title: 'T' }, { kind: 'chapter', title: 'T', text: 'x'.repeat(400001) }, { kind: 'article', title: 'T', url: 'http://example.test' }, { kind: 'article', title: 'T', url: 'https://user:pass@example.test' }, { kind: 'book', title: 'T', gutenbergId: 0 }, { kind: 'book', title: 'T' }]) {
       assert.throws(() => validateCreate(data), (e) => e.response.status === 400);
     }
-    for (const data of [base, { kind: 'chapter', title: 'T', text: 'x'.repeat(400000) }, { kind: 'article', title: 'T', url: 'https://example.test/a' }, { kind: 'book', title: 'T', gutenbergId: 84 }]) assert.deepEqual(validateCreate(data), data);
+    for (const data of [base, { kind: 'chapter', title: 'T', text: 'x'.repeat(400000) }, { kind: 'article', title: 'T', url: 'https://example.test/a' }, { kind: 'book', title: 'T', gutenbergId: '84' }, { kind: 'book', title: 'T', text: 'Book text' }]) assert.deepEqual(validateCreate(data), { ...data, style: 'deep-dive', length: 'default', language: 'en', engine: 'auto' });
+    for (const field of ['style', 'length', 'engine', 'language']) {
+      for (const value of ['unknown', '', null, 1]) assert.throws(() => validateCreate({ ...base, [field]: value }), (e) => e.response.status === 400);
+    }
+    for (const gutenbergId of [84, '0', '-1', '1.5', 'abc']) assert.throws(() => validateCreate({ kind: 'book', title: 'T', gutenbergId }), (e) => e.response.status === 400);
+    for (const style of ['deep-dive', 'brief', 'debate', 'critique']) for (const length of ['short', 'default', 'long']) for (const engine of ['auto', 'notebooklm', 'local']) assert.equal(validateCreate({ ...base, style, length, engine }).engine, engine);
     assert.equal((await pod('create', 'POST', { ...base, query: 'x'.repeat(301) }, a.token)).status, 400);
   });
   let jobA;
@@ -371,7 +385,7 @@ try {
     assert.equal(last.opts.headers['X-Mavis-User'], a.user.id);
     assert.equal(last.opts.headers['X-Studio-Key'], process.env.STUDIO_SHARED_SECRET);
     assert.equal(last.opts.redirect, 'manual'); assert.equal(last.opts.credentials, 'omit');
-    assert.deepEqual(JSON.parse(last.opts.body), base);
+    assert.deepEqual(JSON.parse(last.opts.body), { ...base, style: 'deep-dive', length: 'default', language: 'en', engine: 'auto' });
     assert.ok(last.opts.signal instanceof AbortSignal);
     assert.deepEqual(Object.keys(out.body).sort(), ['id', 'status']);
   });
@@ -403,10 +417,50 @@ try {
     for (let i = 0; i < 4; i++) assert.equal((await pod('create', 'POST', base, null, owner)).status, 201);
     delete process.env.SUB_CAP_PODCAST;
   });
+  await test('exact studio lifecycle forwards allowlisted metadata, owner transcript, and releases terminal slots', async () => {
+    for (const [i, status] of ['queued', 'sourcing', 'writing', 'generating', 'ready'].entries()) {
+      Object.assign(jobs.get(jobA), { status, progress: i / 4, stage: status, engine: 'local', durationSec: 123 });
+      const out = await pod(`job/${jobA}`, 'GET', undefined, a.token);
+      assert.equal(out.status, 200); assert.equal(out.body.status, status);
+      assert.equal(out.body.progress, i / 4); assert.equal(out.body.stage, status);
+      assert.equal(out.body.engine, 'local'); assert.equal(out.body.durationSec, 123);
+      assert.equal(out.body.transcript, 'Owner transcript'); assert.equal(out.body.kind, 'topic');
+      assert.deepEqual(out.body.sources, [{ title: 'Source', url: 'https://example.test/source' }]);
+      assert.ok(!Object.hasOwn(out.body, 'uid')); assert.ok(!Object.hasOwn(out.body, 'private'));
+      const slots = (await subStore().get(`pod-active/${a.user.id}`, { type: 'json' })).slots;
+      assert.equal(slots.includes(jobA), status !== 'ready');
+    }
+    const rogue = { ...jobs.get(jobA), id: 'unindexed', uid: b.user.id };
+    jobs.set(rogue.id, rogue);
+    const out = await pod('list', 'GET', undefined, a.token);
+    assert.deepEqual(out.body.jobs.map((j) => j.id), [jobA]);
+    assert.ok(!Object.hasOwn(out.body.jobs[0], 'transcript'));
+  });
+  await test('unknown and guessed upstream statuses fail with studio_bad_response', async () => {
+    for (const status of ['pending', 'running', 'processing', 'completed', 'cancelled', 'canceled', 'deleted', 'surprise']) {
+      jobs.get(jobA).status = status;
+      const out = await pod(`job/${jobA}`, 'GET', undefined, a.token);
+      assert.equal(out.status, 502); assert.equal(out.body.code, 'studio_bad_response');
+    }
+    jobs.get(jobA).status = 'ready';
+  });
+  await test('upstream ownership 404 remains 404 on indexed job, list, delete, and audio', async () => {
+    jobs.get(jobA).uid = b.user.id;
+    for (const [action, method] of [[`job/${jobA}`, 'GET'], [`job/${jobA}`, 'DELETE'], ['list', 'GET'], [`audio/${jobA}`, 'GET']]) assert.equal((await pod(action, method, undefined, a.token)).status, 404);
+    jobs.get(jobA).uid = a.user.id;
+  });
+  await test('audio not ready returns friendly 409 without signing or fetching MP3', async () => {
+    jobs.get(jobA).status = 'generating';
+    const out = await pod(`audio/${jobA}`, 'GET', undefined, a.token);
+    assert.equal(out.status, 409); assert.equal(out.body.code, 'audio_not_ready');
+    assert.ok(!Object.hasOwn(out.body, 'url'));
+    jobs.get(jobA).status = 'ready';
+  });
   await test('audio URL is studio-hosted, ten-minute signed, and never proxies bytes', async () => {
     const before = studioCalls.length;
     const out = await pod(`audio/${jobA}`, 'GET', undefined, a.token);
-    assert.equal(out.status, 200); assert.equal(studioCalls.length, before);
+    assert.equal(out.status, 200); assert.equal(studioCalls.length, before + 1);
+    assert.ok(!studioCalls.at(-1).url.includes('/audio'));
     const u = new URL(out.body.url);
     assert.equal(u.host, 'studio.example.test'); assert.match(u.pathname, /\/v1\/podcasts\/j\d+\/audio$/);
     assert.equal(u.searchParams.get('uid'), a.user.id);
@@ -437,7 +491,7 @@ try {
   });
   await test('podcast delete confirms cancellation, drops index, and frees its active slot', async () => {
     const out = await pod(`job/${jobA}`, 'DELETE', undefined, a.token);
-    assert.equal(out.status, 200);
+    assert.equal(out.status, 200); assert.deepEqual(out.body, { id: jobA, status: 'deleted' });
     assert.equal((await pod(`job/${jobA}`, 'GET', undefined, a.token)).status, 404);
     assert.ok(!(await subStore().get(`pod-active/${a.user.id}`, { type: 'json' })).slots.includes(jobA));
   });
@@ -448,6 +502,54 @@ try {
     studioMode = 'ok';
     assert.equal((await pod('job/j1', 'GET', undefined, c.token)).status, 404);
     assert.equal(await subStore().get(`pod/${c.user.id}/j1`, { type: 'json' }), null);
+  });
+  await test('422 detail is sanitized, 429 has retry hint, and rejected creates do not charge or occupy slots', async () => {
+    const c = await make('pod-rejections@example.test'); await transition(c.user, 'add');
+    for (const [mode, status, code] of [['422', 400, 'bad_request'], ['429', 429, 'studio_busy'], ['wrong-create-status', 502, 'studio_unavailable']]) {
+      studioMode = mode;
+      const out = await pod('create', 'POST', base, c.token);
+      assert.equal(out.status, status); assert.equal(out.body.code, code);
+      if (mode === '422') { assert.match(out.body.message, /^Please choose a source/); assert.ok(out.body.message.length <= 300); assert.ok(!/[\u0000-\u001f\u007f-\u009f]/.test(out.body.message)); }
+      if (mode === '429') assert.ok(out.body.retryAfter > 0);
+      assert.equal((await usage(c.user.id)).podcast.used, 0);
+      assert.deepEqual((await subStore().get(`pod-active/${c.user.id}`, { type: 'json' })).slots, []);
+    }
+    studioMode = 'ok';
+    const before = studioCalls.length;
+    assert.equal((await pod('create', 'POST', { ...base, style: 'unknown' }, c.token)).status, 400);
+    assert.equal(studioCalls.length, before); assert.equal((await usage(c.user.id)).podcast.used, 0);
+    assert.equal((await pod('create', 'POST', base, c.token)).status, 201);
+    assert.equal((await usage(c.user.id)).podcast.used, 1);
+  });
+  await test('ambiguous upstream failures do not charge; 202 charges even with malformed response', async () => {
+    for (const mode of ['500', 'throw', 'malformed', 'accepted-malformed']) {
+      const c = await make(`pod-failure-${mode}@example.test`); await transition(c.user, 'add');
+      studioMode = mode;
+      assert.equal((await pod('create', 'POST', base, c.token)).status, 502);
+      assert.equal((await usage(c.user.id)).podcast.used, mode === 'accepted-malformed' ? 1 : 0);
+    }
+    studioMode = 'ok';
+  });
+  await test('concurrent daily reservations stop dispatch at cap and failed/list terminal observations free slots', async () => {
+    const c = await make('pod-daily-race@example.test'); await transition(c.user, 'add');
+    process.env.SUB_CAP_PODCAST = '1';
+    const before = studioCalls.filter((x) => x.opts.method === 'POST').length;
+    const out = await Promise.all(Array.from({ length: 8 }, () => pod('create', 'POST', base, c.token)));
+    assert.equal(out.filter((x) => x.status === 201).length, 1);
+    assert.equal(studioCalls.filter((x) => x.opts.method === 'POST').length, before + 1);
+    assert.equal((await usage(c.user.id)).podcast.used, 1);
+    delete process.env.SUB_CAP_PODCAST;
+    const id = out.find((x) => x.status === 201).body.id;
+    Object.assign(jobs.get(id), { status: 'failed', error: 'Generation failed.' });
+    const list = await pod('list', 'GET', undefined, c.token);
+    assert.equal(list.body.jobs[0].error, 'Generation failed.');
+    assert.deepEqual((await subStore().get(`pod-active/${c.user.id}`, { type: 'json' })).slots, []);
+    const next = await pod('create', 'POST', base, c.token);
+    assert.equal(next.status, 201);
+    const deleted = await pod(`job/${next.body.id}`, 'DELETE', undefined, c.token);
+    assert.deepEqual(deleted.body, { id: next.body.id, status: 'deleted' });
+    assert.deepEqual((await subStore().get(`pod-active/${c.user.id}`, { type: 'json' })).slots, []);
+    assert.equal((await usage(c.user.id)).podcast.used, 2);
   });
   await test('upstream deadline aborts a stalled fetch and maps to studio_unavailable', async () => {
     const saved = globalThis.fetch;

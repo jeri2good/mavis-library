@@ -16,6 +16,8 @@ import java.time.LocalTime
 class SettingsStore(private val store: DataStore<Preferences>) {
     val lookChoice: Flow<LookChoice> = store.data.map { LookChoice.parse(it[LOOK]) }
     val matchRoomLight: Flow<Boolean> = store.data.map { it[MATCH_ROOM_LIGHT] ?: false }
+    val appLockEnabled: Flow<Boolean> = store.data.map { it[APP_LOCK_ENABLED] ?: false }
+    suspend fun setAppLockEnabled(enabled: Boolean) = store.edit { it[APP_LOCK_ENABLED] = enabled }
     val lastOpenedBook: Flow<String?> = store.data.map { it[LAST_OPENED_BOOK] }
     val reminder: Flow<ReminderSettings> = store.data.map { prefs ->
         ReminderSettings(prefs[REMINDER_ENABLED] ?: false, LocalTime.of((prefs[REMINDER_HOUR] ?: 20).coerceIn(0, 23), (prefs[REMINDER_MINUTE] ?: 0).coerceIn(0, 59)))
@@ -49,6 +51,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     private companion object {
         val LOOK = stringPreferencesKey("look")
         val MATCH_ROOM_LIGHT = booleanPreferencesKey("match_room_light")
+        val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
         val LAST_OPENED_BOOK = stringPreferencesKey("last_opened_adult_book")
         val REMINDER_ENABLED = booleanPreferencesKey("reading_reminder_enabled")
         val REMINDER_HOUR = intPreferencesKey("reading_reminder_hour")

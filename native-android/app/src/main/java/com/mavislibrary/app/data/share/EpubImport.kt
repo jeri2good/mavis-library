@@ -48,7 +48,9 @@ fun validateEpub(file: File, mime: String): Boolean = runCatching {
         val entries = zip.entries()
         while (entries.hasMoreElements()) {
             val e = entries.nextElement()
-            if (++count > 10000 || e.size < 0 || e.size > EPUB_LIMIT || e.size > EPUB_LIMIT - total) return false
+            if (++count > 10000 || e.size < 0 || e.size > EPUB_LIMIT || e.size > EPUB_LIMIT - total ||
+                e.name.startsWith('/') || e.name.contains('\\') || e.name.split('/').any { it == ".." || it == "." } ||
+                e.name.any { it.isISOControl() }) return false
             total += e.size
             if (e.name == "mimetype") {
                 if (found || e.size != EPUB_MIME.length.toLong()) return false
@@ -62,6 +64,10 @@ fun validateEpub(file: File, mime: String): Boolean = runCatching {
 
 private val Context.importDataStore by preferencesDataStore("imported_books")
 data class ImportedBook(val id: String, val title: String)
+
+fun importedRouteAllowed(id: String, allowedIds: Collection<String>, kidsMode: Boolean): Boolean =
+    !kidsMode && runCatching { UUID.fromString(id).toString() == id }.getOrDefault(false) && id in allowedIds
+
 class EpubImports(context: Context) {
     private val app = context.applicationContext
     private val store = app.importDataStore
@@ -71,6 +77,12 @@ class EpubImports(context: Context) {
         return (0 until list.length()).map { list.getJSONObject(it).let { b -> ImportedBook(b.getString("id"), b.getString("title")) } }
     }
     val books = store.data.map { decode(it[key]) }
+    suspend fun open(id: String): File? = withContext(Dispatchers.IO) {
+        if (!importedRouteAllowed(id, books.first().map { it.id }, app.kidsPrefs().state.first().enabled)) return@withContext null
+        val root = File(app.filesDir, "imports").canonicalFile
+        val file = File(root, "$id.epub").canonicalFile
+        file.takeIf { it.parentFile == root && it.isFile && validateEpub(it, EPUB_MIME) && !app.kidsPrefs().state.first().enabled }
+    }
     suspend fun import(uri: Uri, mime: String): ImportedBook? = withContext(Dispatchers.IO) {
         if (app.kidsPrefs().state.first().enabled) return@withContext null
         if (mime != EPUB_MIME || uri.scheme != "content") throw ImportRejected(SHARE_HELP)

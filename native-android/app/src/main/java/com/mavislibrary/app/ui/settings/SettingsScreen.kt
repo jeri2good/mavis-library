@@ -72,11 +72,12 @@ import kotlinx.coroutines.launch
 const val PRIVACY_URL = "https://mavis-library.netlify.app/privacy"
 
 @Composable
-fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}, onEnableReminder: () -> Unit = {}, onOpenStats: () -> Unit = {}, voice: com.mavislibrary.app.voice.VoiceUi? = null) {
+fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}, onEnableReminder: () -> Unit = {}, onOpenStats: () -> Unit = {}, onAppLockChange: (Boolean) -> Unit = {}, voice: com.mavislibrary.app.voice.VoiceUi? = null) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = LookChoice.Automatic)
     val matchRoomLight by container.settings.matchRoomLight.collectAsStateWithLifecycle(initialValue = false)
+    val appLockEnabled by container.settings.appLockEnabled.collectAsStateWithLifecycle(initialValue = false)
     val lightAvailable = remember(context.applicationContext) { com.mavislibrary.app.ui.theme.LightObserver(context.applicationContext).available }
     val hasCode by container.secureStore.has(Secret.OWNER_ACCESS_CODE).collectAsStateWithLifecycle(initialValue = false)
     val playback by container.settings.playback.collectAsStateWithLifecycle(initialValue = com.mavislibrary.app.data.prefs.PlaybackSettings())
@@ -115,6 +116,10 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
             }
             if (!lightAvailable) Text("This device has no light sensor; your chosen Look still applies.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = onOpenShowcase, modifier = Modifier.testTag("open_showcase")) { Text("See all themes, including Kids") }
+        }
+
+        Section("App lock", Icons.Outlined.Lock) {
+            SettingSwitch("Lock Mavis with fingerprint / face / device PIN", "Off by default. Locks on launch and after more than 60 seconds away. Kids mode keeps its own PIN gate.", appLockEnabled, onAppLockChange)
         }
 
         Section("Owner access code", Icons.Outlined.Lock) {

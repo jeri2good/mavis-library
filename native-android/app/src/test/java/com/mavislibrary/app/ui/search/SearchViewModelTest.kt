@@ -14,13 +14,19 @@ import com.mavislibrary.app.data.repo.ShelfRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import com.mavislibrary.app.data.feeds.*
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -43,7 +49,40 @@ private class FakeShelfDao : ShelfDao {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk = [35])
 class SearchViewModelTest {
+    @get:Rule val temp = TemporaryFolder()
+
+    @Test fun techSitesRequireLoadedAdultMode() {
+        assertTrue(techSitesAllowed(false))
+        org.junit.Assert.assertFalse(techSitesAllowed(true))
+        org.junit.Assert.assertFalse(techSitesAllowed(null))
+    }
+
+    @Test fun addSiteUpdatesChipsAndLoadsItemsThenDisableRemovesSelection() = runTest {
+        val data = PreferenceDataStoreFactory.create(scope = backgroundScope) { temp.root.resolve("feeds.preferences_pb") }
+        val store = FeedStore(data)
+        val feeds = FeedFetcher { url -> FeedResponse(url, 200, "<rss><channel><title>My AI</title><item><title>Story</title><link>https://example.com/post</link></item></channel></rss>") }
+        val vm = SearchViewModel(
+            SearchRepository(CachedFetcher(RemoteSource { path, _ -> if (path == Endpoints.SHELVES) shelves() else tech("ai") }, EmptyResponseCache(), { true })),
+            ShelfRepository(FakeShelfDao()), store, FeedDiscovery(feeds), FeedRepository(feeds, { true }),
+        )
+        vm.openAddSite(); vm.siteInput("example.com"); vm.findFeed()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.feedResult is DiscoveryResult.Found)
+        vm.addFeed()
+        vm.state.first { it.sources.isNotEmpty() && it.tech?.firstOrNull()?.title == "Story" }
+        assertEquals(1, vm.state.value.sources.size)
+        assertEquals("My AI", vm.state.value.sources.single().name)
+        assertEquals("Story", vm.state.value.tech!!.single().title)
+        org.junit.Assert.assertFalse(vm.state.value.addSiteOpen)
+        vm.enableFeed(vm.state.value.sources.single().id, false)
+        vm.state.first { it.techKind == "mine" && it.tech != null }
+        assertEquals("mine", vm.state.value.techKind)
+        assertTrue(vm.state.value.tech!!.isEmpty())
+    }
+
     @Before fun setUp() { Dispatchers.setMain(StandardTestDispatcher()) }
     @After fun tearDown() { Dispatchers.resetMain() }
 

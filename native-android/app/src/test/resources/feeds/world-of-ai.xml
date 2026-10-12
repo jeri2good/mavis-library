@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" 
+    xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+    xmlns:googleplay="http://www.google.com/schemas/play-podcasts/1.0"
+    xmlns:content="http://purl.org/rss/1.0/modules/content/"
+    xmlns:atom="http://www.w3.org/2005/Atom"
+    xmlns:podcast="https://podcastindex.org/namespace/1.0"
+    xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <atom:link href="https://rss.beehiiv.com/podcasts/5F2wtaPWzH.xml" rel="self" type="application/rss+xml" />
+    <title>World of AI</title>
+    <description>World of Ai is here to push the creative use of Artificial Intelligence (AI) applications for simple day-to-day tasks!</description>
+    <link>https://intheworldofai.com/</link>
+    <language>en</language>
+    <copyright>2026 World of AI</copyright>
+    <image>
+      <url>https://media.beehiiv.com/cdn-cgi/image/fit=scale-down,format=auto,onerror=redirect,quality=80/uploads/podcasts/cover_images/e1b10673-8e9f-44de-82ee-662a17a07f1a/standard_Logo_WOA.png</url>
+      <title>World of AI</title>
+      <link>https://intheworldofai.com/</link>
+    </image>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:type>episodic</itunes:type>
+    <itunes:author>World of AI</itunes:author>
+        
+    <content:encoded>
+      <![CDATA[<p>World of Ai is here to push the creative use of Artificial Intelligence (AI) applications for simple day-to-day tasks!</p>]]>
+    </content:encoded>
+    
+    <itunes:owner>
+      <itunes:name>World of AI</itunes:name>
+      <itunes:email>business.worldofai@gmail.com</itunes:email>
+    </itunes:owner>
+    <itunes:image href="https://media.beehiiv.com/cdn-cgi/image/fit=scale-down,format=auto,onerror=redirect,quality=80/uploads/podcasts/cover_images/e1b10673-8e9f-44de-82ee-662a17a07f1a/standard_Logo_WOA.png" />
+    
+        <itunes:category text="News">
+          <itunes:category text="Tech News" />
+        </itunes:category>
+
+    <pubDate>Fri, 09 Oct 2026 05:37:56 +0000</pubDate>
+    <lastBuildDate>Mon, 12 Oct 2026 06:30:07 +0000</lastBuildDate>
+    <generator>beehiiv</generator>
+    
+      <item>
+  <title>Claude Builds Live Dashboards 📊, GPT-6.1 Sol Goes Ultrafast ⚡</title>
+  <description>Claude can now build dashboards that update from your live data, and turn reports into animated explainers. GPT-6.1 Sol got Ultrafast, and topped a new index for agents that don&#39;t go rogue.</description>
+  <guid isPermaLink="false">41df70fe-6321-4517-8159-03b2b9ae5eb1</guid>
+  <pubDate>Fri, 09 Oct 2026 05:37:56 +0000</pubDate>
+  <enclosure url="https://ai-podcasts.beehiiv.com/uploads/tts_files/e16f8684-f256-4f3d-b09d-7c9da895914d/b5184206-91ea-46d6-a7f6-70d3e8775f1d.mp3" type="audio/mpeg" length="7408789" />
+  <itunes:author>World of AI</itunes:author>
+  <itunes:duration>0</itunes:duration>
+  <itunes:explicit>false</itunes:explicit>
+  <link>https://intheworldofai.com/p/claude-builds-live-dashboards-gpt-6-1-sol-goes-ultrafast</link>
+  <itunes:episodeType>full</itunes:episodeType>
+    <itunes:episode>119</itunes:episode>
+  <content:encoded>
+    <![CDATA[<p>Claude can now build dashboards that update from your live data, and turn reports into animated explainers. GPT-6.1 Sol got Ultrafast, and topped a new index for agents that don&#39;t go rogue.</p>]]>
+  </content:encoded>
+    <itunes:image href="https://media.beehiiv.com/cdn-cgi/image/fit=scale-down,format=auto,onerror=redirect,quality=80/uploads/podcasts/cover_images/e1b10673-8e9f-44de-82ee-662a17a07f1a/standard_Logo_WOA.png" />
+</item><item>
+  <title>Anthropic DROPS Haiku 5.5! 😲💥</title>
+  <description>Claude Haiku 5.5 is out at $0.10 per million input tokens, the same price as GPT-6 Luna, and it beats Luna on every benchmark Anthropic shared. Plus, the Fable 5.5 clock just started.</description>
+  <guid isPermaLink="false">90934490-d62e-4fae-8cdf-56239b8e9bfe</guid>
+  <pubDate>Thu, 08 Oct 2026 04:11:17 +0000</pubDate>
+  <enclosure url="https://ai-podcasts.beehiiv.com/uploads/tts_files/e16f8684-f256-4f3d-b09d-7c9da895914d/44197a16-4e4c-43a7-9741-882062923391.mp3" type="audio/mpeg" length="8059551" />
+  <itunes:author>World of AI</itunes:author>
+  <itunes:duration>503</itunes:duration>
+  <itunes:explicit>false</itunes:explicit>
+  <link>https://intheworldofai.com/p/anthropic-drops-haiku-5-5</link>
+  <itunes:episodeType>full</itunes:episodeType>
+    <itunes:episode>118</itunes:episode>
+  <content:encoded>
+    <![CDATA[<p>Claude Haiku 5.5 is out at $0.10 per million input tokens, the same price as GPT-6 Luna, and it beats Luna on every benchmark Anthropic shared. Plus, the Fable 5.5 clock just started.</p>]]>
+  </content:encoded>
+    <itunes:image href="https://media.beehiiv.com/cdn-cgi/image/fit=scale-down,format=auto,onerror=redirect,quality=80/uploads/podcasts/cover_images/e1b10673-8e9f-44de-82ee-662a17a07f1a/standard_Logo_WOA.png" />
+</item><item>
+  <title>OpenAI&#39;s 722 Math Papers 🧮, Mistral&#39;s 1T Le Chonk 🐱, EmbeddingGemma 2 📱</title>
+  <description>In this episode, we dive into the groundbreaking developments reshaping the AI landscape! OpenAI has just released an impressive collection of 722 math papers from an unreleased model, shedding light on the future of computational intelligence. Meanwhile, Mistral is making waves with its ambitious 1 trillion parameter model, promising to revolutionize AI accessibility. Plus, we explore Google&#39;s latest innovation, EmbeddingGemma 2, which brings powerful embedding capabilities right to your smartphone. 
+
+Join us as we unpack these exciting advancements, discuss their implications for everyday tasks, and highlight key takeaways that every AI enthusiast should know. Whether you&#39;re a seasoned expert or just curious about the world of artificial intelligence, this episode is packed with insights you won&#39;t want to miss. 
+
+Tune in now and stay ahead in the ever-evolving world of AI!</description>
+  <guid isPermaLink="false">61391f3f-6e88-4d86-bab5-37b114b33f34</guid>
+  <pubDate>Wed, 07 Oct 2026 03:17:20 +0000</pubDate>
+  <enclosure url="https://ai-podcasts.beehiiv.com/uploads/tts_files/e16f8684-f256-4f3d-b09d-7c9da895914d/a46600d1-5f16-4801-9265-064a51c6bfad.mp3" type="audio/mpeg" length="8334569" />
+  <itunes:author>World of AI</itunes:author>
+  <itunes:duration>520</itunes:duration>
+  <itunes:explicit>false</itunes:explicit>
+  <link>https://intheworldofai.com/p/openai-s-722-math-papers-mistral-s-1t-le-chonk-embeddinggemma-2</link>
+  <itunes:episodeType>full</itunes:episodeType>
+    <itunes:episode>117</itunes:episode>
+  <content:encoded>
+    <![CDATA[<p>In this episode, we dive into the groundbreaking developments reshaping the AI landscape! OpenAI has just released an impressive collection of 722 math papers from an unreleased model, shedding light on the future of computational intelligence. Meanwhile, Mistral is making waves with its ambitious 1 trillion parameter model, promising to revolutionize AI accessibility. Plus, we explore Google&#39;s latest innovation, EmbeddingGemma 2, which brings powerful embedding capabilities right to your smartphone. 
+
+Join us as we unpack these exciting advancements, discuss their implications for everyday tasks, and highlight key takeaways that every AI enthusiast should know. Whether you&#39;re a seasoned expert or just curious about the world of artificial intelligence, this episode is packed with insights you won&#39;t want to miss. 
+
+Tune in now and stay ahead in the ever-evolving world of AI!</p>]]>
+  </content:encoded>
+    <itunes:image href="https://media.beehiiv.com/cdn-cgi/image/fit=scale-down,format=auto,onerror=redirect,quality=80/uploads/podcasts/cover_images/e1b10673-8e9f-44de-82ee-662a17a07f1a/standard_Logo_WOA.png" />
+</item></channel></rss>

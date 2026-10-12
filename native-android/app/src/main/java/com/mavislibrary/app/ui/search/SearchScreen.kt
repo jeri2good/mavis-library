@@ -2,6 +2,8 @@ package com.mavislibrary.app.ui.search
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import com.mavislibrary.app.data.kids.kidsPrefs
+import androidx.compose.runtime.remember
 import androidx.core.net.toUri
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
@@ -86,12 +88,16 @@ private val SUGGESTIONS = listOf("Jane Austen", "Sherlock Holmes", "Psalms", "Fa
 
 @Composable
 fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}, onScan: (() -> Unit)? = null) {
+    val appContext = LocalContext.current.applicationContext
+    val kidsPrefs = remember(appContext) { appContext.kidsPrefs() }
+    val kids by kidsPrefs.state.collectAsStateWithLifecycle(initialValue = null)
+    if (!techSitesAllowed(kids?.enabled)) return
     val vm: SearchViewModel = viewModel(factory = viewModelFactory {
-        initializer { SearchViewModel(container.searchRepository, container.shelfRepository) }
+        initializer { SearchViewModel(container.searchRepository, container.shelfRepository, container.feedStore, container.feedDiscovery, container.feedRepository) }
     })
     val state by vm.state.collectAsStateWithLifecycle()
     val shelf by vm.shelfKeys.collectAsStateWithLifecycle()
-    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech, onScan)
+    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech, onScan, { MyTechSites(state, vm) })
     state.selected?.let { book ->
         BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book) }, onDismiss = { vm.select(null) })
     }
@@ -111,6 +117,7 @@ private fun SearchContent(
     onRetryDiscover: () -> Unit = {},
     onTech: (String) -> Unit = {},
     onScan: (() -> Unit)? = null,
+    customSites: @Composable () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val tokens = LocalLookTokens.current
@@ -211,6 +218,7 @@ private fun SearchContent(
             item(key = "tech-head", span = { GridItemSpan(maxLineSpan) }) {
                 Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("New in tech & AI", style = MaterialTheme.typography.titleLarge)
+                    customSites()
                     Text("Live from Hacker News and arXiv. Opens the original article.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("ai" to "AI news", "papers" to "Research papers", "tech" to "Tech front page").forEach { (kind, label) ->
@@ -218,6 +226,9 @@ private fun SearchContent(
                         }
                     }
                 }
+            }
+            state.techNote?.let { note ->
+                item(key = "tech-note", span = { GridItemSpan(maxLineSpan) }) { Text(note, style = MaterialTheme.typography.bodySmall) }
             }
             val techItems = state.tech
             if (techItems == null) item(key = "tech-loading", span = { GridItemSpan(maxLineSpan) }) { Centered { CircularProgressIndicator() } }
@@ -333,3 +344,5 @@ private fun BookDetailSheet(book: Book, onShelf: Boolean, onToggleShelf: () -> U
         }
     }
 }
+
+internal fun techSitesAllowed(kidsEnabled: Boolean?): Boolean = kidsEnabled != null && com.mavislibrary.app.data.kids.adultRoutesAllowed(kidsEnabled)

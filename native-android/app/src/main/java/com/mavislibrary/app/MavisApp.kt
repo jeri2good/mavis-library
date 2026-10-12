@@ -65,6 +65,10 @@ class AppContainer(private val app: Application) {
     val database: MavisDatabase by lazy { MavisDatabase.create(app) }
     val connectivity: ConnectivityMonitor by lazy { ConnectivityMonitor(app, scope) }
     val settings: SettingsStore by lazy { SettingsStore(app.settingsDataStore) }
+    val feedStore by lazy { com.mavislibrary.app.data.feeds.FeedStore(app.settingsDataStore) }
+    private val feedFetcher by lazy { com.mavislibrary.app.data.feeds.DeviceFeedFetcher() }
+    val feedDiscovery by lazy { com.mavislibrary.app.data.feeds.FeedDiscovery(feedFetcher) }
+    val feedRepository by lazy { com.mavislibrary.app.data.feeds.FeedRepository(feedFetcher, connectivity::isOnline) }
     val secureStore: SecureStore by lazy { SecureStore(app.secureDataStore, KeystoreCipher()) }
     val api: MavisApi by lazy { MavisApi(apiHttp, BuildConfig.API_BASE) }
     val searchRepository: SearchRepository by lazy {

@@ -97,9 +97,10 @@ class NotebookLM:
         self.private.cleanup()
 
     async def publish_health(self):
-        health = self.engine.read_policy().get('health')
+        policy = self.engine.read_policy()
+        health = policy.get('health')
         if health:
-            await state('notebook_health', health)
+            await state('notebook_health', health, policy.get('checked_at', 0))
 
     @modal.method()
     async def health(self):
@@ -123,7 +124,11 @@ class NotebookLM:
         await notebook_auth.reload.aio()
         with tempfile.TemporaryDirectory(dir=self.private.name) as directory:
             output = Path(directory, 'output.mp3')
-            result = await self.engine.generate(job_id, uid, payload, gathered, output, run_process, duration_seconds)
+            try:
+                result = await self.engine.generate(job_id, uid, payload, gathered, output, run_process, duration_seconds)
+            finally:
+                await self.publish_health()
+                await notebook_auth.commit.aio()
             if result['ok']:
                 try:
                     await audio_volume.reload.aio()
@@ -380,9 +385,11 @@ async def pipeline(job_id):
             except Exception as exc:
                 notebook_result = rejected(failure(exc))
             timings['notebooklm'] = time.monotonic() - before
+            if not notebook_result['ok']:
+                await state('update', job_id, None, {'_notebookFailure': notebook_result['failure'], '_notebookErrorType': notebook_result.get('errorType')})
             if not use_local(payload['engine'], notebook_result):
                 timings['total'] = time.monotonic() - started
-                await state('update', job_id, 'ready', {'engine': 'notebooklm', 'progress': 100, 'stage': 'Ready', 'durationSec': notebook_result['durationSec'], 'transcript': None, '_timings': timings, '_bytes': notebook_result['bytes'], '_gpuSeconds': 0.0, '_gpuBudgetSeconds': 0.0, '_cacheHit': False})
+                await state('update', job_id, 'ready', {'engine': 'notebooklm', 'progress': 100, 'stage': 'Ready', 'durationSec': notebook_result['durationSec'], '_timings': timings, '_bytes': notebook_result['bytes'], '_gpuSeconds': 0.0, '_gpuBudgetSeconds': 0.0, '_cacheHit': False})
                 return
             await state('update', job_id, None, {'engine': 'local', '_notebookFailure': notebook_result['failure']})
         digest = content_hash(PodcastRequest(**payload), Gathered(gathered['text'], gathered['sources'], gathered['no_live_sources']), PIPELINE_VERSION)

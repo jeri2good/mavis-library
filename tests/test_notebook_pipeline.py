@@ -49,6 +49,7 @@ def test_pipeline_engine_selection_end_to_end(tmp_path, monkeypatch, capsys, req
         elif requested != 'local' and kind == 'success':
             assert result['status'] == 'ready' and result['engine'] == 'notebooklm'
             assert result['durationSec'] == 80 and gpu.script not in calls
+            assert 'transcript' not in result
         else:
             assert result['status'] == 'ready' and result['engine'] == 'local'
             assert gpu.script in calls
@@ -79,5 +80,7 @@ def test_shared_health_invalidated_immediately(tmp_path):
         assert store.dispatch('notebook_health', ())['health']['loggedIn']
         store.dispatch('notebook_health', ({'available': True, 'loggedIn': False, 'note': MESSAGES['auth']},))
         assert not store.dispatch('notebook_health', ())['health']['loggedIn']
+        store.dispatch('notebook_health', ({'available': True, 'loggedIn': True, 'note': 'Authenticated'}, 1234))
+        assert store.dispatch('notebook_health', ())['checked_at'] == 1234
     finally:
         store.db.close()

@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -24,7 +25,15 @@ MESSAGES = {
 }
 
 
+class CleanupFailed(RuntimeError):
+    def __init__(self, kind):
+        super().__init__(MESSAGES['cleanup'])
+        self.kind = kind
+
+
 def failure(exc):
+    if isinstance(exc, CleanupFailed):
+        return exc.kind
     text = str(exc).lower()
     status = getattr(getattr(exc, 'response', None), 'status_code', None)
     if any(term in text for term in ('captcha', 'unusual traffic', 'datacenter', 'data centre', 'challenge')):
@@ -40,8 +49,11 @@ def failure(exc):
     return 'unavailable'
 
 
-def rejected(kind):
-    return {'ok': False, 'failure': kind, 'error': MESSAGES[kind]}
+def rejected(kind, error_type=None):
+    result = {'ok': False, 'failure': kind, 'error': MESSAGES[kind]}
+    if error_type:
+        result['errorType'] = error_type
+    return result
 
 
 def private_write(path, text):
@@ -151,6 +163,21 @@ class NotebookCloud:
             except Exception as exc:
                 return rejected(failure(exc))
 
+    async def cleanup(self, client, notebook_id, policy):
+        async with asyncio.timeout(30):
+            for attempt in range(3):
+                try:
+                    await client.notebooks.delete(notebook_id)
+                    break
+                except Exception:
+                    if attempt == 2:
+                        raise
+                    await asyncio.sleep(attempt + 1)
+        policy['pending_notebooks'] = [item for item in policy.get('pending_notebooks', []) if item != notebook_id]
+        self.save_policy(policy)
+        if self.checkpoint:
+            await self.checkpoint()
+
     async def generate(self, job_id, uid, payload, gathered, output, convert, probe):
         async with self.lock:
             policy = self.read_policy()
@@ -173,8 +200,17 @@ class NotebookCloud:
                     path = self.storage(directory)
                     downloaded = Path(directory) / 'audio.m4a'
                     async with self.client_factory(path) as client:
+                        for pending_id in list(policy.get('pending_notebooks', [])):
+                            try:
+                                await self.cleanup(client, pending_id, policy)
+                            except Exception:
+                                raise CleanupFailed('cleanup') from None
                         notebook = await client.notebooks.create('Mavis Lounge ' + job_id)
+                        policy.setdefault('pending_notebooks', []).append(notebook.id)
+                        self.save_policy(policy)
                         try:
+                            if self.checkpoint:
+                                await self.checkpoint()
                             async with asyncio.timeout(1200):
                                 texts = gathered.get('source_texts') or [{'title': payload['title'], 'text': gathered['text']}]
                                 source_ids = []
@@ -193,18 +229,21 @@ class NotebookCloud:
                                 await convert('ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', str(downloaded), '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '44100', '-b:a', '128k', '-metadata', f"title={payload['title']}", '-metadata', 'artist=Mavis Podcast Lounge', '-f', 'mp3', str(output))
                         finally:
                             if os.getenv('KEEP_NOTEBOOKS', '0') != '1':
+                                original = sys.exc_info()[1]
                                 try:
-                                    async with asyncio.timeout(30):
-                                        await asyncio.shield(client.notebooks.delete(notebook.id))
+                                    await asyncio.shield(self.cleanup(client, notebook.id, policy))
                                 except Exception:
-                                    raise RuntimeError(MESSAGES['cleanup']) from None
+                                    raise CleanupFailed(failure(original) if original else 'cleanup') from None
+                            else:
+                                policy['pending_notebooks'].remove(notebook.id)
+                                self.save_policy(policy)
                     self.persist(path)
                 self.mark_health(policy, True, 'Authenticated; unofficial API, heavy use can limit the Google account')
                 return {'ok': True, 'engine': 'notebooklm', 'durationSec': await probe(output), 'bytes': output.stat().st_size, 'seconds': time.monotonic() - started}
             except Exception as exc:
-                kind = 'cleanup' if str(exc) == MESSAGES['cleanup'] else failure(exc)
+                kind = failure(exc)
                 self.mark_failure(policy, kind)
-                return rejected(kind)
+                return rejected(kind, type(exc).__name__)
 
 
 def silence_transport_logs():

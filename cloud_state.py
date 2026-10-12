@@ -73,7 +73,7 @@ class StateStore(JobManager):
         if operation == 'notebook_health':
             if args:
                 with self.db:
-                    self.db.execute('INSERT OR REPLACE INTO notebook_health VALUES (1, ?)', (json.dumps({'health': args[0], 'checked_at': time.time()}),))
+                    self.db.execute('INSERT OR REPLACE INTO notebook_health VALUES (1, ?)', (json.dumps({'health': args[0], 'checked_at': args[1] if len(args) > 1 else time.time()}),))
             row = self.db.execute('SELECT record FROM notebook_health WHERE id=1').fetchone()
             return json.loads(row[0]) if row else {'health': {'available': True, 'loggedIn': False, 'note': 'Authentication check pending'}, 'checked_at': 0}
         if operation == 'admit':

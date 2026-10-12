@@ -37,7 +37,7 @@ Gateway UID `owner` may GET/DELETE/stream any job, but its **list** is only owne
 
 | Method/path | Success response |
 | --- | --- |
-| GET `/v1/health` | 200 JSON `{"ok":true}`; open, no credentials/UIDs/paths/login/provider details; not an engine readiness check |
+| GET `/v1/health` | 200 JSON `{"ok":true}` in legacy mode; Modal adds `notebooklm {available,loggedIn,note}` with a five-minute authenticated cache; open, no credentials/UIDs/paths/account email/notebook titles |
 | POST `/v1/podcasts` | **202** JSON `{"id":"<uuid-v4>","status":"queued"}` |
 | GET `/v1/podcasts` | 200 JSON `{"items":[<job without transcript>,...]}` |
 | GET `/v1/podcasts/{id}` | 200 JSON job object below |
@@ -74,7 +74,7 @@ Kind-specific requirements:
 
 The studio does not forbid source fields solely because they are irrelevant to a given kind; any provided URL or Gutenberg ID is still validated. `owner_uid`/`uid` are not accepted create fields; ownership derives only from authentication. No content is fetched by the gateway/studio create validator itself; source fetching happens asynchronously in generation with DNS/public-address checks, redirect revalidation, three redirects maximum, TLS verification, and a 3 MiB fetch cap.
 
-`length` maps to approximate local dialogue word targets: short=1,100, default=2,000, long=3,200. NotebookLM uses its SHORT/DEFAULT/LONG audio-length enums. Neither lane promises an exact wall-clock duration. `auto` resolves to verified NotebookLM login or local; NotebookLM auth/quota errors can fall back to local only for auto requests.
+`length` maps to approximate local dialogue word targets: short=1,100, default=2,000, long=3,200. NotebookLM uses its SHORT/DEFAULT/LONG audio-length enums. Neither lane promises an exact wall-clock duration. Modal `auto` tries NotebookLM first and falls back to local on any NotebookLM failure. Explicit `notebooklm` auth/challenge failures produce safe job errors; account caps, quota pause, unsupported sources, or other failures select local with the existing transcript note. Default account allowance is six attempted jobs per UTC day globally, one NotebookLM generation at a time, with a durable 30-minute quota pause. Owner exemption requires `NOTEBOOKLM_OWNER_UNLIMITED=1`. Heavy use of this unofficial API can get the Google account limited. Legacy engine routing remains unchanged.
 
 Example accepted create body:
 

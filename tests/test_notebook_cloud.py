@@ -105,7 +105,7 @@ def test_failures_cleanup_redaction_and_auto_fallback(setup, caplog, capsys, sta
 
     engine.client_factory = factory
     result = asyncio.run(generate(setup))
-    assert result == rejected(kind)
+    assert result == rejected(kind, type(error).__name__)
     clients[0].notebooks.delete.assert_awaited_once_with('created')
     assert use_local('auto', result)
     assert COOKIE not in json.dumps(result) + caplog.text + capsys.readouterr().out
@@ -127,7 +127,7 @@ def test_cleanup_failure_is_not_success(setup):
         return client
 
     engine.client_factory = factory
-    assert asyncio.run(generate(setup)) == rejected('cleanup')
+    assert asyncio.run(generate(setup)) == rejected('cleanup', 'CleanupFailed')
 
 
 def test_source_cap_separate_texts(setup):
@@ -248,9 +248,27 @@ def test_single_generation_at_a_time(setup):
     assert maximum == 1
 
 
+def test_transport_logging_cannot_emit_cookies(caplog, monkeypatch):
+    import logging
+    from notebook_cloud import silence_transport_logs
+    previous = logging.root.manager.disable
+    caplog.set_level(logging.DEBUG)
+    monkeypatch.setenv('NOTEBOOKLM_AUTH_JSON', COOKIE)
+    monkeypatch.setenv('NOTEBOOKLM_DEBUG', '1')
+    try:
+        silence_transport_logs()
+        logging.getLogger('notebooklm.auth').critical(COOKIE)
+        logging.getLogger('httpx').error(COOKIE)
+        assert COOKIE not in caplog.text
+        assert 'NOTEBOOKLM_AUTH_JSON' not in os.environ
+        assert 'NOTEBOOKLM_DEBUG' not in os.environ
+    finally:
+        logging.disable(previous)
+
+
 def test_missing_auth_is_safe(setup):
     setup[0].secret = ''
-    assert asyncio.run(generate(setup)) == rejected('auth')
+    assert asyncio.run(generate(setup)) == rejected('auth', 'AuthError')
 
 
 def test_changed_secret_supersedes_old_volume(setup, tmp_path):
@@ -262,13 +280,48 @@ def test_changed_secret_supersedes_old_volume(setup, tmp_path):
     assert chosen['cookies'][0]['value'] == 'new-sign-in'
 
 
+def test_cancellation_still_cleans_notebook(setup):
+    engine, clients, _, _, _, _ = setup
+    original = engine.client_factory
+
+    def factory(path):
+        client = original(path)
+        client.artifacts.wait_for_completion.side_effect = asyncio.CancelledError()
+        return client
+
+    engine.client_factory = factory
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(generate(setup))
+    clients[0].notebooks.delete.assert_awaited_once_with('created')
+
+
+def test_failed_cleanup_is_durable_and_retried_next_job(setup):
+    engine, clients, _, _, _, _ = setup
+    original = engine.client_factory
+
+    def broken(path):
+        client = original(path)
+        client.notebooks.delete.side_effect = RuntimeError(COOKIE)
+        return client
+
+    engine.client_factory = broken
+    asyncio.run(generate(setup))
+    assert engine.read_policy()['pending_notebooks'] == ['created']
+    engine.client_factory = original
+    assert asyncio.run(generate(setup))['ok']
+    assert clients[-1].notebooks.delete.await_count == 2
+    assert engine.read_policy()['pending_notebooks'] == []
+
+
 def test_reservation_checkpoint_before_google(setup):
     engine, clients, _, _, _, _ = setup
 
+    reservations = []
+
     async def checkpoint():
-        assert not clients
+        reservations.append(len(clients))
         assert engine.read_policy()['used'] == 1
 
     engine.checkpoint = AsyncMock(side_effect=checkpoint)
     assert asyncio.run(generate(setup))['ok']
-    engine.checkpoint.assert_awaited_once()
+    assert reservations == [0, 1, 1]

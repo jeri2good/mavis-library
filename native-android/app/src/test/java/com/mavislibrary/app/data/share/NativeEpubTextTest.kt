@@ -11,6 +11,13 @@ import java.util.zip.ZipOutputStream
 class NativeEpubTextTest {
     @get:Rule val temp = TemporaryFolder()
 
+    @Test fun boundedReaderAcceptsLimitAndStopsAfterOneExcessByte() {
+        assertArrayEquals(ByteArray(12), NativeEpubText.readBounded(java.io.ByteArrayInputStream(ByteArray(12)), 12))
+        val input = java.io.ByteArrayInputStream(ByteArray(100))
+        assertTrue(runCatching { NativeEpubText.readBounded(input, 12) }.isFailure)
+        assertEquals(87, input.available())
+    }
+
     @Test fun readsSpineOrderNotZipOrder() {
         val epub = temp.newFile("book.epub")
         ZipOutputStream(epub.outputStream()).use { zip ->

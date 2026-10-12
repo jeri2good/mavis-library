@@ -278,3 +278,62 @@ This section records the native Android barcode-scan addition; the older Phase A
 - Refused with "Use an HTTPS address with a public site name, without credentials": 192.168.1.1, http://example.com, localhost, 10.0.0.5/feed, https://127.0.0.1/, https://169.254.169.254/latest.
 - BUG found on device: numeric entities in titles showed literally ("&#128202;"). Fix: FeedParser.decodeEntities (numeric dec/hex, surrogate/out-of-range rejected, &amp; last) + test; re-tested, emoji render.
 - NOT verified: Manage sites rename/disable/remove on device, "Mine" merge with 2+ sources, offline cache, DNS-rebinding refusal against a real hostile resolver (UrlPolicy.requirePublic runs in the OkHttp Dns hook, JVM-tested only), Kids-mode hiding on device (JVM gate test only), real phone.
+
+## Podcast Lounge — native Android completion (2026-10-12)
+
+Branch: `devin/lounge-app`. The model-switch WIP was reviewed as unverified; the existing partial podcast files were rewritten before testing. First full green implementation checkpoint: `cd9a845`. Nothing was pushed, installed, deployed, or sent to a live studio. No emulator or ADB session was started.
+
+### Implemented
+
+- Adult-only Podcast Lounge at the top of Listen, with the existing five bottom tabs unchanged. Both the adult shell and Lounge enforce the Kids-mode gate; the incoming share is discarded in Kids mode.
+- Native source selection: saved Shelf books, Gutenberg title search through the existing catalog API, imported EPUB text through `NativeEpubText`, current native imported-reader chapter / whole-book menu, HTTPS website/article URL, pasted/shared article text, and topic query. Native book detail, Shelf options, Discover/My-tech-sites stories, and topic search results prefill the Lounge.
+- EPUB/source text is capped at 400,000 characters, with the actual count and original count when truncated. Large extracted sources use a bounded preview rather than rendering the entire book in a text field immediately. An Open Library listing without supplied text prefills an explicitly labeled topic discussion; the app does not pretend to possess that book's full text.
+- Deep dive / Quick brief / Debate / Critique; short / standard / long; Auto or Local-only. Auto is the default studio lane, with NotebookLM when available and local voices as the service's fallback. This is not a replacement for Mavis's realtime voice brain. Health and per-job engine labels are honest; an online health endpoint plus failed authenticated job listing is distinguished from an unreachable studio.
+- Exact `/v1` API routes, serialized models, human-readable 422 errors, independent transport, 15-second connect and 120-second read timeouts, no cookies, no proxy, no app/owner-code interceptors, and no followed redirects.
+- Persistent local DataStore library containing job metadata, transcript/sources, retry request and completed local-file metadata, partitioned by studio. Three-second job polling, exponential network-failure backoff capped at 30 seconds, terminal failure/ready states, explicit cancellation/deletion, and a 25-minute wait deadline. Polling stops when the Lounge's lifecycle stops and resumes on re-entry; server jobs themselves remain queued and are rediscovered from the list endpoint.
+- Existing Media3 playback service/controller, MediaSession, seek/speed controls, sleep timer, drive mode, headset and voice-control paths reused. Studio audio requests carry the key only for the exact configured origin and `/v1/podcasts/{id}/audio` route, support Range, and reject redirects. No token is put in media metadata or URLs. Podcast resume keys use the existing Room resume store and cannot collide across studios; pause also saves position.
+- Completed MP3 copies use the existing app-private `AudioFileStore` area with atomic partial-to-complete promotion, studio-separated names, cancellation checks, MIME/size checks and a 250 MB download limit. Local copies are selected before any studio stream. Covers and lock-screen artwork are generated on-device from a gradient and title, without image fetching. Ready cards have Play, Download, Delete and expandable transcript/sources; no share-link feature was added.
+- Settings: initially blank studio address, masked/pasteable key, saved-connection health test, default style/length/engine, and explicitly confirmed local age cleanup. Keys reuse AES-GCM encryption with the existing non-exportable Android Keystore key; preferences contain ciphertext, not plaintext. Changing the address clears the old key. Cleanup leaves studio originals untouched, retains unknown dates and unfinished jobs, and prevents aged finished entries from being re-added by reconnect listing.
+- Existing SEND `text/plain` routing was extended rather than adding a conflicting handler: HTTPS URLs and article text open a “Podcast this?” review before creation; Bible references retain their route and EPUB imports retain their existing handler. Shared navigation explicitly uses Android's main dispatcher, matching the Bible path. The initial new navigation regression failed until this was fixed.
+
+### Cleartext boundary
+
+`android:usesCleartextTraffic="false"` remains intact. The added network security config has `base-config cleartextTrafficPermitted="false"`; the packaged APK was inspected with `aapt2` to confirm both. Android cannot dynamically add a user-entered domain to that XML policy, and OkHttp `ConnectionSpec` does not override its cleartext restriction. Therefore HTTPS uses the independent OkHttp client normally; the sole private-HTTP studio lane uses a code-scoped, socket-based HTTP/1.1 transport producing OkHttp request/response models. It accepts only the exact user-configured IPv4 origin in RFC1918 or Tailscale 100.64.0.0/10 (including emulator 10.0.2.2), bounds headers and body framing, handles Content-Length/chunking, closes on cancellation, and never follows a redirect. Public HTTP, localhost/loopback, credentials/userinfo, paths/query/fragment in the base address, and other destinations are rejected. WebView and all other app clients remain under the normal cleartext ban. The Settings UI warns that private HTTP itself is unencrypted. No TLS trust or hostname verification was weakened.
+
+### Verification actually run
+
+The mandated background build passed, then was committed. A subsequent lint pass found two pre-existing compatibility errors in reused paths: API-33-only `InputStream.readNBytes` in EPUB extraction, and the deprecated Media3 bad-value result constant. Both were fixed without raising minSdk or suppressing lint. The final background command, after waiting for other Gradle builds to clear, was:
+
+```text
+export JAVA_HOME=$HOME/.local/jdks/jdk-21.0.12.1+1
+export PATH=$JAVA_HOME/bin:$PATH ANDROID_HOME=$HOME/Android/Sdk
+cd native-android
+./gradlew testDebugUnitTest assembleDebug lintDebug --no-daemon -q
+```
+
+- Final command exit status: **0**. Quiet-mode log: `native-android/lounge-final-build.log` (local build log, not committed).
+- Counts READ from all 57 `app/build/test-results/testDebugUnitTest/TEST-*.xml` suite headers: **298 tests, 0 failures, 0 errors, 0 skipped**. This includes 31 new podcast tests and 2 EPUB compatibility regressions. No live studio or external service is used by the new tests: API responses, audio bodies and socket streams are fake; coroutine polling uses virtual time.
+- New coverage: fixtures for all six statuses and optional fields, health/create/error round-trips, all request kinds and the 400k cap, studio URL/range boundaries and userinfo rejection, exact routes and authorization, 422 detail, foreign-host/port/scheme refusal, redirect refusal, real DataSource Range/ignored-Range behavior with fake audio, private HTTP framing and chunking with in-memory sockets, completed/private downloads and local cleanup, encrypted settings and origin-bound key changes, offline metadata/retry preservation, 3-second polling/backoff/failure/cancellation/25-minute timeout/re-entry, gradient artwork, real Compose share confirmation and Kids isolation, and EPUB extraction on Robolectric API 26. Existing Bible/EPUB sharing and Kids tests also pass.
+- Lint report read from `app/build/reports/lint-results-debug.xml`: **0 errors, 18 warnings, 1 hint**. Remaining warnings include existing WebView feature-check/widget/exported-media-service warnings and KTX/modifier suggestions; the hint is a primitive-state suggestion. Protected WebHost owner-code logic and Kids files were not altered.
+- `git diff --check`: passed. Protected `ui/kids/*`, `data/kids/*`, `WebHost.kt`, `netlify/`, `src/`, dependencies and toolchain settings have no changes from the WIP checkpoint.
+- **New dependencies: none. New permissions: none.** INTERNET and POST_NOTIFICATIONS were already declared. No podcast-ready notification or new permission request was added; first playback reuses the existing media-notification permission flow.
+- APK: `native-android/app/build/outputs/apk/debug/app-debug.apk`, **42,566,939 bytes**; **+212,091 bytes (+0.501%)** versus the supplied 42,354,848-byte baseline.
+- APK SHA-256: `a9230492d1e4239957141cc23d4c387f2e34dbd9bcd5b324861237bb4b1964bd`.
+- Debug build, package `com.mavislibrary.app`, existing version `0.6.0-m2` / code 2, minSdk 26, targetSdk 35, compileSdk 36. APK build SHA is the implementation checkpoint `cd9a845`; it includes the subsequently tested EPUB/Media3 compatibility fixes. The final receipt/compatibility commit does not rebuild or re-sign the APK.
+
+### NOT verified / deliberate limits
+
+- No live backend exists for this worker: actual studio authentication, book/article sourcing, NotebookLM login/generation, local TTS generation and engine fallback have **not** been exercised.
+- No emulator or physical phone test: APK installation/launch, real HTTP/Tailscale connectivity, audible streaming, seeking against the studio's real Range implementation, background/screen-off continuity, lock-screen/headset/voice/drive controls, timer fade and resume after process death remain **not verified on-device**. Reusing the existing stack is implementation evidence, not an audible-playback claim.
+- Real offline listening after disconnect/reboot and the Android share sheet's appearance on hardware are not verified. JVM fake downloads are bytes, not an audio-codec/acoustics test.
+- Polling/downloads are screen-scoped work, not a new generation foreground service. The studio continues its queued work while the Lounge/app is closed; the app checks again on return. No ready notification was implemented. Existing playback remains service-backed.
+- Current-chapter extraction applies to the native imported-EPUB Reader. The bundled web reader was not modified, and browser-only imported books are not silently copied out of its storage.
+- Release signing/distribution, accessibility review and screenshots were not run. No push or website/backend deployment was performed. The worker's untracked `BRIEF-orig.md` and `BRIEF-resume.md` were left untouched and uncommitted.
+
+### Device/studio handoff checks (not run here)
+
+1. In adult Settings, save the actual iMac/Tailscale studio address and key, then Test saved connection. Confirm the reported engines match the studio and a wrong key does not produce a successful job list.
+2. Listen → Podcast Lounge: make a short Local-only topic episode; watch every stage, confirm its engine label, play it, seek, pause/resume, lock the phone, use headset/media controls and a short sleep timer. Then repeat Auto with NotebookLM available and unavailable.
+3. Download the ready episode, disconnect network, play/seek it, close and reopen the app, and confirm the stored resume position. Restore connectivity and check server-side queued jobs reappear.
+4. Try a Gutenberg book, imported EPUB whole book and current chapter (including text above 400k), tech-site article, topic-search prefill and a shared HTTPS URL. Confirm review happens before submission. Share a Bible reference and an EPUB to ensure their old paths still work.
+5. Enable Kids mode and try the same URL share: no adult tabs, Lounge, confirmation dialog or studio request should become reachable. Return through the normal adult gate, then test failed-job Retry, explicit Delete and local age cleanup without deleting studio originals.

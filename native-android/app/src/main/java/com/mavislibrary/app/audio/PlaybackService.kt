@@ -218,7 +218,7 @@ class PlaybackService : MediaLibraryService() {
             when (customCommand.customAction) {
                 AudioCommands.SLEEP_MINUTES -> {
                     val minutes = args.getInt("minutes")
-                    if (minutes !in 1..120) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
+                    if (minutes !in 1..120) return Futures.immediateFuture(SessionResult(androidx.media3.session.SessionError.ERROR_BAD_VALUE))
                     sleepState = SleepTimer.afterMinutes(minutes, SystemClock.elapsedRealtime())
                 }
                 AudioCommands.SLEEP_15 -> sleepState = SleepTimer.afterMinutes(15, SystemClock.elapsedRealtime())

@@ -20,9 +20,7 @@ object NativeEpubText {
             val item = zip.getEntry(name) ?: throw IOException("Missing EPUB entry")
             if (item.size !in 1..MAX_XML_BYTES.toLong()) throw IOException("EPUB entry too large")
             return zip.getInputStream(item).use { stream ->
-                val bytes = stream.readNBytes(MAX_XML_BYTES + 1)
-                if (bytes.size > MAX_XML_BYTES) throw IOException("EPUB entry too large")
-                bytes
+                readBounded(stream, MAX_XML_BYTES)
             }
         }
         var opf = ""
@@ -69,6 +67,21 @@ object NativeEpubText {
             text.toString().replace(Regex("[ \\t]+"), " ").replace(Regex("\\n{3,}"), "\n\n").trim().takeIf { it.isNotBlank() }
         }
         chapters.takeIf { it.isNotEmpty() } ?: throw IOException("No readable chapters")
+    }
+
+    internal fun readBounded(stream: java.io.InputStream, limit: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        while (out.size() <= limit) {
+            val n = stream.read(buffer, 0, minOf(buffer.size, limit + 1 - out.size()))
+            if (n < 0) return out.toByteArray()
+            if (n == 0) {
+                val one = stream.read()
+                if (one < 0) return out.toByteArray()
+                out.write(one)
+            } else out.write(buffer, 0, n)
+        }
+        throw IOException("EPUB entry too large")
     }
 
     private fun parse(bytes: ByteArray, handler: DefaultHandler) {

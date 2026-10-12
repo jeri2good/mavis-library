@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { json, fail, onlyPost, readJson, requireOwner, sameOrigin, softLimit, clientKey, env } from '../lib/shared.mjs';
 import { withCors } from '../lib/cors.mjs';
-import { createUser, validEmail, getUser, findByEmail } from '../lib/accounts.mjs';
+import { createUser, validEmail, getUser, findByEmail, updateUser, hashSecret, newRecoveryCode, normRecovery } from '../lib/accounts.mjs';
 import { sessionAccess } from '../lib/access.mjs';
 import { subStore, getSub, transition, usage, limitRequests, unavailable } from '../lib/subs.mjs';
 
@@ -47,8 +47,18 @@ const handler = async (req, context) => {
         }
         return json({ items, cursor: more ? last : null });
       }
-      if (!['approve', 'deny', 'revoke', 'add', 'create-account'].includes(admin)) return fail(404, 'not_found', 'Unknown subscription action.');
+      if (!['approve', 'deny', 'revoke', 'add', 'create-account', 'reset-password'].includes(admin)) return fail(404, 'not_found', 'Unknown subscription action.');
       const b = await body(req);
+      if (admin === 'reset-password') {
+        const user = validEmail(b.email) ? await findByEmail(b.email) : null;
+        if (!user) return fail(404, 'account_not_found', 'No existing account was found.');
+        const tempPassword = randomBytes(18).toString('base64url');
+        const code = newRecoveryCode();
+        const pw = await hashSecret(tempPassword);
+        const rc = await hashSecret(normRecovery(code));
+        await updateUser(user.id, (u) => ({ pw, rc, tokenVersion: (u.tokenVersion || 0) + 1 }));
+        return json({ email: user.email, tempPassword, recoveryCode: code });
+      }
       if (['add', 'create-account'].includes(admin) && !validEmail(b.email)) return fail(400, 'bad_email', 'Enter a valid email address.');
       if (admin === 'create-account') {
         const tempPassword = randomBytes(24).toString('base64url');

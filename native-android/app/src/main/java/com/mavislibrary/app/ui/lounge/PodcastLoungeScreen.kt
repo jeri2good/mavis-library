@@ -58,6 +58,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val identity = if (owner == true) "owner" else accountId
     val api = remember(identity) { container.podcastApi() }
     val repo = remember(identity) { container.podcastRepository() }
+    val wakingStudio by repo.wakingStudio.collectAsStateWithLifecycle(initialValue = false)
     var draft by remember(initial) { mutableStateOf(initial ?: PodcastDraft()) }
     var style by remember { mutableStateOf(loaded.style) }
     var length by remember { mutableStateOf(loaded.length) }
@@ -134,7 +135,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
         item {
             TextButton(onClick = onBack) { Text("Back to Listen") }
             Text("Podcast Lounge", style = MaterialTheme.typography.headlineLarge)
-            AssistChip(onClick = { refresh++ }, label = { Text(status) })
+            AssistChip(onClick = { refresh++ }, label = { Text(if (wakingStudio) "Waking up the studio…" else status) })
             TextButton(onClick = { active.values.forEach { it.cancel() }; active.clear(); refresh++ }) { Text("Refresh jobs") }
             if (message == "Request access" || message == "Sign in to use Podcast Lounge") Button(onClick = onSettings) { Text(message!!) }
         }

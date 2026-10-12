@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { gutendexBook, openLibrarySearch, makeFixtureEpub, opdsSearchFeed, opdsBookFeed } from '../fixtures/fixtures.mjs';
 const xml = (body, status = 200) => new Response(body, { status, headers: { 'content-type': 'application/atom+xml; charset=UTF-8' } });
 
+const originalFetch = globalThis.fetch;
+for (const name of ['TYPESAFE_API_KEY', 'JEV_MODEL', 'LLM_BASE_URL', 'LLM_REASONING_EFFORT', 'IMAGE_LLM_MODEL', 'IMAGE_QUALITY', 'IMAGE_MODEL']) delete process.env[name];
 const calls = [];
 let routes = [];
 globalThis.fetch = async (url, opts = {}) => {
@@ -233,7 +235,7 @@ await test('paid endpoints stay off without an owner access code', async () => {
   process.env.FISH_AUDIO_API_KEY = 'k'; process.env.LLM_API_KEY = 'k'; process.env.EDENAI_API_KEY = 'k';
   for (const [fn, path] of [[tts, '/api/tts'], [assistant, '/api/assistant'], [rank, '/api/rank']]) {
     const res = await fn(post(path, { text: 'hi', messages: [{ role: 'user', content: 'hi' }], candidates: [{ id: 'a', title: 'A' }] }), ctx('p0'));
-    assert.equal(res.status, 403, path);
+    assert.equal(res.status, 401, path);
   }
   assert.equal(calls.length, 0);
 });
@@ -737,3 +739,5 @@ await test('tech feed: maps Hacker News + papers, sorts by points, refuses javas
 });
 
 console.log(`\n${passed} endpoint checks passed.`);
+globalThis.fetch = originalFetch;
+await import('./subs.test.mjs');

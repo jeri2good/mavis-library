@@ -138,7 +138,7 @@ try {
 
   await test('AI discussion questions need the owner code, use only the text so far, and post as Mavis', async () => {
     const body = { action: 'questions', gid, title: 'Pride and Prejudice', chapter: 'Chapter 3', text: 'Text so far. '.repeat(30), percent: 0.05 };
-    assert.equal((await g(ben.token, body)).status, 401);
+    assert.equal((await g(ben.token, body)).status, 403);
     const r = await g(ben.token, body, { 'x-mavis-access': 'right-code' });
     assert.equal(r.status, 200);
     assert.deepEqual(r.body.post.questions, ['Why does the keeper climb at dusk?', 'What would you have done with the letter?']);

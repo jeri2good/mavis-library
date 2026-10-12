@@ -5,7 +5,8 @@
 // Body: { profile: { genres: [..], recent: [..] }, candidates: [{ id, title, authors, subjects }] }
 // Reply: { scores: { [id]: 0..1 }, model }
 
-import { json, fail, onlyPost, requireOwner, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { json, fail, onlyPost, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { requireAccess, chargeAccess } from '../lib/access.mjs';
 import { withCors } from '../lib/cors.mjs';
 
 const EDEN_URL = 'https://api.edenai.run/v3/alpha/decisions';
@@ -45,8 +46,10 @@ export function readScores(data, candidates) {
 }
 
 const handler = async (req, context) => {
-  const bad = onlyPost(req) || await requireOwner(req);
+  const bad = onlyPost(req);
   if (bad) return bad;
+  const access = await requireAccess(req, { feature: 'rank' });
+  if (access instanceof Response) return access;
   const jev = jevProvider();
   if (!jev) return fail(503, 'not_configured', 'Jev ranking is not set up. Add TYPESAFE_API_KEY (or EDENAI_API_KEY) in Netlify.');
   if (softLimit(`rank:${clientKey(req, context)}`, { limit: 20 })) return fail(429, 'rate_limited', 'Too many ranking requests.');
@@ -54,6 +57,8 @@ const handler = async (req, context) => {
   try { body = await readJson(req, 60_000); } catch (err) { return fail(err.status || 400, 'bad_request', err.message); }
   const candidates = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 24).filter((c) => c && c.id && c.title);
   if (!candidates.length) return fail(400, 'bad_request', 'No candidates to rank.');
+  const limited = await chargeAccess(access);
+  if (limited) return limited;
   try {
     const r = await fetch(jev.url, {
       method: 'POST',

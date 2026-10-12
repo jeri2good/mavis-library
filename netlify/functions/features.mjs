@@ -24,6 +24,8 @@ const handler = async (req) => {
     jev: jevProvider()?.name || false,
     googleBooksKey: Boolean(env('GOOGLE_BOOKS_API_KEY')),
     accounts: accountsEnabled(),
+    subscriptions: true,
+    podcast: Boolean(env('STUDIO_URL')),
     pictures: Boolean(imageConfig()),
     motion: Boolean(motionConfig()),
   }, { cache: checking ? 'no-store' : 'public, max-age=60' });

@@ -22,7 +22,8 @@
 // are new keys), so concurrent use never overwrites someone else's change.
 
 import { randomBytes } from 'node:crypto';
-import { json, fail, onlyPost, readJson, softLimit, clientKey, clean, requireOwner } from '../lib/shared.mjs';
+import { json, fail, onlyPost, readJson, softLimit, clientKey, clean } from '../lib/shared.mjs';
+import { requireAccess, chargeAccess } from '../lib/access.mjs';
 import { withCors } from '../lib/cors.mjs';
 import { kv, requireUser } from '../lib/accounts.mjs';
 import { complete, KIDS_RULES } from '../lib/llm.mjs';
@@ -270,12 +271,14 @@ const actions = {
   },
 
   async questions(s, user, b, req) {
-    const bad = await requireOwner(req);
-    if (bad) return bad;
+    const access = await requireAccess(req, { feature: 'study' });
+    if (access instanceof Response) return access;
     const m = await membership(s, b.gid, user.id);
     if (m.response) return m.response;
     const text = String(b.text || '').slice(0, 14_000);
     if (text.length < 200) return fail(400, 'bad_request', 'Read a little further first — there isn’t enough text for questions yet.');
+    const limited = await chargeAccess(access);
+    if (limited) return limited;
     const kids = req.headers.get('x-mavis-kids') === '1';
     const out = await complete({
       system: `You write discussion questions for a ${m.meta.kind === 'bible' ? 'Bible study group' : 'book club'}. Use ONLY the text given, which ends where the reader stopped: never mention or hint at anything later, and do not use outside knowledge of the book. Return JSON only: {"questions":["…"]} with 5 open-ended questions (each under 30 words) that start real conversation: about characters' choices, themes, the group's own reactions, and connections to life${m.meta.kind === 'bible' ? ', and what the passage teaches; respect that members may hold different Christian views' : ''}. No yes/no questions.${kids ? `\n\n${KIDS_RULES}` : ''}`,

@@ -6,7 +6,8 @@
 //   TTS_PROVIDER=google GOOGLE_TTS_API_KEY, GOOGLE_TTS_VOICE (optional, e.g. en-US-Neural2-D)
 // Requires the owner access code (see shared.requireOwner).
 
-import { fail, onlyPost, requireOwner, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { fail, onlyPost, readJson, softLimit, clientKey, env } from '../lib/shared.mjs';
+import { requireAccess, chargeAccess } from '../lib/access.mjs';
 import { withCors } from '../lib/cors.mjs';
 
 export const MAX_CHARS = 1800;
@@ -61,8 +62,10 @@ async function google(text, speed) {
 }
 
 const handler = async (req, context) => {
-  const bad = onlyPost(req) || await requireOwner(req);
+  const bad = onlyPost(req);
   if (bad) return bad;
+  const access = await requireAccess(req, { feature: 'tts' });
+  if (access instanceof Response) return access;
   const provider = ttsProvider();
   if (!provider) return fail(503, 'not_configured', 'No cloud voice is set up. Add a Fish Audio or Google Text-to-Speech key in Netlify.');
   if (softLimit(`tts:${clientKey(req, context)}`, { limit: 90 })) return fail(429, 'rate_limited', 'Too many voice requests. Wait a minute.');
@@ -72,6 +75,8 @@ const handler = async (req, context) => {
   const speed = Math.min(2, Math.max(0.5, Number(body.speed) || 1));
   if (!text) return fail(400, 'bad_request', 'Nothing to read.');
   if (text.length > MAX_CHARS) return fail(413, 'too_long', `Send at most ${MAX_CHARS} characters at a time.`);
+  const limited = await chargeAccess(access);
+  if (limited) return limited;
   try {
     const audio = provider === 'fish' ? await fish(text, speed, body.voice) : await google(text, speed);
     if (!audio.length) return fail(502, 'empty_audio', 'The voice service returned no audio.');

@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.map
 /** Non-secret app settings (look). Secrets live in [com.mavislibrary.app.data.secure.SecureStore]. */
 class SettingsStore(private val store: DataStore<Preferences>) {
     val lookChoice: Flow<LookChoice> = store.data.map { LookChoice.parse(it[LOOK]) }
+    val matchRoomLight: Flow<Boolean> = store.data.map { it[MATCH_ROOM_LIGHT] ?: false }
+    suspend fun setMatchRoomLight(enabled: Boolean) = store.edit { it[MATCH_ROOM_LIGHT] = enabled }
     val playback: Flow<PlaybackSettings> = store.data.map { prefs ->
         PlaybackSettings(
             defaultSleepMinutes = prefs[DEFAULT_SLEEP] ?: 30,
@@ -38,6 +40,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
 
     private companion object {
         val LOOK = stringPreferencesKey("look")
+        val MATCH_ROOM_LIGHT = booleanPreferencesKey("match_room_light")
         val DEFAULT_SLEEP = intPreferencesKey("audio_default_sleep_minutes")
         val DRIVE_MODE = booleanPreferencesKey("drive_mode_enabled")
         val VOLUME_PAGE_TURNS = booleanPreferencesKey("reader_volume_page_turns")

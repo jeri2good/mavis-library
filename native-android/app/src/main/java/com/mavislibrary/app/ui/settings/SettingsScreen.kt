@@ -68,10 +68,12 @@ const val PRIVACY_URL = "https://mavis-library.netlify.app/privacy"
 @Composable
 fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = LookChoice.Automatic)
+    val matchRoomLight by container.settings.matchRoomLight.collectAsStateWithLifecycle(initialValue = false)
+    val lightAvailable = remember(context.applicationContext) { com.mavislibrary.app.ui.theme.LightObserver(context.applicationContext).available }
     val hasCode by container.secureStore.has(Secret.OWNER_ACCESS_CODE).collectAsStateWithLifecycle(initialValue = false)
     val playback by container.settings.playback.collectAsStateWithLifecycle(initialValue = com.mavislibrary.app.data.prefs.PlaybackSettings())
-    val context = LocalContext.current
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).testTag("settings"),
@@ -100,6 +102,10 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
                     onSelect = { scope.launch { container.settings.setLook(LookChoice.Fixed(look)) } },
                 )
             }
+            SettingSwitch("Match the room light", "Off by default. Uses the light sensor while the app is open: your Look in daylight, Midnight in dim light. Doesn't change screen brightness.", matchRoomLight) {
+                scope.launch { container.settings.setMatchRoomLight(it) }
+            }
+            if (!lightAvailable) Text("This device has no light sensor; your chosen Look still applies.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = onOpenShowcase, modifier = Modifier.testTag("open_showcase")) { Text("See all themes, including Kids") }
         }
 

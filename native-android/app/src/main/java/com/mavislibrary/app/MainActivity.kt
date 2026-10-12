@@ -10,6 +10,12 @@ import androidx.activity.ComponentActivity
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
+import com.mavislibrary.app.ui.theme.LightClassifier
+import com.mavislibrary.app.ui.theme.LightLevel
+import com.mavislibrary.app.ui.theme.LightObserver
+import com.mavislibrary.app.ui.theme.lightLook
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,6 +49,8 @@ class MainActivity : ComponentActivity() {
     private var readerKeys: com.mavislibrary.app.web.ReaderMediaSession? = null
     private var driveMonitor: DriveModeMonitor? = null
     private var driveModeActive by mutableStateOf(false)
+    private val lightObserver by lazy { LightObserver(applicationContext) }
+    private var lightLevel by mutableStateOf<LightLevel?>(null)
     private var kidsModeEnabled = true
     private var kidsModeLoaded = false
     private var pendingDebugDrive = false
@@ -80,6 +88,18 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = null)
+            val matchRoomLight by container.settings.matchRoomLight.collectAsStateWithLifecycle(initialValue = false)
+            LaunchedEffect(matchRoomLight) {
+                lightLevel = null
+                if (matchRoomLight && lightObserver.available) {
+                    repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        val classifier = LightClassifier()
+                        try {
+                            lightObserver.readings().collect { lightLevel = classifier.classify(it) }
+                        } finally { lightLevel = null }
+                    }
+                }
+            }
             val online by container.connectivity.online.collectAsStateWithLifecycle()
             val playbackSettings by container.settings.playback.collectAsStateWithLifecycle(initialValue = com.mavislibrary.app.data.prefs.PlaybackSettings())
             val kidsPrefs = remember { kidsPrefs() }
@@ -90,7 +110,7 @@ class MainActivity : ComponentActivity() {
                     value = LocalTime.now()
                 }
             }
-            val resolved = choice?.resolve(now)
+            val resolved = choice?.resolve(now)?.let { lightLook(it, kidsState?.enabled == true, matchRoomLight, lightObserver.available, lightLevel) }
             if (resolved == null) {
                 Box(Modifier.fillMaxSize().background(colorResource(R.color.window_background)))
                 return@setContent

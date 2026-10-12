@@ -166,3 +166,80 @@ def test_notebook_conversion_is_real_mp3(tmp_path):
     asyncio.run(notebook(tmp_path, WaveClient()).generate("Title", "Source", "brief", "short", "en", output))
     assert output.read_bytes().startswith(b"ID3")
     assert asyncio.run(engines.duration_seconds(output)) == 1
+
+
+def test_edge_endpoint_migration(monkeypatch):
+    monkeypatch.setattr(engines.edge_communicate, "WSS_URL", "wss://speech.platform.bing.com/legacy")
+    engines.configure_edge_endpoint()
+    assert engines.edge_communicate.WSS_URL.startswith("wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1?")
+    monkeypatch.setattr(engines.edge_communicate, "WSS_URL", "wss://future.example.com/current")
+    engines.configure_edge_endpoint()
+    assert engines.edge_communicate.WSS_URL == "wss://future.example.com/current"
+
+
+def test_tts_two_voices_pauses_and_metadata(tmp_path, monkeypatch):
+    import math
+    import struct
+    import wave
+    voices = []
+    class Speech:
+        def __init__(self, text, voice):
+            voices.append(voice)
+
+        async def save(self, path):
+            with wave.open(path, "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(16000)
+                audio.writeframes(b"".join(struct.pack("<h", round(5000 * math.sin(2 * math.pi * 440 * index / 16000))) for index in range(16000)))
+    monkeypatch.setattr(engines.edge_tts, "Communicate", Speech)
+    output = tmp_path / "two-hosts.mp3"
+    asyncio.run(engines.render_audio(SCRIPT, output, "Test Title"))
+    assert voices == ["en-US-AndrewNeural", "en-US-AriaNeural"]
+    probe = asyncio.run(engines.run_process("ffprobe", "-v", "error", "-show_format", "-of", "json", str(output)))
+    result = json.loads(probe)["format"]
+    assert 2.4 < float(result["duration"]) < 2.6
+    assert result["tags"]["title"] == "Test Title"
+    assert result["tags"]["artist"] == "Mavis Podcast Lounge"
+
+
+def test_notebook_network_failure_not_mislabeled_auth(tmp_path):
+    client = FakeNotebookClient()
+    client.notebooks.create.side_effect = ConnectionError("network unavailable")
+    with pytest.raises(ConnectionError):
+        asyncio.run(notebook(tmp_path, client).generate("T", "Source", "brief", "short", "en", tmp_path / "a.mp3"))
+
+
+def test_notebook_timeout_cleanup(tmp_path):
+    client = FakeNotebookClient()
+    client.artifacts.wait_for_completion.side_effect = TimeoutError()
+    with pytest.raises(TimeoutError):
+        asyncio.run(notebook(tmp_path, client).generate("T", "Source", "brief", "short", "en", tmp_path / "a.mp3"))
+    client.notebooks.delete.assert_awaited_once()
+
+
+def test_llm_http_fallback(monkeypatch):
+    import httpx
+    monkeypatch.setenv("TYPESAFE_CHAT_URL", "https://example.com/chat/completions")
+    calls = []
+    class Client:
+        def __init__(self, **kwargs):
+            assert kwargs["trust_env"] is False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, headers, json):
+            calls.append(url)
+            if "example.com" in url:
+                return httpx.Response(404, request=httpx.Request("POST", url))
+            return httpx.Response(200, json={"choices": [{"message": {"content": "valid completion"}}]}, request=httpx.Request("POST", url))
+    monkeypatch.setattr(engines.httpx, "AsyncClient", Client)
+    llm = engines.LLM()
+    llm.key = "fake-test-key"
+    assert asyncio.run(llm.complete("system", "prompt")) == "valid completion"
+    assert len(calls) == 2 and llm.used == "Hermes local gateway (mavis-gravity)"
+    assert llm.typesafe_unavailable

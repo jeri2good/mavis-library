@@ -208,6 +208,7 @@ def test_restart_recovery(tmp_path):
         job = await manager.enqueue(PodcastRequest(**BODY))
         manager.update(job["id"], "sourcing", progress=10)
         manager.audio_path(job["id"], True).write_bytes(b"partial")
+        manager.audio_path(job["id"]).write_bytes(b"renamed before crash")
         manager.db.close()
         restarted = make_manager(tmp_path)
         await restarted.start()
@@ -216,6 +217,7 @@ def test_restart_recovery(tmp_path):
             assert recovered["status"] == "failed" and recovered["error"] == "restarted"
             assert "_request" not in recovered
             assert not restarted.audio_path(job["id"], True).exists()
+            assert not restarted.audio_path(job["id"]).exists()
             with pytest.raises(ValueError):
                 restarted.update(job["id"], "ready")
         finally:
@@ -278,6 +280,28 @@ def test_delete_active_keeps_workers_alive(tmp_path):
             assert all(not worker.done() for worker in manager.workers)
         finally:
             await manager.close()
+    asyncio.run(run())
+
+
+def test_unknown_exception_never_exposes_secrets(tmp_path):
+    gatherer = AsyncMock(side_effect=RuntimeError("private-cookie-and-source-must-not-leak"))
+    with TestClient(make_app(tmp_path, gatherer=gatherer)) as client:
+        job_id = client.post("/v1/podcasts", json=BODY, headers=HEADERS).json()["id"]
+        wait(client)
+        job = client.get("/v1/podcasts/" + job_id, headers=HEADERS).json()
+        assert job["status"] == "failed"
+        assert "private-cookie" not in job["error"]
+
+
+def test_parallel_submissions_keep_cap(tmp_path):
+    async def run():
+        manager = make_manager(tmp_path)
+        try:
+            results = await asyncio.gather(*(manager.enqueue(PodcastRequest(**BODY)) for _ in range(60)), return_exceptions=True)
+            assert len(manager.all()) == 50
+            assert sum(isinstance(result, HTTPException) for result in results) == 10
+        finally:
+            manager.db.close()
     asyncio.run(run())
 
 

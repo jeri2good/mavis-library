@@ -21,7 +21,7 @@ def test_url_allowed(url):
     assert validate_url(url)
 
 
-@pytest.mark.parametrize("addresses", [[], ["127.0.0.1"], ["10.0.0.1"], ["172.16.1.1"], ["192.168.1.1"], ["169.254.169.254"], ["100.64.1.1"], ["::1"], ["fc00::1"], ["fe80::1"], ["::ffff:127.0.0.1"], ["8.8.8.8", "192.168.1.2"], ["0.0.0.0"], ["224.0.0.1"], ["2001:db8::1"]])
+@pytest.mark.parametrize("addresses", [[], ["127.0.0.1"], ["10.0.0.1"], ["172.16.1.1"], ["192.168.1.1"], ["169.254.169.254"], ["100.64.1.1"], ["::1"], ["fc00::1"], ["fe80::1"], ["::ffff:127.0.0.1"], ["::ffff:100.64.1.1"], ["2002:7f00:1::"], ["64:ff9b::7f00:1"], ["8.8.8.8", "192.168.1.2"], ["0.0.0.0"], ["224.0.0.1"], ["2001:db8::1"]])
 def test_private_dns_rejected(addresses):
     with pytest.raises(ValueError):
         public_addresses(addresses)
@@ -170,3 +170,27 @@ def test_app_text_used_directly():
     from service import PodcastRequest
     result = asyncio.run(sources.gather(PodcastRequest(kind="chapter", title="Chapter", text="  Source body  ")))
     assert result.text == "Source body" and result.sources == [{"title": "Chapter"}]
+
+
+def test_compressed_source_refused(monkeypatch):
+    response = FakeResponse()
+    response.headers["Content-Encoding"] = "gzip"
+    fake_fetch(monkeypatch, [response])
+    with pytest.raises(ValueError, match="unsupported content encoding"):
+        asyncio.run(sources.fetch_url("https://example.com"))
+
+
+def test_article_url_not_overridden_by_text(monkeypatch):
+    from service import PodcastRequest
+    fetch = AsyncMock(return_value=("<article><p>Actual article body</p></article>", "https://example.com/article"))
+    monkeypatch.setattr(sources, "fetch_url", fetch)
+    result = asyncio.run(sources.gather(PodcastRequest(kind="article", title="T", url="https://example.com/article", text="Ignore this text", gutenbergId="11")))
+    assert result.text == "Actual article body"
+    fetch.assert_awaited_once()
+
+
+def test_gutenberg_mirror_fallback(monkeypatch):
+    fetch = AsyncMock(side_effect=[ValueError("unavailable")] * 4 + [("Story", "https://gutenberg.mirrorservice.org/1/11/11-0.txt")])
+    monkeypatch.setattr(sources, "fetch_url", fetch)
+    assert asyncio.run(sources.gutenberg("11"))[0] == "Story"
+    assert fetch.await_count == 5

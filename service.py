@@ -19,7 +19,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from engines import LLM, LocalEngine, NotebookAuthError, NotebookEngine, NotebookQuotaError, duration_seconds
+from engines import LocalEngine, NotebookAuthError, NotebookEngine, NotebookQuotaError, duration_seconds
 from sources import gather, validate_url
 
 ROOT = Path(__file__).resolve().parent
@@ -89,7 +89,7 @@ class SecurityMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
-        ip = scope.get("client", ("unknown",))[0]
+        ip = (scope.get("client") or ("unknown",))[0]
         now = time.monotonic()
         if ip not in self.clients and len(self.clients) >= 4096:
             self.clients = defaultdict(deque, {key: hits for key, hits in self.clients.items() if hits and hits[-1] > now - 60})
@@ -143,6 +143,7 @@ class JobManager:
         self.queue = asyncio.Queue()
         self.workers, self.active = [], {}
         self.lock_file = None
+        self.lifecycle_lock = asyncio.Lock()
 
     def all(self):
         return sorted((json.loads(row[0]) for row in self.db.execute("SELECT record FROM jobs")), key=lambda job: (job["createdAt"], job["id"]), reverse=True)
@@ -182,6 +183,7 @@ class JobManager:
             if job["status"] not in TERMINAL:
                 self.update(job["id"], "failed", error="restarted", stage="Interrupted by service restart")
                 self.audio_path(job["id"], temporary=True).unlink(missing_ok=True)
+                self.audio_path(job["id"]).unlink(missing_ok=True)
         await self.prune()
         self.workers = [asyncio.create_task(self.worker()) for _ in range(2)]
         self.cleaner = asyncio.create_task(self.cleanup_loop())
@@ -198,6 +200,10 @@ class JobManager:
         return self.data_dir / (job_id + (".mp3.tmp" if temporary else ".mp3"))
 
     async def delete(self, job_id):
+        async with self.lifecycle_lock:
+            await self._delete(job_id)
+
+    async def _delete(self, job_id):
         self.get(job_id)
         task = self.active.get(job_id)
         if task:
@@ -209,41 +215,47 @@ class JobManager:
         self.audio_path(job_id, temporary=True).unlink(missing_ok=True)
 
     async def prune(self, now=None):
+        async with self.lifecycle_lock:
+            await self._prune(now)
+
+    async def _prune(self, now=None):
         cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=30)
         for job in self.all():
             if datetime.fromisoformat(job["createdAt"]) < cutoff:
-                await self.delete(job["id"])
+                await self._delete(job["id"])
         jobs = self.all()
         for job in reversed(jobs):
             if len(jobs) <= 50:
                 break
             if job["status"] in TERMINAL:
-                await self.delete(job["id"])
+                await self._delete(job["id"])
                 jobs.remove(job)
 
     async def enqueue(self, request):
         engine = request.engine
         if engine == "auto":
             engine = "notebooklm" if await self.notebook.logged_in() else "local"
-        await self.prune()
-        jobs = self.all()
-        if len(jobs) >= 50:
-            victim = next((job for job in reversed(jobs) if job["status"] in TERMINAL), None)
-            if not victim:
-                raise HTTPException(429, "Podcast queue is full (50 jobs); wait or delete a job")
-            await self.delete(victim["id"])
-        job_id = str(uuid.uuid4())
-        job = {"id": job_id, "status": "queued", "progress": 0, "stage": "Queued", "engine": engine, "title": request.title, "kind": request.kind, "style": request.style, "createdAt": timestamp(), "sources": [], "_request": request.model_dump()}
-        self.save(job)
-        self.queue.put_nowait(job_id)
-        return job
+        async with self.lifecycle_lock:
+            await self._prune()
+            jobs = self.all()
+            if len(jobs) >= 50:
+                victim = next((job for job in reversed(jobs) if job["status"] in TERMINAL), None)
+                if not victim:
+                    raise HTTPException(429, "Podcast queue is full (50 jobs); wait or delete a job")
+                await self._delete(victim["id"])
+            job_id = str(uuid.uuid4())
+            job = {"id": job_id, "status": "queued", "progress": 0, "stage": "Queued", "engine": engine, "title": request.title, "kind": request.kind, "style": request.style, "createdAt": timestamp(), "sources": [], "_request": request.model_dump()}
+            self.save(job)
+            self.queue.put_nowait(job_id)
+            return job
 
     async def worker(self):
         while True:
             job_id = await self.queue.get()
             try:
                 try:
-                    self.get(job_id)
+                    if self.get(job_id)["status"] != "queued":
+                        continue
                 except HTTPException:
                     continue
                 task = asyncio.create_task(self.generate(job_id))
@@ -289,7 +301,14 @@ class JobManager:
             if not output.is_file() or output.stat().st_size == 0:
                 raise RuntimeError("Engine produced no audio")
             duration = await self.probe(output)
+            with output.open("rb") as stream:
+                os.fsync(stream.fileno())
             output.replace(self.audio_path(job_id))
+            directory_fd = os.open(self.data_dir, os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
             extra = {"durationSec": duration}
             if transcript is not None:
                 extra["transcript"] = transcript
@@ -301,8 +320,10 @@ class JobManager:
                 error = "NotebookLM needs a fresh sign-in"
             elif isinstance(exc, NotebookQuotaError):
                 error = "NotebookLM quota or rate limit reached"
-            elif isinstance(exc, (ValueError, RuntimeError)):
-                error = str(exc)[:300]
+            elif isinstance(exc, (ValueError, RuntimeError)) and str(exc) in {
+                "Only public HTTPS hostnames are allowed", "URL resolves to a non-public address", "Redirect without location", "Too many redirects", "Source exceeds 3 MB", "Source uses unsupported content encoding", "Could not retrieve Gutenberg book", "Source contains no readable text", "LLM returned invalid script JSON after retry", "ffmpeg is required to render audio", "Edge TTS synthesis failed", "Audio processing failed", "Engine produced no audio", "NotebookLM audio generation failed", "No LLM endpoint available; check TypeSafe chat support or HERMES_LLM_BASE_URL",
+            }:
+                error = str(exc)
             else:
                 error = "Generation failed (" + type(exc).__name__ + "); check source or engine connectivity"
             self.update(job_id, "failed", error=error, stage="Failed")
@@ -344,7 +365,7 @@ def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=ga
         manager = request.app.state.manager
         logged_in = await manager.notebook.logged_in()
         available = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
-        return {"ok": True, "engines": {"notebooklm": {"available": True, "loggedIn": logged_in, "note": "Signed in (verified with NotebookLM)" if logged_in else "NotebookLM needs a fresh sign-in"}, "local": {"available": available, "note": "Two-host Edge TTS; TypeSafe chat if supported, otherwise Hermes gateway. Requires network access." if available else "ffmpeg and ffprobe are required"}}}
+        return {"ok": True, "engines": {"notebooklm": {"available": True, "loggedIn": logged_in, "note": "Signed in (verified with NotebookLM)" if logged_in else "NotebookLM needs a fresh sign-in"}, "local": {"available": available, "note": "Two-host Edge TTS with current-host compatibility; dialogue via Hermes gateway. TypeSafe System One cannot generate text. Requires network access." if available else "ffmpeg and ffprobe are required"}}}
 
     @app.post("/v1/podcasts", status_code=202)
     async def create(body: PodcastRequest, request: Request):

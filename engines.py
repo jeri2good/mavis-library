@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Protocol
 
 import edge_tts
+from edge_tts import communicate as edge_communicate
+from edge_tts.constants import TRUSTED_CLIENT_TOKEN
 import httpx
 from dotenv import dotenv_values
 from notebooklm import AudioFormat, AudioLength, NotebookLMClient
@@ -93,7 +95,7 @@ class NotebookEngine:
             return self.verified
 
     async def generate(self, title, text, style, length, language, output):
-        if not await self.logged_in():
+        if not self.credentials_exist() or self.expired:
             raise NotebookAuthError("NotebookLM needs a fresh sign-in")
         try:
             async with self.client_factory() as client:
@@ -151,9 +153,6 @@ class LLM:
         self.model = os.getenv("TYPESAFE_MODEL", "jev-latest")
         self.used = None
         self.typesafe_unavailable = False
-
-    def available(self):
-        return bool(self.key or os.getenv("HERMES_LLM_BASE_URL") or shutil.which("ffmpeg"))
 
     async def complete(self, system, prompt):
         endpoints = []
@@ -217,7 +216,13 @@ async def write_script(llm, title, text, style, length, no_sources=False):
                 raise ValueError("LLM returned invalid script JSON after retry")
 
 
+def configure_edge_endpoint():
+    if edge_communicate.WSS_URL.startswith("wss://speech.platform.bing.com/"):
+        edge_communicate.WSS_URL = "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1?Ocp-Apim-Subscription-Key=" + TRUSTED_CLIENT_TOKEN
+
+
 async def render_audio(lines, output, title):
+    configure_edge_endpoint()
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg is required to render audio")
     with tempfile.TemporaryDirectory() as directory:

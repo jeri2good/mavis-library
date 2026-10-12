@@ -40,8 +40,19 @@ def validate_url(url):
 
 
 def public_addresses(addresses):
-    if not addresses or any(not ipaddress.ip_address(ip).is_global or ipaddress.ip_address(ip).is_multicast for ip in addresses):
+    if not addresses:
         raise ValueError("URL resolves to a non-public address")
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if isinstance(ip, ipaddress.IPv6Address):
+            if ip.teredo:
+                raise ValueError("URL resolves to a non-public address")
+            if ip in ipaddress.ip_network("64:ff9b::/96"):
+                ip = ipaddress.IPv4Address(int(ip) & 0xffffffff)
+            else:
+                ip = ip.ipv4_mapped or ip.sixtofour or ip
+        if not ip.is_global or ip.is_multicast or ip.is_reserved:
+            raise ValueError("URL resolves to a non-public address")
     return addresses
 
 
@@ -58,7 +69,7 @@ class PublicResolver(aiohttp.abc.AbstractResolver):
 
 async def fetch_url(url):
     connector = aiohttp.TCPConnector(resolver=PublicResolver(), use_dns_cache=False, force_close=True)
-    async with asyncio.timeout(15), aiohttp.ClientSession(connector=connector, cookie_jar=aiohttp.DummyCookieJar(), timeout=aiohttp.ClientTimeout(total=15), trust_env=False, headers={"User-Agent": UA}) as session:
+    async with asyncio.timeout(15), aiohttp.ClientSession(connector=connector, cookie_jar=aiohttp.DummyCookieJar(), timeout=aiohttp.ClientTimeout(total=15), trust_env=False, auto_decompress=False, headers={"User-Agent": UA, "Accept-Encoding": "identity"}) as session:
         for redirects in range(4):
             validate_url(url)
             async with session.get(url, allow_redirects=False) as response:
@@ -72,6 +83,8 @@ async def fetch_url(url):
                         raise ValueError("Too many redirects")
                     continue
                 response.raise_for_status()
+                if response.headers.get("Content-Encoding", "identity").lower() != "identity":
+                    raise ValueError("Source uses unsupported content encoding")
                 if response.content_length and response.content_length > MAX_BYTES:
                     raise ValueError("Source exceeds 3 MB")
                 chunks = bytearray()
@@ -163,7 +176,7 @@ async def gutenberg(book_id):
         raise ValueError("Invalid Gutenberg ID")
     digits = "/".join(book_id[:-1]) if len(book_id) > 1 else "0"
     mirror_path = digits + "/" + book_id
-    urls = [f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt", f"https://www.gutenberg.org/files/{book_id}/{book_id}-0.txt", f"https://www.gutenberg.org/files/{book_id}/{book_id}.txt", f"https://inferno.pglaf.org/{mirror_path}/{book_id}-0.txt", f"https://inferno.pglaf.org/{mirror_path}/old/{book_id}-0.txt"]
+    urls = [f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt", f"https://www.gutenberg.org/files/{book_id}/{book_id}-0.txt", f"https://www.gutenberg.org/files/{book_id}/{book_id}.txt", f"https://gutenberg.pglaf.org/{mirror_path}/{book_id}-0.txt", f"https://gutenberg.mirrorservice.org/{mirror_path}/{book_id}-0.txt"]
     for url in urls:
         try:
             text, final = await fetch_url(url)
@@ -232,9 +245,9 @@ async def gather(request):
     if request.kind == "topic":
         found = await search_topic(request.query)
         return Gathered("\n\n".join(f"SOURCE: {source['title']}\n{text}" for source, text in found) or "Topic: " + request.query, [source for source, _ in found], not found)
-    if request.text:
+    if request.text and request.kind != "article":
         text, sources = request.text, [{"title": request.title}]
-    elif request.gutenbergId:
+    elif request.gutenbergId and request.kind == "book":
         text, url = await gutenberg(request.gutenbergId)
         sources = [{"title": request.title, "url": url}]
     else:

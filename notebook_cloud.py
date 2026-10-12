@@ -70,7 +70,7 @@ def private_write(path, text):
 
 
 class NotebookCloud:
-    def __init__(self, auth_dir, secret, client_factory=None, clock=time.time, daily_max=6, owner_uid='owner', owner_unlimited=False, checkpoint=None):
+    def __init__(self, auth_dir, secret, client_factory=None, clock=time.time, daily_max=12, owner_uid='owner', owner_unlimited=False, checkpoint=None):
         self.directory = Path(auth_dir)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.directory, 0o700)

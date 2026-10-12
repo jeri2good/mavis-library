@@ -90,7 +90,7 @@ class NotebookLM:
         self.private = tempfile.TemporaryDirectory()
         os.chmod(self.private.name, 0o700)
         os.environ['NOTEBOOKLM_HOME'] = self.private.name
-        self.engine = NotebookCloud('/auth', os.getenv('STORAGE_STATE_JSON', ''), daily_max=os.getenv('NOTEBOOKLM_DAILY_MAX', '6'), owner_uid=os.getenv('NOTEBOOKLM_OWNER_UID', 'owner'), owner_unlimited=os.getenv('NOTEBOOKLM_OWNER_UNLIMITED', '0') == '1', checkpoint=notebook_auth.commit.aio)
+        self.engine = NotebookCloud('/auth', os.getenv('STORAGE_STATE_JSON', ''), daily_max=os.getenv('NOTEBOOKLM_DAILY_MAX', '12'), owner_uid=os.getenv('NOTEBOOKLM_OWNER_UID', 'owner'), owner_unlimited=os.getenv('NOTEBOOKLM_OWNER_UNLIMITED', '0') == '1', checkpoint=notebook_auth.commit.aio)
 
     @modal.exit()
     def exit(self):

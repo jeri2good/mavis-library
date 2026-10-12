@@ -139,15 +139,15 @@ def test_source_cap_separate_texts(setup):
 
 def test_daily_limit_global_restart_owner_opt_in_and_utc_reset(setup):
     engine, clients, now, _, _, _ = setup
-    for i in range(6):
+    for i in range(12):
         assert asyncio.run(generate(setup, uid='user-' + str(i)))['ok']
     assert asyncio.run(generate(setup, uid='owner')) == rejected('cap')
-    assert len(clients) == 6
+    assert len(clients) == 12
     engine.owner_unlimited = True
     assert asyncio.run(generate(setup, uid='owner'))['ok']
     assert asyncio.run(generate(setup, uid='subscriber')) == rejected('cap')
     restarted = NotebookCloud(engine.directory, SECRET, engine.client_factory, clock=lambda: now[0])
-    assert restarted.read_policy()['used'] == 7
+    assert restarted.read_policy()['used'] == 13
     now[0] += 86400
     assert asyncio.run(generate(setup))['ok']
     assert engine.read_policy()['used'] == 1

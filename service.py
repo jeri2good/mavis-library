@@ -15,12 +15,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from starlette.datastructures import QueryParams
+from starlette.datastructures import MutableHeaders, QueryParams
+from starlette.middleware.cors import CORSMiddleware
 
 from engines import LocalEngine, NotebookAuthError, NotebookEngine, NotebookQuotaError, duration_seconds
 from sources import gather, validate_url
@@ -97,8 +99,8 @@ def valid_uid(uid):
     return isinstance(uid, str) and (uid == "owner" or re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", uid) is not None)
 
 
-def uid_hash(uid):
-    return hashlib.sha256(uid.encode("utf-8")).hexdigest()[:8]
+def uid_hash(uid, length=8):
+    return hashlib.sha256(uid.encode("utf-8")).hexdigest()[:length]
 
 
 def verify_audio(secret, job_id, exp, uid, sig, now_milliseconds=None):
@@ -113,9 +115,16 @@ def verify_audio(secret, job_id, exp, uid, sig, now_milliseconds=None):
 
 
 class SecurityMiddleware:
-    def __init__(self, app, token, shared_secret, rate_limit=120, path_prefix="/studio"):
+    def __init__(self, app, token, shared_secret, rate_limit=120, path_prefix="/studio", audio_origins=()):
         self.app, self.token, self.shared_secret, self.rate_limit = app, token, shared_secret, rate_limit
         self.path_prefix = path_prefix.rstrip("/")
+        for origin in audio_origins:
+            parsed = urlsplit(origin)
+            if (parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username is not None
+                    or parsed.password is not None or parsed.path or parsed.query or parsed.fragment
+                    or re.search(r"[\s\\\x00-\x1f\x7f*]", origin)):
+                raise RuntimeError("STUDIO_AUDIO_ORIGINS requires exact HTTP(S) origins without paths or credentials")
+        self.audio_cors = CORSMiddleware(app, allow_origins=list(audio_origins), allow_methods=["GET"], allow_headers=["Range"], expose_headers=["Accept-Ranges", "Content-Length", "Content-Range"], max_age=600) if audio_origins else None
         self.clients = defaultdict(deque)
 
     async def __call__(self, scope, receive, send):
@@ -127,6 +136,7 @@ class SecurityMiddleware:
             scope["path"] = path[len(self.path_prefix):]
             scope["root_path"] = self.path_prefix
         path = scope["path"]
+        audio_match = re.fullmatch(r"/v1/podcasts/([A-Za-z0-9_-]{1,100})/audio", path)
         state = scope.setdefault("state", {})
         headers = defaultdict(list)
         for name, value in scope["headers"]:
@@ -137,6 +147,8 @@ class SecurityMiddleware:
             nonlocal status
             if message["type"] == "http.response.start":
                 status = message["status"]
+                if audio_match:
+                    MutableHeaders(scope=message)["Cache-Control"] = "private, no-store"
             await send(message)
 
         async def dispatch():
@@ -154,7 +166,8 @@ class SecurityMiddleware:
             hits.append(now)
             uid, mode = None, None
             params = QueryParams(scope.get("query_string", b""))
-            audio_match = re.fullmatch(r"/v1/podcasts/([A-Za-z0-9_-]{1,100})/audio", path)
+            if audio_match and self.audio_cors and scope["method"] == "OPTIONS" and headers[b"access-control-request-method"]:
+                return await self.audio_cors(scope, receive, logged_send)
             signed = scope["method"] == "GET" and audio_match and any(key in params for key in ("exp", "uid", "sig"))
             health = path == "/v1/health" and scope["method"] == "GET"
             if signed:
@@ -172,7 +185,7 @@ class SecurityMiddleware:
                 return await JSONResponse({"detail": "Valid studio authorization required"}, 401, headers={"WWW-Authenticate": "Bearer"})(scope, receive, logged_send)
             state.update(uid=uid, auth_mode=mode)
             create = path == "/v1/podcasts" and scope["method"] == "POST"
-            cap = 1024 * 1024 if create else 3 * 1024 * 1024
+            cap = 1_000_000 if create else 3 * 1024 * 1024
             body = bytearray()
             while True:
                 message = await receive()
@@ -183,13 +196,13 @@ class SecurityMiddleware:
                     return await JSONResponse({"detail": "Request body exceeds byte limit"}, 413)(scope, receive, logged_send)
                 if not message.get("more_body", False):
                     break
-            if create and len(body) > 450 * 1024:
+            if create and len(body) > 450_000:
                 try:
                     payload = json.loads(body)
                 except (ValueError, UnicodeError):
                     payload = None
                 if isinstance(payload, dict) and (payload.get("kind") == "chapter" or payload.get("text") is not None):
-                    return await JSONResponse({"detail": "Text request JSON exceeds 450 KiB"}, 413)(scope, receive, logged_send)
+                    return await JSONResponse({"detail": "Text request JSON exceeds 450,000 bytes"}, 413)(scope, receive, logged_send)
             delivered = False
 
             async def replay():
@@ -199,7 +212,8 @@ class SecurityMiddleware:
                     return {"type": "http.request", "body": bytes(body), "more_body": False}
                 return await receive()
 
-            await self.app(scope, replay, logged_send)
+            target = self.audio_cors if audio_match and self.audio_cors else self.app
+            await target(scope, replay, logged_send)
 
         try:
             await dispatch()
@@ -333,7 +347,7 @@ class JobManager:
         if global_count >= self.global_create_limit:
             raise HTTPException(429, "Global create rate limit exceeded; retry in an hour", headers={"Retry-After": "3600"})
         if uid != "owner":
-            count = self.db.execute("SELECT COUNT(*) FROM create_events WHERE uid_hash=? AND created>?", (uid_hash(uid), cutoff)).fetchone()[0]
+            count = self.db.execute("SELECT COUNT(*) FROM create_events WHERE uid_hash=? AND created>?", (uid_hash(uid, 64), cutoff)).fetchone()[0]
             if count >= 6:
                 raise HTTPException(429, "User create rate limit exceeded; retry in an hour", headers={"Retry-After": "3600"})
         if public or uid != "owner":
@@ -361,7 +375,7 @@ class JobManager:
             job = {"id": job_id, "owner_uid": uid, "status": "queued", "progress": 0, "stage": "Queued", "engine": engine, "title": request.title, "kind": request.kind, "style": request.style, "createdAt": timestamp(), "sources": [], "_request": request.model_dump()}
             now = time.time()
             self.db.execute("DELETE FROM create_events WHERE created<=?", (now - 3600,))
-            self.db.execute("INSERT INTO create_events VALUES (?, ?)", (uid_hash(uid), now))
+            self.db.execute("INSERT INTO create_events VALUES (?, ?)", (uid_hash(uid, 64), now))
             self.save(job)
             self.queue.put_nowait(job_id)
             LOG.info(json.dumps({"event": "created", "jobId": job_id, "uidHash": uid_hash(uid)}))
@@ -458,8 +472,9 @@ def public_job(job, transcript=True):
     return {key: value for key, value in job.items() if not key.startswith("_") and key != "owner_uid" and (transcript or key != "transcript")}
 
 
-def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=gather, probe=duration_seconds, rate_limit=120, shared_secret=None, global_create_limit=60, path_prefix="/studio"):
+def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=gather, probe=duration_seconds, rate_limit=120, shared_secret=None, global_create_limit=60, path_prefix="/studio", audio_origins=None):
     data_dir = Path(data_dir or os.getenv("PODCAST_DATA_DIR", str(ROOT / "data")))
+    audio_origins = tuple(origin.strip() for origin in os.getenv("STUDIO_AUDIO_ORIGINS", "").split(",") if origin.strip()) if audio_origins is None else tuple(audio_origins)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -471,8 +486,8 @@ def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=ga
         finally:
             await manager.close()
 
-    app = FastAPI(title="Mavis Podcast Lounge", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-    app.add_middleware(SecurityMiddleware, token=token or load_token(os.getenv("PODCAST_TOKEN_PATH", str(Path.home() / ".secure/podcast-lounge-token"))), shared_secret=shared_secret if shared_secret is not None else load_shared_secret(), rate_limit=rate_limit, path_prefix=path_prefix)
+    app = FastAPI(title="Mavis Podcast Lounge", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
+    app.add_middleware(SecurityMiddleware, token=token or load_token(os.getenv("PODCAST_TOKEN_PATH", str(Path.home() / ".secure/podcast-lounge-token"))), shared_secret=shared_secret if shared_secret is not None else load_shared_secret(), rate_limit=rate_limit, path_prefix=path_prefix, audio_origins=audio_origins)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, exc):

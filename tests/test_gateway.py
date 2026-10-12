@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import service
-from test_service import BODY, HEADERS, TOKEN, FakeLocal, make_app, make_manager, wait
+from test_service import BODY, HEADERS, TOKEN, FakeLocal, FakeNotebook, make_app, make_manager, wait
 
 SECRET = "test-shared-secret-not-for-production-123456789"
 USER_A = "11111111-1111-4111-8111-111111111111"
@@ -72,6 +72,7 @@ def test_ownership_isolation_and_owner_access(tmp_path):
         assert client.portal.call(client.app.state.manager.get, a)["owner_uid"] == USER_A
         assert client.portal.call(client.app.state.manager.get, owner)["owner_uid"] == "owner"
         assert [j["id"] for j in client.get("/v1/podcasts", headers=gateway()).json()["items"]] == [a]
+        assert [j["id"] for j in client.get("/v1/podcasts", headers=gateway(USER_B)).json()["items"]] == [b]
         assert {j["id"] for j in client.get("/v1/podcasts", headers=HEADERS).json()["items"]} == {a, b, owner}
         assert [j["id"] for j in client.get("/v1/podcasts", headers=gateway("owner")).json()["items"]] == [owner]
         for method, suffix in [("GET", ""), ("DELETE", ""), ("GET", "/audio")]:
@@ -154,7 +155,16 @@ def test_signed_audio_only_range_and_owner_capability(tmp_path, monkeypatch):
         assert part.status_code == 206 and part.content == whole.content[:10]
         assert part.headers["content-length"] == "10"
         assert part.headers["cache-control"] == "private, no-store"
-        assert client.get(url, headers={"Range": "bytes=9999-"}).status_code == 416
+        invalid = client.get(url, headers={"Range": "bytes=9999-"})
+        assert invalid.status_code == 416 and invalid.headers["cache-control"] == "private, no-store"
+        assert invalid.headers["content-range"] == "bytes */1003"
+        invalid = client.get(url, headers={"Range": "nonsense"})
+        assert invalid.status_code == 400 and invalid.headers["cache-control"] == "private, no-store"
+        multipart = client.get(url, headers={"Range": "bytes=0-2,10-12"})
+        assert multipart.status_code == 206
+        assert multipart.headers["content-type"].startswith("multipart/byteranges;")
+        assert len(multipart.content) == int(multipart.headers["content-length"])
+        assert multipart.headers["cache-control"] == "private, no-store"
         assert client.get(signed_url(job_id, "owner")).status_code == 200
         query = url.split("?", 1)[1]
         assert client.get(f"/v1/podcasts/{job_id}?{query}").status_code == 401
@@ -226,7 +236,7 @@ def test_per_uid_queue_concurrency_and_racing_creates(tmp_path):
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("body,size", [(dict(BODY, text="x" * 450000), 450 * 1024), ({"kind": "topic", "title": "T", "query": "x"}, 1024 * 1024)])
+@pytest.mark.parametrize("body,size", [(dict(BODY, text="x" * 400000), 450_000), ({"kind": "topic", "title": "T", "query": "x"}, 1_000_000)])
 def test_create_byte_caps(tmp_path, body, size):
     with TestClient(make_app(tmp_path)) as client:
         raw = json.dumps(body).encode()
@@ -289,9 +299,177 @@ def test_secret_and_uid_never_logged_or_credential_exposed(tmp_path, caplog):
         for response in responses:
             assert SECRET not in response.text and TOKEN not in response.text
         assert "owner_uid" not in responses[1].text
+    assert SECRET not in caplog.text and TOKEN not in caplog.text
     records = [r.getMessage() for r in caplog.records if r.name == "podcast"]
     assert records
     assert SECRET not in "\n".join(records) and TOKEN not in "\n".join(records)
     assert USER_A not in "\n".join(records)
     assert all("sig=" not in message for message in records)
     assert any(json.loads(message).get("uidHash") == hashlib.sha256(USER_A.encode()).hexdigest()[:8] for message in records)
+
+
+def test_published_vector_on_audio_route(tmp_path, monkeypatch):
+    monkeypatch.setattr(service.time, "time", lambda: NOW)
+    with TestClient(make_app(tmp_path, shared_secret="vector-secret")) as client:
+        original_id = ready_job(client, HEADERS)
+        job = client.portal.call(client.app.state.manager.get, original_id)
+        job["id"] = "job-vector"
+        client.portal.call(client.app.state.manager.save, job)
+        (tmp_path / "job-vector.mp3").write_bytes(b"ID3-vector-audio")
+        url = "/v1/podcasts/job-vector/audio?exp=1800000600&uid=owner&sig=92eff03c6dda51ba238460e571ec6c47632852c48812f32afbc67167c3dde4ce"
+        response = client.get(url, headers={"Range": "bytes=0-2"})
+        assert response.status_code == 206 and response.content == b"ID3"
+
+
+@pytest.mark.parametrize("body,size", [(dict(BODY, text="x" * 400000), 450_000), ({"kind": "topic", "title": "T", "query": "x", "engine": "local"}, 1_000_000)])
+def test_create_exact_byte_cap_accepted(tmp_path, body, size):
+    with TestClient(make_app(tmp_path)) as client:
+        raw = json.dumps(body).encode()
+        raw += b" " * (size - len(raw))
+        assert len(raw) == size
+        assert client.post("/v1/podcasts", content=raw, headers=dict(gateway(), **{"Content-Type": "application/json"})).status_code == 202
+        wait(client)
+
+
+def test_multibyte_text_byte_cap(tmp_path):
+    with TestClient(make_app(tmp_path)) as client:
+        raw = json.dumps(dict(BODY, text="é" * 300000), ensure_ascii=False).encode()
+        assert len(raw) > 450_000
+        assert client.post("/v1/podcasts", content=raw, headers=dict(gateway(), **{"Content-Type": "application/json"})).status_code == 413
+
+
+def test_hourly_boundary_and_invalid_requests_not_charged(tmp_path, monkeypatch):
+    clock = [NOW]
+    monkeypatch.setattr(service.time, "time", lambda: clock[0])
+    with TestClient(make_app(tmp_path)) as client:
+        for _ in range(6):
+            assert client.post("/v1/podcasts", json=dict(BODY, owner_uid=USER_B), headers=gateway()).status_code == 422
+            ready_job(client)
+        assert client.post("/v1/podcasts", json=BODY, headers=gateway()).status_code == 429
+        clock[0] += 3599
+        assert client.post("/v1/podcasts", json=BODY, headers=gateway()).status_code == 429
+        clock[0] += 1
+        ready_job(client)
+        events = client.portal.call(lambda: list(client.app.state.manager.db.execute("SELECT uid_hash FROM create_events")))
+        assert events == [(hashlib.sha256(USER_A.encode()).hexdigest(),)]
+
+
+def test_public_owner_queue_is_bounded_but_bearer_legacy_queue_remains(tmp_path):
+    async def run():
+        manager = make_manager(tmp_path)
+        try:
+            for _ in range(3):
+                await manager.enqueue(service.PodcastRequest(**BODY), "owner", public=True)
+            with pytest.raises(HTTPException) as exc:
+                await manager.enqueue(service.PodcastRequest(**BODY), "owner", public=True)
+            assert exc.value.status_code == 429
+            await manager.enqueue(service.PodcastRequest(**BODY))
+            assert len(manager.all()) == 4
+        finally:
+            manager.db.close()
+    asyncio.run(run())
+
+
+def test_global_limit_atomic_and_durable(tmp_path):
+    async def run():
+        manager = make_manager(tmp_path, global_create_limit=2)
+        try:
+            results = await asyncio.gather(*(manager.enqueue(service.PodcastRequest(**BODY)) for _ in range(10)), return_exceptions=True)
+            assert sum(isinstance(r, HTTPException) for r in results) == 8
+            assert len(manager.all()) == 2
+        finally:
+            manager.db.close()
+        restarted = make_manager(tmp_path, global_create_limit=2)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await restarted.enqueue(service.PodcastRequest(**BODY), USER_B)
+            assert exc.value.status_code == 429
+        finally:
+            restarted.db.close()
+    asyncio.run(run())
+
+
+def test_signed_audio_not_ready_still_checks_ownership(tmp_path):
+    async def blocked(request):
+        await asyncio.Event().wait()
+    with TestClient(make_app(tmp_path, gatherer=blocked)) as client:
+        response = client.post("/v1/podcasts", json=BODY, headers=gateway())
+        job_id = response.json()["id"]
+        assert client.get(signed_url(job_id)).status_code == 409
+        assert client.get(signed_url(job_id, USER_B)).status_code == 404
+        assert client.delete(f"/v1/podcasts/{job_id}", headers=gateway()).status_code == 204
+        assert all(not task.done() for task in client.app.state.manager.workers)
+
+
+def test_audio_cors_exact_origin_and_preflight(tmp_path, monkeypatch):
+    monkeypatch.setenv("STUDIO_AUDIO_ORIGINS", "https://player.example, https://owner.example")
+    with TestClient(make_app(tmp_path)) as client:
+        job_id = ready_job(client)
+        url = signed_url(job_id)
+        headers = {"Origin": "https://player.example", "Range": "bytes=0-2"}
+        response = client.get(url, headers=headers)
+        assert response.status_code == 206
+        assert response.headers["access-control-allow-origin"] == "https://player.example"
+        assert "Origin" in response.headers["vary"]
+        assert "Content-Range" in response.headers["access-control-expose-headers"]
+        assert "access-control-allow-credentials" not in response.headers
+        assert "access-control-allow-origin" not in client.get(url, headers={"Origin": "https://evil.example"}).headers
+        preflight = {"Origin": "https://player.example", "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "Range"}
+        response = client.options(url, headers=preflight)
+        assert response.status_code == 200 and response.content == b"OK"
+        assert response.headers["access-control-allow-origin"] == "https://player.example"
+        assert client.options(url, headers=dict(preflight, **{"Origin": "https://evil.example"})).status_code == 400
+        assert client.options(url, headers=dict(preflight, **{"Access-Control-Request-Method": "DELETE"})).status_code == 400
+        assert client.options(url, headers=dict(preflight, **{"Access-Control-Request-Headers": "Authorization"})).status_code == 400
+        assert client.options("/v1/podcasts", headers=preflight).status_code == 401
+        assert "access-control-allow-origin" not in client.get("/v1/podcasts", headers=dict(gateway(), Origin="https://player.example")).headers
+    with TestClient(make_app(tmp_path, audio_origins=())) as client:
+        assert client.options(url, headers=preflight).status_code == 401
+
+
+@pytest.mark.parametrize("origin", ["*", "https://*.example", "https://player.example/", "https://user:password@player.example", "https://player.example?query=x", "https://player.example\n"])
+def test_invalid_audio_origin_configuration(tmp_path, origin):
+    with pytest.raises(RuntimeError, match="exact HTTP"):
+        with TestClient(make_app(tmp_path, audio_origins=[origin])):
+            pass
+
+
+def test_no_absolute_redirects_for_prefix_or_trailing_slash(tmp_path):
+    with TestClient(make_app(tmp_path)) as client:
+        response = client.get("/studio/v1/podcasts/", headers=dict(gateway(), **{"X-Forwarded-Host": "spoofed.example", "X-Forwarded-Proto": "https"}), follow_redirects=False)
+        assert response.status_code == 404 and "location" not in response.headers
+
+
+def test_bearer_uid_header_cannot_change_owner(tmp_path):
+    with TestClient(make_app(tmp_path)) as client:
+        job_id = ready_job(client, dict(HEADERS, **{"X-Mavis-User": USER_A}))
+        assert client.portal.call(client.app.state.manager.get, job_id)["owner_uid"] == "owner"
+        assert client.get(f"/v1/podcasts/{job_id}", headers=gateway()).status_code == 404
+
+
+def test_health_never_contacts_provider_or_reveals_login(tmp_path):
+    notebook = FakeNotebook(logged=True)
+    with TestClient(make_app(tmp_path, notebook=notebook)) as client:
+        assert client.get("/v1/health").json() == {"ok": True}
+        notebook.logged_in.assert_not_called()
+
+
+def test_empty_secret_env_refused_without_file_creation(tmp_path, monkeypatch):
+    monkeypatch.setenv("STUDIO_SHARED_SECRET", "")
+    path = tmp_path / "missing-secret"
+    with pytest.raises(RuntimeError, match="must not be empty"):
+        service.load_shared_secret(path)
+    assert not path.exists()
+
+
+def test_generation_error_with_credentials_is_sanitized(tmp_path, caplog):
+    async def fail(request):
+        raise RuntimeError(SECRET + TOKEN + USER_A)
+    caplog.set_level(logging.INFO, logger="podcast")
+    with TestClient(make_app(tmp_path, gatherer=fail)) as client:
+        job_id = ready_job(client)
+        response = client.get(f"/v1/podcasts/{job_id}", headers=gateway())
+        assert response.json()["status"] == "failed"
+        assert SECRET not in response.text and TOKEN not in response.text and USER_A not in response.text
+    assert SECRET not in caplog.text and TOKEN not in caplog.text
+    assert USER_A not in "\n".join(r.getMessage() for r in caplog.records if r.name == "podcast")

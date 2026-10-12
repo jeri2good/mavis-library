@@ -34,7 +34,9 @@ The upstream Starlette TestClient currently emits a deprecation warning about ht
 
 At first app initialization a 48-byte random token is created once at `~/.secure/podcast-lounge-token`, with permissions **0600**. Existing tokens are reused and permissions corrected; symlinks and weak token files are refused. The token is never printed or logged. Provision it to the Android app out of band using Hermes' secure handling.
 
-Every HTTP path, including missing routes, requires an exact `Authorization: Bearer <token>` header except **GET /v1/health**. API documentation routes are disabled. Constant-time byte comparison is used. The service limits each direct client IP to 120 requests per minute, including health and failed authentication, and caps request bodies at 3 MiB. Reverse-proxy headers are deliberately ignored to prevent spoofing the IP limiter.
+Owner tools retain exact `Authorization: Bearer <token>` authentication and all-jobs access. The additional gateway lane requires `X-Studio-Key` plus a validated `X-Mavis-User` UUID v4 or `owner`; jobs are stored with that UID and isolated from other subscribers. The shared key uses `STUDIO_SHARED_SECRET` when set, otherwise it is generated once/reused at `~/.secure/podcast-lounge-shared-secret`, mode **0600**, without printing/logging it. Existing jobs migrate to owner ownership. GET audio alone can use a ten-minute HMAC-signed URL without Authorization. Invalid signatures cannot fall back to header auth. **GET /v1/health** remains open and returns only `{"ok":true}`; optional configured audio CORS preflights reveal no job information. API documentation routes are disabled. Constant-time key/token/digest comparison is used.
+
+The gateway source of truth is **[docs/STUDIO-CONTRACT.md](docs/STUDIO-CONTRACT.md)**: exact schemas/enums, 202 create, 204 empty DELETE, per-UID ownership, signature seconds/test vector, error shapes, and limits. Create bodies are capped at 1,000,000 bytes, or 450,000 bytes for chapter/text JSON; other bodies remain capped at 3 MiB. Gateway UIDs have at most two executing plus three queued jobs; subscriber creates are capped at six/hour (owner exempt). All creates share a durable 60/hour global cap. Bearer owner tools retain the legacy queue allowance. The existing direct-IP cap remains 120 requests/minute, including health/auth failures. Reverse-proxy headers never affect authorization, routes, or rate identity; only validated forwarded protocol metadata is logged. Structured request/job logs use eight-character UID hash prefixes, never raw UIDs or signed query strings. The service handles both stripped and intact `/studio` prefixes; trailing-slash redirects are disabled.
 
 Production binds `0.0.0.0` as requested. Use a trusted LAN, firewall or TLS reverse proxy; bearer tokens over plain HTTP are not safe on untrusted networks. If a proxy is introduced, direct-IP limiting will see the proxy address until a separately reviewed trusted-proxy policy is implemented.
 
@@ -54,12 +56,12 @@ PY
 
 ## API contract
 
-- `GET /v1/health`: `{ok, engines:{notebooklm:{available,loggedIn,note},local:{available,note}}}`. NotebookLM `available` means the library is installed; `loggedIn` requires a real successful check, cached for 60 seconds. No credential file means false. Local availability means ffmpeg/ffprobe are installed; its note makes network requirements explicit.
+- `GET /v1/health`: `{"ok":true}` only. It is a nonsensitive liveness check, not provider/login readiness; it does not contact NotebookLM.
 - `POST /v1/podcasts`: 202 `{id,status:"queued"}`. `kind` is `book|chapter|article|topic`; `title` is required. Source fields: `text`, `url`, `gutenbergId`, `query`. Defaults: `style=deep-dive`, `length=default`, `language=en`, `engine=auto`. Styles: `deep-dive|brief|debate|critique`; lengths: `short|default|long`; engines: `auto|notebooklm|local`.
 - Validation: chapter requires trimmed nonempty text (≤400,000 characters); article requires a public HTTPS URL; book requires text, Gutenberg ID or HTTPS URL; topic requires a trimmed query (≤300 characters). Invalid fields return 422 with a human-readable `detail`, never an echo of source text. Extra fields are rejected.
 - `GET /v1/podcasts/{id}`: `{id,status,progress,stage,engine,title,kind,style,createdAt,sources}`; `durationSec` appears when ready, `error` on failure, `transcript` for local output. Status is `queued|sourcing|writing|generating|ready|failed`.
-- `GET /v1/podcasts`: `{items:[...]}`, newest first, up to 100, without transcripts. The current retention cap means at most 50 jobs exist.
-- `GET /v1/podcasts/{id}/audio`: `audio/mpeg`, Content-Length, HTTP byte ranges (206; invalid ranges 416). Not-ready audio returns 409; unknown IDs return 404.
+- `GET /v1/podcasts`: `{items:[...]}`, newest first, up to 100, without transcripts or internal ownership fields. Gateway list is UID-scoped; Bearer owner sees all. The current retention cap means at most 50 jobs exist.
+- `GET /v1/podcasts/{id}/audio`: header auth or valid signed GET capability; `audio/mpeg`, Content-Length, Accept-Ranges, `Cache-Control: private, no-store`, HTTP byte ranges (206; invalid ranges 416). Owned not-ready audio returns 409; unknown/foreign jobs return 404. Optional `STUDIO_AUDIO_ORIGINS` grants exact-origin audio-only CORS, without cookies or wildcard origins.
 - `DELETE /v1/podcasts/{id}`: 204; cancels an active job before removing its stored job and audio files.
 
 ## Sources and persistence
@@ -80,7 +82,7 @@ J runs the following interactively, outside systemd:
 .venv/bin/notebooklm login
 ```
 
-If the browser needs an alternative, consult `.venv/bin/notebooklm login --help` and use `--browser chrome`. Never paste cookies into logs or chat. Default storage is `~/.notebooklm/profiles/default/storage_state.json`; use `NOTEBOOKLM_STORAGE` for a different path and adjust the unit's writable paths if necessary. Changed credential files clear the service's expired-auth marker automatically. Verify `GET /v1/health` reports `loggedIn:true`, submit an explicit NotebookLM job, wait for ready, check MP3 playback/ranges, then confirm its temporary notebook was removed. Fake-client tests do not replace this live acceptance check.
+If the browser needs an alternative, consult `.venv/bin/notebooklm login --help` and use `--browser chrome`. Never paste cookies into logs or chat. Default storage is `~/.notebooklm/profiles/default/storage_state.json`; use `NOTEBOOKLM_STORAGE` for a different path and adjust the unit's writable paths if necessary. Changed credential files clear the service's expired-auth marker automatically. Health deliberately no longer exposes login state. Submit an authenticated explicit NotebookLM job, wait for ready (or inspect its sanitized sign-in failure), check MP3 playback/ranges, then confirm its temporary notebook was removed. Fake-client tests do not replace this live acceptance check.
 
 ## Systemd installation (Hermes/operator only)
 
@@ -110,4 +112,4 @@ KEEP_NOTEBOOKS=0
 NOTEBOOKLM_STORAGE=/home/hawthornes/.notebooklm/profiles/default/storage_state.json
 ```
 
-Additional overrides: `PODCAST_DATA_DIR`, `PODCAST_TOKEN_PATH`, `TYPESAFE_CHAT_URL`, `TYPESAFE_API_KEY`, `TYPESAFE_MODEL`. Alternate writable paths require corresponding systemd sandbox changes. No provider swaps or outside-service configuration changes are performed by this project.
+Additional overrides: `PODCAST_DATA_DIR`, `PODCAST_TOKEN_PATH`, `TYPESAFE_CHAT_URL`, `TYPESAFE_API_KEY`, `TYPESAFE_MODEL`, `STUDIO_SHARED_SECRET`, `STUDIO_AUDIO_ORIGINS`. `STUDIO_AUDIO_ORIGINS` is a comma-separated list of approved exact HTTP(S) origins without paths/trailing slashes; default is empty, no cross-origin grant. The public gateway/Funnel lane is offline-tested, not live-integrated; provisioning the same shared key, `/studio` Funnel routing, approved browser origins/CSP, and service restart remain Hermes/operator steps. Alternate writable paths require corresponding systemd sandbox changes. No provider swaps or outside-service configuration changes are performed by this project.

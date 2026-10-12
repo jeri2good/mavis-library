@@ -108,3 +108,40 @@ The additional direct requirements beyond Hermes' four explicitly named setup pa
 - Final delivery commit follows this receipt and final checks; its hash is reported in the handoff.
 - Git had no author identity configured. Commits used explicit process-environment Devin author/committer identity; git configuration was not changed. Nothing was pushed.
 - Installation, secure token handling, sign-in procedure, smoke checks and limits are in `README.md`; project-specific verification rules are in `AGENTS.md`.
+
+## Gateway integration delivery — 2026-10-12
+
+### Changed in this studio only
+
+- Added gateway header authentication using constant-time `X-Studio-Key` comparison and exact UUID-v4/`owner` validation of `X-Mavis-User`. Existing Bearer owner tools still work; a user header cannot change Bearer ownership. Duplicate identity headers are rejected and invalid gateway keys do not fall back to Bearer.
+- `STUDIO_SHARED_SECRET` environment value takes precedence; otherwise runtime generates/reuses `~/.secure/podcast-lounge-shared-secret` with mode 0600, without printing/logging it. Tests inject non-production keys and test generation/reuse/permission correction/symlink refusal under temporary directories. **The real shared-secret file was not provisioned/read by this change's test runs.** Hermes/operator must securely synchronize the production key with the gateway.
+- Persisted `owner_uid` on new jobs; durably migrated old jobs without that field to `owner`. UID-scoped gateway lists, 404 for foreign GET/DELETE/audio, and all-jobs Bearer owner access. Ownership/internal request fields do not appear in response objects. Gateway `owner` list remains owner-created jobs, while gateway owner GET/DELETE/audio and signed owner audio have the documented all-jobs exception.
+- Exact signed GET audio contract: UTF-8 `id.exp.uid`, lowercase HMAC-SHA256 hex, Unix **seconds**, ten ASCII decimal digits, future expiry no more than 600 seconds ahead, constant-time digest comparison, duplicate/partial query rejection, and post-verification job ownership. Signature validation never grants metadata/create/delete access or silently falls back to header auth.
+- Preserved full/single/multipart Range streaming, 206, Content-Length, Accept-Ranges, and applied `Cache-Control: private, no-store` to audio success and handled error responses. The literal published non-production vector is tested both as a pure verifier and as an actual ranged audio request.
+- Both stripped and intact `/studio` prefix requests work offline; no absolute URL response assumptions or trailing-slash redirects. Forwarded host/IP/prefix headers have no auth/routing/rate authority; only validated forwarded protocol metadata may be logged. Health now returns only `{"ok":true}`, without a provider/login probe or sensitive metadata.
+- Public gateway queue admission: at most three queued/five nonterminal jobs per UID, with two global workers preventing more than two concurrent jobs. Gateway `owner` obeys queue limits; private Bearer owner retains the legacy queue allowance. Subscriber creates: six per rolling hour, owner exempt. Global accepted creates: 60 per rolling hour including owner. Atomic/durable SQLite admission events survive deletion and restart; full UID digests index counters, eight-character digest prefixes identify users in structured logs.
+- Create envelope caps are explicit decimal bytes: 1,000,000 overall, 450,000 for chapter/non-null-text JSON. Streamed bytes are counted independently of Content-Length; existing character validation remains text ≤400,000 and query ≤300. Invalid requests do not consume create events. Existing global retention, 50-job capacity, and direct-IP 120/minute limiter remain.
+- Added optional `STUDIO_AUDIO_ORIGINS`: exact-origin audio-only CORS, GET/Range preflight, no wildcard/cookie grants. Default is no configured cross-origin grant; actual app origins/CSP remain an operator integration step.
+- Wrote **`docs/STUDIO-CONTRACT.md`** as the gateway source of truth: every input enum/default/type/unit, response field, actual status/terminal vocabulary, 202 create, **204 empty DELETE**, error shapes, limits, signatures/test vector, proxy/CORS behavior, and concrete operator verification steps. Updated existing README/rules to remove obsolete sensitive-health guidance.
+- No engine/provider changes or new dependencies. Default/owner Bearer lane remains working; the gateway/signed-audio lane is additional and offline-verified, **not a live deployment claim**.
+
+### Test results — counts read from real pytest logs
+
+- Initial gateway tests failed before implementation; evidence: `data/pytest-gateway-red.log`.
+- First full green run: **193 passed, 1 warning in 5.17s**, `data/pytest-gateway-first-green.log`. Checkpoint committed immediately afterward as **9cb4707**.
+- Expanded review run: **209 passed, 1 warning in 5.56s**, `data/pytest-gateway-review.log`.
+- Final full run: **213 passed, 1 warning in 5.92s**, `data/pytest-gateway-final.log`.
+- All existing test cases still pass; the health assertion was intentionally updated to the required nonsensitive response. The one warning is the existing Starlette TestClient/httpx deprecation. Nothing was skipped or hidden to make these counts green.
+- Coverage includes missing/wrong/duplicate auth, invalid/missing UID, Bearer identity preservation, A/B list/get/delete/stream isolation and owner access, old-record migration persistence, the independently computed published vector, every required tamper/expiry/wrong-owner/duplicate/partial-signature case, signed full/single/multipart ranges and 400/416 errors, public UID queue/concurrency/races, durable hourly/global caps and exact rolling-window reset, valid creates exactly at byte caps and rejected multibyte/streamed oversize bodies, explicit CORS origin/header/method checks, prefix/root-path behavior, no absolute redirects, and captured-log/response credential-leak assertions including a provider exception containing fake credentials.
+- Full pytest commands ran in the background with ignored logs, then process completion/logs were read. First-green/review/final runs use workspace-contained `TMPDIR`/`--basetemp` locations. Tests use fake providers/clients; no live gateway/provider network calls were made for this change.
+- `.venv/bin/pip check`: **No broken requirements found**, `data/gateway-dependency-check.log`.
+- `systemd-analyze verify deploy/podcast-lounge.service`: **exit 0, no diagnostic output**, `data/gateway-unit-check.log`. Static verification only; the unit file itself was unchanged.
+- `git diff --check`: passed. Git identity was supplied per process, not via changed git configuration. No push.
+
+### Not verified / Hermes handoff
+
+- **Live gateway → Tailscale Funnel `/studio` → studio round trip**, public reachability/TLS, deployed gateway response/enum/delete alignment, real production secret synchronization, app CSP/audio-origin selection, phone/browser playback, and real signed MP3 streaming over Funnel are not verified.
+- Gateway must accept `queued|sourcing|writing|generating|ready|failed`, free slots only on `ready|failed` or confirmed DELETE=204, accept POST=202, and forward **`gutenbergId` as a JSON string**, with the documented style/length/language/engine enums. No gateway code was changed here.
+- Actual production migration runs when Hermes restarts the updated studio; tests migrated fixture databases only. Production data/audio were not pruned, rewritten, or deleted by these tests. No fresh real podcast generation/NotebookLM login check was attempted; prior live samples above are historical evidence, not this change's acceptance test.
+- No Android/Netlify/other-service repository writes, no relay messages, no sudo, no package installation, no systemd unit installation/start/restart, no Funnel configuration, and no security-policy changes. Hermes owns provisioning, installation/restart, and live end-to-end acceptance.
+- Final delivery commit follows this receipt and final checks; its hash is reported in the handoff.

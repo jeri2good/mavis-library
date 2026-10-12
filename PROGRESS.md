@@ -59,3 +59,8 @@ Tests run as `env -u TYPESAFE_API_KEY -u FISH_AUDIO_API_KEY npm run test:functio
 - Added bounded EPUB copying/ZIP validation, private import index, strict Bible-reference routes, and internal verse-card renderer/share helper.
 - Added adult-only stats DataStore, midnight accumulator reuse, streak/recap/goal math and JVM cases. No test result claimed yet.
 - Strict path allowlist currently keeps weekly goal in the stats DataStore; minimal SettingsStore exception requested.
+
+## Share/stats step 2 — shell integration
+- Added SEND/VIEW handling with Kids-mode suppression, private imported-book section and snackbars, FileProvider restricted to cache/share, and Settings → Reading stats.
+- Adult tracking reuses ReadingAccumulator, observes stable media book keys, samples reader route while resumed, and flushes at state changes/30-second intervals.
+- Existing WebHost owner-code logic and all Kids files remain unchanged. Imported EPUBs are stored/listed; native-to-web imported-file reading is not implemented in this scope. No natural Shelf verse action exists, so ShareVerse stays an internal API.

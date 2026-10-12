@@ -40,7 +40,7 @@ fun copyEpub(input: InputStream, file: File, limit: Long = EPUB_LIMIT) {
 /** Inspect ZIP headers and the tiny mimetype entry only. No extraction or EPUB/XML parsing. */
 fun validateEpub(file: File, mime: String): Boolean = runCatching {
     if (mime != EPUB_MIME || file.length() !in 4..EPUB_LIMIT) return false
-    if (!file.inputStream().use { it.readNBytes(4) }.contentEquals(byteArrayOf(80, 75, 3, 4))) return false
+    if (!file.inputStream().use { ByteArray(4).also { bytes -> java.io.DataInputStream(it).readFully(bytes) } }.contentEquals(byteArrayOf(80, 75, 3, 4))) return false
     ZipFile(file).use { zip ->
         var total = 0L
         var count = 0
@@ -52,7 +52,7 @@ fun validateEpub(file: File, mime: String): Boolean = runCatching {
             total += e.size
             if (e.name == "mimetype") {
                 if (found || e.size != EPUB_MIME.length.toLong()) return false
-                found = zip.getInputStream(e).use { it.readNBytes(EPUB_MIME.length + 1).contentEquals(EPUB_MIME.toByteArray()) }
+                found = zip.getInputStream(e).use { it.readBytesBounded(EPUB_MIME.length + 1).contentEquals(EPUB_MIME.toByteArray()) }
                 if (!found) return false
             }
         }
@@ -106,4 +106,10 @@ fun sharedEpubUri(intent: Intent): Uri? = when (intent.action) {
     Intent.ACTION_SEND -> intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
     Intent.ACTION_VIEW -> intent.data
     else -> null
+}
+
+private fun InputStream.readBytesBounded(limit: Int): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    repeat(limit) { val b = read(); if (b == -1) return out.toByteArray(); out.write(b) }
+    return out.toByteArray()
 }

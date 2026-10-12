@@ -66,7 +66,7 @@ import kotlinx.coroutines.launch
 const val PRIVACY_URL = "https://mavis-library.netlify.app/privacy"
 
 @Composable
-fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}) {
+fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}, onOpenStats: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = LookChoice.Automatic)
     val hasCode by container.secureStore.has(Secret.OWNER_ACCESS_CODE).collectAsStateWithLifecycle(initialValue = false)
@@ -78,6 +78,7 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
+        TextButton(onClick = onOpenStats, modifier = Modifier.testTag("open_stats")) { Text("Reading stats") }
 
         Section("Kids mode", Icons.Outlined.Lock) {
             KidsSetup(remember(context.applicationContext) { context.kidsPrefs() }, onStart = { onDriveModeChange(false) })

@@ -62,6 +62,19 @@ import com.mavislibrary.app.ui.showcase.ThemeShowcaseScreen
 import com.mavislibrary.app.web.WebHost
 import com.mavislibrary.app.web.WebScreen
 
+import androidx.compose.runtime.*
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import com.mavislibrary.app.data.share.*
+import com.mavislibrary.app.data.stats.statsRepository
+import com.mavislibrary.app.ui.stats.StatsScreen
+import com.mavislibrary.app.ui.stats.AdultReadingTracker
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
+
 enum class Tab(val route: String, val label: String, val icon: ImageVector, val webRoute: String? = null) {
     SHELF("shelf", "Shelf", Icons.Outlined.LocalLibrary),
     SEARCH("search", "Search", Icons.Outlined.Search),
@@ -84,6 +97,8 @@ fun MavisRoot(
     container: AppContainer,
     webHost: WebHost?,
     online: Boolean,
+    sharedIntent: android.content.Intent? = null,
+    onShareConsumed: () -> Unit = {},
     onFirstAudio: () -> Unit = {},
     driveModeActive: Boolean = false,
     onDriveModeChange: (Boolean) -> Unit = {},
@@ -97,12 +112,50 @@ fun MavisRoot(
     val kids by kidsPrefs.state.collectAsState(initial = null)
     // Do not compose adult navigation until the persisted mode has been read.
     val loadedKids = kids ?: return
+    LaunchedEffect(sharedIntent, loadedKids.enabled) {
+        if (loadedKids.enabled && sharedIntent != null) onShareConsumed()
+    }
     if (!adultRoutesAllowed(loadedKids.enabled)) {
         KidsRoot(container, kidsPrefs, loadedKids, playback)
         return
     }
     val entry by nav.currentBackStackEntryAsState()
     val current = entry?.destination
+    val stats = remember { context.statsRepository() }
+    val imports = remember { EpubImports(context) }
+    val importedBooks by imports.books.collectAsState(initial = emptyList())
+    val snackbar = remember { SnackbarHostState() }
+    AdultReadingTracker(container, stats, webHost,
+        current?.route == ROUTE_WEB_SHELF || current?.route == Tab.BIBLE.route)
+    LaunchedEffect(sharedIntent) {
+        val incoming = sharedIntent ?: return@LaunchedEffect
+        try {
+            if (kidsPrefs.state.first().enabled) return@LaunchedEffect
+            if (incoming.action == android.content.Intent.ACTION_SEND && incoming.type == "text/plain") {
+                val verse = parseBibleReference(incoming.getStringExtra(android.content.Intent.EXTRA_TEXT).orEmpty())
+                if (verse == null) snackbar.showSnackbar(SHARE_HELP)
+                else {
+                    webHost?.openLater(verse.route)
+                    // show() also consumes pending routes if the Bible tab is already attached.
+                    if (current?.route == Tab.BIBLE.route) webHost?.show(verse.route)
+                    nav.navigate(Tab.BIBLE.route) { launchSingleTop = true }
+                }
+            } else {
+                val uri = sharedEpubUri(incoming)
+                val mime = incoming.type ?: uri?.let { context.contentResolver.getType(it) }
+                if (uri == null || mime != EPUB_MIME) snackbar.showSnackbar(SHARE_HELP)
+                else {
+                    val book = imports.import(uri, mime)
+                    if (book != null && !kidsPrefs.state.first().enabled) {
+                        nav.navigate(Tab.SHELF.route) { launchSingleTop = true }
+                        snackbar.showSnackbar("Added ${book.title} to your shelf")
+                    }
+                }
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { snackbar.showSnackbar((e as? ImportRejected)?.message ?: "Mavis couldn't open that share. Please try again.") }
+        finally { onShareConsumed() }
+    }
     val openBook: (String) -> Unit = { key ->
         webHost?.openLater("#/book/" + java.net.URLEncoder.encode(key, "UTF-8").replace("+", "%20"))
         nav.navigate(ROUTE_WEB_SHELF) {
@@ -112,6 +165,7 @@ fun MavisRoot(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Column {
                 MiniPlayer(playback, Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh))
@@ -154,10 +208,22 @@ fun MavisRoot(
                     }
                 }
                 composable(Tab.SHELF.route) {
+                    Column(Modifier.fillMaxSize()) {
+                        if (importedBooks.isNotEmpty()) {
+                            Text("Imported books · saved on this device", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.titleMedium)
+                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 180.dp)) {
+                                items(importedBooks, key = { it.id }) { book ->
+                                    Text(book.title + " · EPUB", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                                }
+                            }
+                        }
+                        Box(Modifier.weight(1f)) {
                     ShelfScreen(container, onOpenBook = openBook, onOpenWebShelf = {
                         webHost?.openLater("#/shelf")
                         nav.navigate(ROUTE_WEB_SHELF) { launchSingleTop = true }
                     })
+                        }
+                    }
                 }
                 composable(ROUTE_WEB_SHELF) {
                     if (webHost != null) {
@@ -171,7 +237,8 @@ fun MavisRoot(
                     SearchScreen(container, online, onOpenBook = openBook)
                 }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio) }
-                composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange) }
+                composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onOpenStats = { nav.navigate("stats") }) }
+                composable("stats") { StatsScreen(stats, onBack = { nav.popBackStack() }) }
                 composable(ROUTE_SHOWCASE) { ThemeShowcaseScreen(onBack = { nav.popBackStack() }) }
             }
         }

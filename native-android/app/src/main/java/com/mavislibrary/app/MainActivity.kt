@@ -37,6 +37,7 @@ import kotlinx.coroutines.delay
 import java.time.LocalTime
 
 class MainActivity : ComponentActivity() {
+    private var sharedIntent by mutableStateOf<android.content.Intent?>(null)
     private var webHost: WebHost? = null
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private var driveEnabled = false
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) sharedIntent = intent?.takeIf { it.action in setOf(android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_VIEW) }
         pendingDebugDrive = BuildConfig.DEBUG && savedInstanceState == null && intent?.action == "com.mavislibrary.app.DEBUG_DRIVE"
         lifecycleScope.launch {
             kidsPrefs().state.collect { state ->
@@ -106,6 +108,8 @@ class MainActivity : ComponentActivity() {
                 }
                 MavisRoot(
                     container, webHost, online,
+                    sharedIntent = sharedIntent,
+                    onShareConsumed = { sharedIntent = null; setIntent(android.content.Intent(this@MainActivity, MainActivity::class.java)) },
                     onFirstAudio = ::requestNotificationPermission,
                     driveModeActive = driveModeActive,
                     onDriveModeChange = ::configureDriveMode,
@@ -151,6 +155,10 @@ class MainActivity : ComponentActivity() {
     /** Debug builds only: `am start -a com.mavislibrary.app.DEBUG_DRIVE` shows the drive screen without a car. */
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action in setOf(android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_VIEW)) {
+            sharedIntent = android.content.Intent(intent)
+        }
         if (BuildConfig.DEBUG && intent.action == "com.mavislibrary.app.DEBUG_DRIVE") {
             if (!kidsModeLoaded) pendingDebugDrive = true
             else if (!kidsModeEnabled) setDriveScreen(true)

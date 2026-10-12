@@ -46,10 +46,22 @@ globalThis.fetch = async (url, opts = {}) => {
     if (studioMode === 'duplicate') return reply({ id: 'j1', status: 'queued' }, 202);
     if (studioMode === 'wrong-create-status') return reply({ id: 'wrong', status: 'queued' });
     if (studioMode === 'accepted-malformed') return new Response('{', { status: 202, headers: { 'content-type': 'application/json' } });
-    const id = new URL(u).pathname.split('/').pop();
+    const parsed = new URL(u), parts = parsed.pathname.split('/');
+    if (parts.at(-1) === 'audio') {
+      const id = parts.at(-2), uid = parsed.searchParams.get('uid');
+      if (!verifyAudio(process.env.STUDIO_SHARED_SECRET, id, parsed.searchParams.get('exp'), uid, parsed.searchParams.get('sig'))) return reply({ detail: 'Valid studio authorization required' }, 401);
+      if (!jobs.has(id) || (uid !== 'owner' && jobs.get(id).uid !== uid)) return reply({ detail: 'Podcast not found' }, 404);
+      if (jobs.get(id).status !== 'ready') return reply({ detail: 'Podcast audio is not ready' }, 409);
+      return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'audio/mpeg' } });
+    }
+    const id = parts.at(-1);
+    if (id === 'podcasts' && opts.method !== 'POST') {
+      const items = [...jobs.values()].filter((j) => j.uid === opts.headers['X-Mavis-User']).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100).map(({ transcript, ...j }) => j);
+      return reply({ items });
+    }
     if (opts.method === 'POST') {
       const input = JSON.parse(opts.body);
-      const j = { id: `j${++serial}`, status: 'queued', progress: 0, stage: 'Queued', engine: input.engine, title: input.title, kind: input.kind, style: input.style, createdAt: new Date().toISOString(), sources: [{ title: 'Source', url: 'https://example.test/source', internal: 'discarded' }], uid: opts.headers['X-Mavis-User'], private: 'discarded', transcript: 'Owner transcript' };
+      const j = { id: `j${++serial}`, status: 'queued', progress: 0, stage: 'Queued', engine: input.engine === 'auto' ? 'local' : input.engine, title: input.title, kind: input.kind, style: input.style, createdAt: new Date().toISOString(), sources: [{ title: 'Source', url: 'https://example.test/source', internal: 'discarded' }], uid: opts.headers['X-Mavis-User'], private: 'discarded', transcript: 'Owner transcript' };
       jobs.set(j.id, j);
       return reply({ id: j.id, status: j.status }, 202);
     }
@@ -78,7 +90,7 @@ const groups = (await import('../../netlify/functions/groups.mjs')).default;
 const { createUser, signToken, getUser, updateUser, kv } = await import('../../netlify/lib/accounts.mjs');
 const { requireAccess, chargeAccess } = await import('../../netlify/lib/access.mjs');
 const { transition, getSub, subStore, consume, usage, COOLDOWN_MS, DEFAULT_CAPS } = await import('../../netlify/lib/subs.mjs');
-const { signAudio, verifyAudio, validateCreate, studioJson } = await import('../../netlify/lib/podcast.mjs');
+const { signAudio, verifyAudio, validateCreate, studioJson, reservePodcastQuota, settlePodcastQuota } = await import('../../netlify/lib/podcast.mjs');
 let ip = 0, passed = 0;
 const owner = { 'x-mavis-access': process.env.MAVIS_ACCESS_CODE };
 function req(path, method = 'GET', body, token, extra = {}) {
@@ -366,7 +378,7 @@ try {
     process.env.STUDIO_SHARED_SECRET = secret;
   });
   await test('podcast validation table covers kinds, sizes, types, URLs, required sources, unknown fields', async () => {
-    for (const data of [null, [], {}, { ...base, kind: 'bad' }, { ...base, title: '' }, { ...base, query: 'x'.repeat(301) }, { ...base, text: 'x' }, { ...base, url: 'https://example.test' }, { ...base, extra: true }, { ...base, engine: [] }, { ...base, length: -1 }, { kind: 'chapter', title: 'T' }, { kind: 'chapter', title: 'T', text: 'x'.repeat(400001) }, { kind: 'article', title: 'T', url: 'http://example.test' }, { kind: 'article', title: 'T', url: 'https://user:pass@example.test' }, { kind: 'book', title: 'T', gutenbergId: 0 }, { kind: 'book', title: 'T' }]) {
+    for (const data of [null, [], {}, { ...base, kind: 'bad' }, { ...base, title: '' }, { ...base, query: 'x'.repeat(301) }, { ...base, extra: true }, { ...base, engine: [] }, { ...base, length: -1 }, { kind: 'chapter', title: 'T' }, { kind: 'chapter', title: 'T', text: 'x'.repeat(400001) }, { kind: 'article', title: 'T', url: 'http://example.test' }, { kind: 'article', title: 'T', url: 'https://user:pass@example.test' }, { kind: 'book', title: 'T', gutenbergId: 0 }, { kind: 'book', title: 'T' }]) {
       assert.throws(() => validateCreate(data), (e) => e.response.status === 400);
     }
     for (const data of [base, { kind: 'chapter', title: 'T', text: 'x'.repeat(400000) }, { kind: 'article', title: 'T', url: 'https://example.test/a' }, { kind: 'book', title: 'T', gutenbergId: '84' }, { kind: 'book', title: 'T', text: 'Book text' }]) assert.deepEqual(validateCreate(data), { ...data, style: 'deep-dive', length: 'default', language: 'en', engine: 'auto' });
@@ -376,6 +388,21 @@ try {
     for (const gutenbergId of [84, '0', '-1', '1.5', 'abc']) assert.throws(() => validateCreate({ kind: 'book', title: 'T', gutenbergId }), (e) => e.response.status === 400);
     for (const style of ['deep-dive', 'brief', 'debate', 'critique']) for (const length of ['short', 'default', 'long']) for (const engine of ['auto', 'notebooklm', 'local']) assert.equal(validateCreate({ ...base, style, length, engine }).engine, engine);
     assert.equal((await pod('create', 'POST', { ...base, query: 'x'.repeat(301) }, a.token)).status, 400);
+  });
+  await test('published studio schema: trimming, null sources, irrelevant fields, Gutenberg range, URL rules, and UTF-8 envelope', async () => {
+    const normalized = validateCreate({ kind: ' topic ', title: ' Title ', query: ' Query ', style: ' brief ', length: ' short ', language: ' en ', engine: ' local ', text: null, url: null, gutenbergId: null });
+    assert.deepEqual(normalized, { kind: 'topic', title: 'Title', query: 'Query', style: 'brief', length: 'short', language: 'en', engine: 'local', text: null, url: null, gutenbergId: null });
+    assert.equal(validateCreate({ ...base, title: '\u{10400}'.repeat(300) }).title.length, 600);
+    assert.equal(validateCreate({ ...base, text: 'Extra source', url: 'https://example.test/', gutenbergId: '9999999' }).gutenbergId, '9999999');
+    assert.equal(validateCreate({ ...base, text: '', url: '', gutenbergId: '' }).query, base.query);
+    assert.throws(() => validateCreate({ ...base, gutenbergId: '10000000' }), (e) => e.response.status === 400);
+    const prefix = 'https://example.test/';
+    assert.equal(validateCreate({ kind: 'article', title: 'T', url: prefix + 'x'.repeat(2048 - prefix.length) }).url.length, 2048);
+    assert.throws(() => validateCreate({ kind: 'article', title: 'T', url: prefix + 'x'.repeat(2049 - prefix.length) }), (e) => e.response.status === 400);
+    for (const url of ['https://127.0.0.1', 'https://8.8.8.8', 'https://[::1]', 'https://localhost', 'https://host.local', 'https://a.lan', 'https://host.internal', 'https://example.test:8080', 'https://@example.test', 'https://example..test', 'https://example.test\\@evil.test']) assert.throws(() => validateCreate({ kind: 'article', title: 'T', url }), (e) => e.response.status === 400);
+    assert.equal(validateCreate({ kind: 'article', title: 'T', url: 'https://example.test:443' }).url, 'https://example.test:443');
+    assert.equal(validateCreate({ kind: 'chapter', title: 'T', text: 'é'.repeat(200000) }).text.length, 200000);
+    for (const text of ['é'.repeat(300000), 'x' + '\n'.repeat(225001) + 'x']) assert.throws(() => validateCreate({ kind: 'chapter', title: 'T', text }), (e) => e.response.status === 400);
   });
   let jobA;
   await test('podcast create forwards only validated JSON and correct private upstream headers', async () => {
@@ -419,10 +446,10 @@ try {
   });
   await test('exact studio lifecycle forwards allowlisted metadata, owner transcript, and releases terminal slots', async () => {
     for (const [i, status] of ['queued', 'sourcing', 'writing', 'generating', 'ready'].entries()) {
-      Object.assign(jobs.get(jobA), { status, progress: i / 4, stage: status, engine: 'local', durationSec: 123 });
+      Object.assign(jobs.get(jobA), { status, progress: i * 25, stage: status, engine: 'local', durationSec: 123 });
       const out = await pod(`job/${jobA}`, 'GET', undefined, a.token);
       assert.equal(out.status, 200); assert.equal(out.body.status, status);
-      assert.equal(out.body.progress, i / 4); assert.equal(out.body.stage, status);
+      assert.equal(out.body.progress, i * 25); assert.equal(out.body.stage, status);
       assert.equal(out.body.engine, 'local'); assert.equal(out.body.durationSec, 123);
       assert.equal(out.body.transcript, 'Owner transcript'); assert.equal(out.body.kind, 'topic');
       assert.deepEqual(out.body.sources, [{ title: 'Source', url: 'https://example.test/source' }]);
@@ -430,8 +457,11 @@ try {
       const slots = (await subStore().get(`pod-active/${a.user.id}`, { type: 'json' })).slots;
       assert.equal(slots.includes(jobA), status !== 'ready');
     }
-    const rogue = { ...jobs.get(jobA), id: 'unindexed', uid: b.user.id };
+    const rogue = { ...jobs.get(jobA), id: 'unindexed', uid: a.user.id };
     jobs.set(rogue.id, rogue);
+    const upstream = await studioJson({ base: process.env.STUDIO_URL, secret: process.env.STUDIO_SHARED_SECRET }, '', a.user.id);
+    assert.ok(upstream.items.some((j) => j.id === rogue.id));
+    assert.ok(upstream.items.every((j) => !Object.hasOwn(j, 'transcript')));
     const out = await pod('list', 'GET', undefined, a.token);
     assert.deepEqual(out.body.jobs.map((j) => j.id), [jobA]);
     assert.ok(!Object.hasOwn(out.body.jobs[0], 'transcript'));
@@ -454,6 +484,10 @@ try {
     const out = await pod(`audio/${jobA}`, 'GET', undefined, a.token);
     assert.equal(out.status, 409); assert.equal(out.body.code, 'audio_not_ready');
     assert.ok(!Object.hasOwn(out.body, 'url'));
+    const exp = Math.floor(Date.now() / 1000) + 600;
+    const signed = new URL(`${process.env.STUDIO_URL}/v1/podcasts/${jobA}/audio`);
+    signed.search = new URLSearchParams({ exp: String(exp), uid: a.user.id, sig: signAudio(process.env.STUDIO_SHARED_SECRET, jobA, exp, a.user.id) }).toString();
+    assert.equal((await fetch(signed)).status, 409);
     jobs.get(jobA).status = 'ready';
   });
   await test('audio URL is studio-hosted, ten-minute signed, and never proxies bytes', async () => {
@@ -479,6 +513,9 @@ try {
     assert.equal(verifyAudio(secret, id, exp, uid, sig, exp * 1000), false);
     assert.equal(verifyAudio(secret, id, exp + 1, uid, signAudio(secret, id, exp + 1, uid), now), false);
     assert.equal(verifyAudio(secret, '../bad', exp, uid, sig, now), false);
+    for (const badUid of ['OWNER', '-'.repeat(36), '00000000-0000-0000-0000-000000000000']) assert.equal(verifyAudio(secret, id, exp, badUid, signAudio(secret, id, exp, badUid), now), false);
+    const upperUid = a.user.id.toUpperCase();
+    assert.equal(verifyAudio(secret, id, exp, upperUid, signAudio(secret, id, exp, upperUid), now), true);
   });
   await test('studio failures, redirects, invalid JSON, oversize responses, secret echoes map to friendly 502', async () => {
     for (const mode of ['throw', '500', 'redirect', 'text', 'malformed', 'huge', 'secret', 'escaped-secret']) {
@@ -550,6 +587,31 @@ try {
     assert.deepEqual(deleted.body, { id: next.body.id, status: 'deleted' });
     assert.deepEqual((await subStore().get(`pod-active/${c.user.id}`, { type: 'json' })).slots, []);
     assert.equal((await usage(c.user.id)).podcast.used, 2);
+  });
+  await test('quota reservations are uncharged, CAS-bounded, idempotently settled, and pinned to the UTC dispatch day', async () => {
+    const c = await make('pod-reservation@example.test'), now = Date.UTC(2029, 0, 1, 23, 59, 59);
+    process.env.SUB_CAP_PODCAST = '1';
+    const first = await reservePodcastQuota(c.user.id, now);
+    assert.equal((await usage(c.user.id, now)).podcast.used, 0);
+    await assert.rejects(reservePodcastQuota(c.user.id, now), (e) => e.response.status === 429);
+    await settlePodcastQuota(first, false); await settlePodcastQuota(first, false);
+    assert.equal((await usage(c.user.id, now)).podcast.used, 0);
+    const second = await reservePodcastQuota(c.user.id, now);
+    await Promise.all([settlePodcastQuota(second, true), settlePodcastQuota(second, true)]);
+    assert.equal((await usage(c.user.id, now)).podcast.used, 1);
+    assert.equal((await usage(c.user.id, now + 1000)).podcast.used, 0);
+    assert.deepEqual((await subStore().get(second.key, { type: 'json' })).podcastReserved, []);
+    delete process.env.SUB_CAP_PODCAST;
+  });
+  await test('sanitizing upstream strings cannot reconstruct a secret in errors or public job metadata', async () => {
+    const saved = globalThis.fetch;
+    const hidden = process.env.STUDIO_SHARED_SECRET.split('').join('\u0000');
+    try {
+      for (const [status, body] of [[422, { detail: hidden }], [200, { id: 'safe-id', status: 'ready', stage: hidden }]]) {
+        globalThis.fetch = async () => reply(body, status);
+        await assert.rejects(studioJson({ base: process.env.STUDIO_URL, secret: process.env.STUDIO_SHARED_SECRET }, '/safe-id', 'owner'), (e) => e.response.status === 502);
+      }
+    } finally { globalThis.fetch = saved; }
   });
   await test('upstream deadline aborts a stalled fetch and maps to studio_unavailable', async () => {
     const saved = globalThis.fetch;

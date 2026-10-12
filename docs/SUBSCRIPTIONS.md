@@ -50,7 +50,7 @@ Legal transitions, re-evaluated after every CAS conflict:
 
 Invalid owner transitions return 409. All state changes and counters use `readForUpdate`/`writeIfUnchanged` retry loops. Parallel approve/deny has one winner. Revocation takes effect on the next request, not after a cache TTL. Account-wide sign-out invalidates tokens via the existing version bump. Account deletion removes `s/<userId>` and retains the audit history.
 
-The request rate limit counts attempts, including idempotent calls, so clients should use GET status rather than repeatedly POSTing request. Quotas are consumed after basic validation, before upstream generation, and are not refunded on upstream failure. Study task-internal validation may happen after charging. Daily-limit responses are 429 `daily_limit` with an ISO UTC `resetsAt`.
+The request rate limit counts attempts, including idempotent calls, so clients should use GET status rather than repeatedly POSTing request. AI quotas are consumed after basic validation, before upstream generation, and are not refunded on upstream failure. Podcast is the exception: daily capacity is CAS-reserved before dispatch but usage is charged only on studio HTTP 202; handled non-202 failures release the daily hold. Internal `podcastReserved` tokens are not public usage. Study task-internal validation may happen after charging. Daily-limit responses are 429 `daily_limit` with an ISO UTC `resetsAt`.
 
 ## API
 
@@ -58,7 +58,7 @@ Bearer headers use the same token returned by `/api/account/signin`.
 
 | Method/path | Body/result |
 | --- | --- |
-| GET `/api/subscription/status` | `{state,plan,since,expiresAt,usage:{assistant:{used,cap},tts:...,rank:...,study:...,podcast:...}}`; `since` is latest owner decision time |
+| GET `/api/subscription/status` | `{state,plan,signedIn:true,podcastEnabled,since,expiresAt,usage:{assistant:{used,cap},tts:...,rank:...,study:...,podcast:...}}`; `since` is latest owner decision time; `podcastEnabled = Boolean(STUDIO_URL)` lets the app hide the Lounge but is not a studio health check |
 | POST `/api/subscription/request` | `{message?}` → `{state,plan,requestedAt}`; new none → pending is 201, other successful/idempotent requests are 200 |
 | GET `/api/subscription/admin/list?state=pending|active|all&limit=200&cursor=...` | `{items:[{userId,email,state,plan,requestedAt,message}],cursor}`; default pending, maximum 200, pass returned cursor until null |
 | POST `/api/subscription/admin/approve` | `{userId|email}` → `{state,userId,plan}` |
@@ -117,7 +117,7 @@ New/required access settings:
 | `SUB_CAP_TTS` | Daily clips, default 80 |
 | `SUB_CAP_RANK` | Daily ranking requests, default 300 |
 | `SUB_CAP_STUDY` | Daily tasks/questions shared, default 60 |
-| `SUB_CAP_PODCAST` | Daily create attempts, default 3 |
+| `SUB_CAP_PODCAST` | Daily studio-accepted (202) jobs, default 3; in-flight capacity reserved before dispatch |
 | `STUDIO_URL` | HTTPS studio base, see PODCAST-GATEWAY.md; absent disables gateway |
 | `STUDIO_SHARED_SECRET` | Private studio authentication/HMAC secret; required for gateway |
 | `MAVIS_BLOBS_URL` | Local test server only; do not set in production |

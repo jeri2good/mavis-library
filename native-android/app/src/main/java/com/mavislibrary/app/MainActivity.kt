@@ -16,6 +16,7 @@ import com.mavislibrary.app.ui.theme.LightClassifier
 import com.mavislibrary.app.ui.theme.LightLevel
 import com.mavislibrary.app.ui.theme.LightObserver
 import com.mavislibrary.app.ui.theme.lightLook
+import com.mavislibrary.app.work.ReminderScheduler
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,7 +54,11 @@ class MainActivity : ComponentActivity() {
         if (widgetDestination != null) widgetRequest++
     }
     private var webHost: WebHost? = null
-    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private var enablingReminder = false
+    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (enablingReminder && granted) turnReminderOn()
+        enablingReminder = false
+    }
     private var driveEnabled = false
     private var readerKeys: com.mavislibrary.app.web.ReaderMediaSession? = null
     private var driveMonitor: DriveModeMonitor? = null
@@ -137,6 +142,7 @@ class MainActivity : ComponentActivity() {
                 MavisRoot(
                     container, webHost, online,
                     onFirstAudio = ::requestNotificationPermission,
+                    onEnableReminder = ::enableReadingReminder,
                     driveModeActive = driveModeActive,
                     onDriveModeChange = ::configureDriveMode,
                     onCloseDriveMode = { setDriveScreen(false) },
@@ -144,6 +150,20 @@ class MainActivity : ComponentActivity() {
                     widgetRequest = widgetRequest,
                 )
             }
+        }
+    }
+
+    private fun enableReadingReminder() {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            enablingReminder = true
+            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else turnReminderOn()
+    }
+
+    private fun turnReminderOn() {
+        lifecycleScope.launch {
+            (application as MavisApp).container.settings.setReminderEnabled(true)
+            ReminderScheduler.sync(this@MainActivity)
         }
     }
 

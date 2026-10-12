@@ -92,6 +92,7 @@ fun MavisRoot(
     webHost: WebHost?,
     online: Boolean,
     onFirstAudio: () -> Unit = {},
+    onEnableReminder: () -> Unit = {},
     driveModeActive: Boolean = false,
     onDriveModeChange: (Boolean) -> Unit = {},
     onCloseDriveMode: () -> Unit = {},
@@ -194,7 +195,7 @@ fun MavisRoot(
                     SearchScreen(container, online, onOpenBook = openBook)
                 }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio) }
-                composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange) }
+                composable(Tab.SETTINGS.route) { SettingsScreen(container, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder) }
                 composable(ROUTE_SHOWCASE) { ThemeShowcaseScreen(onBack = { nav.popBackStack() }) }
             }
         }

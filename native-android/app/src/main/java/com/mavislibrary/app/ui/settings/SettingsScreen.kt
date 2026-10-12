@@ -2,6 +2,11 @@ package com.mavislibrary.app.ui.settings
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.app.TimePickerDialog
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import com.mavislibrary.app.data.prefs.ReminderSettings
+import com.mavislibrary.app.work.ReminderScheduler
 import androidx.core.net.toUri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +28,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -66,7 +72,7 @@ import kotlinx.coroutines.launch
 const val PRIVACY_URL = "https://mavis-library.netlify.app/privacy"
 
 @Composable
-fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}) {
+fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}, onEnableReminder: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val choice by container.settings.lookChoice.collectAsStateWithLifecycle(initialValue = LookChoice.Automatic)
@@ -74,6 +80,7 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
     val lightAvailable = remember(context.applicationContext) { com.mavislibrary.app.ui.theme.LightObserver(context.applicationContext).available }
     val hasCode by container.secureStore.has(Secret.OWNER_ACCESS_CODE).collectAsStateWithLifecycle(initialValue = false)
     val playback by container.settings.playback.collectAsStateWithLifecycle(initialValue = com.mavislibrary.app.data.prefs.PlaybackSettings())
+    val reminder by container.settings.reminder.collectAsStateWithLifecycle(initialValue = ReminderSettings())
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).testTag("settings"),
@@ -149,6 +156,23 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
                 scope.launch { container.settings.setDriveMode(it) }
                 onDriveModeChange(it)
             }
+        }
+
+        Section("Reading reminder", Icons.Outlined.Notifications) {
+            SettingSwitch("Daily reading reminder", "Off by default. An inexact, device-only reminder; Android may deliver it later than your chosen time. No location or tracking.", reminder.enabled) { enabled ->
+                if (enabled) onEnableReminder()
+                else scope.launch { container.settings.setReminderEnabled(false); ReminderScheduler.sync(context) }
+            }
+            OutlinedButton(onClick = {
+                TimePickerDialog(context, { _, hour, minute ->
+                    scope.launch {
+                        container.settings.setReminderTime(LocalTime.of(hour, minute))
+                        ReminderScheduler.sync(context)
+                    }
+                }, reminder.time.hour, reminder.time.minute, true).show()
+            }) { Text("Time: ${reminder.time.format(DateTimeFormatter.ofPattern("HH:mm"))}") }
+            Text("Notifications are skipped in Kids mode. Adult reading activity isn't logged yet, so reading today won't cancel a reminder.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         Section("Reader buttons", Icons.AutoMirrored.Outlined.MenuBook) {

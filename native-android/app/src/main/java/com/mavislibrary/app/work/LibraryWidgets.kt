@@ -152,7 +152,7 @@ object WidgetUpdater {
         val verse = VerseOfDay.forDay(LocalDate.now().dayOfYear)
         readingIds.forEach { id ->
             val title = if (kids) "Open Mavis" else book?.title ?: "Open Mavis"
-            manager.updateAppWidget(id, view(context, id, "Continue reading", title, if (kids) "" else if (book == null) "Visit your shelf" else "Tap to open your shelf", "shelf"))
+            manager.updateAppWidget(id, view(context, id, if (kids) "Mavis Library" else "Continue reading", title, if (kids) "" else if (book == null) "Visit your shelf" else "Tap to open your shelf", "shelf"))
         }
         verseIds.forEach { id ->
             manager.updateAppWidget(id, view(context, id, if (kids) "Mavis Library" else "Verse of the day", if (kids) "Open Mavis" else verse.text,

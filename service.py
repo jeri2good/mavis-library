@@ -2,6 +2,7 @@ import asyncio
 import fcntl
 import hashlib
 import hmac
+import inspect
 import json
 import logging
 import os
@@ -35,6 +36,10 @@ TRANSITIONS = {"queued": {"sourcing", "failed"}, "sourcing": {"writing", "genera
 
 def timestamp():
     return datetime.now(timezone.utc).isoformat()
+
+
+def studio_enabled():
+    return (os.getenv("STUDIO_DEPLOY_ENABLED") or os.getenv("STUDIO_ENABLED", "1")) != "0"
 
 
 class PodcastRequest(BaseModel):
@@ -472,13 +477,17 @@ def public_job(job, transcript=True):
     return {key: value for key, value in job.items() if not key.startswith("_") and key != "owner_uid" and (transcript or key != "transcript")}
 
 
-def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=gather, probe=duration_seconds, rate_limit=120, shared_secret=None, global_create_limit=60, path_prefix="/studio", audio_origins=None):
+async def resolved(value):
+    return await value if inspect.isawaitable(value) else value
+
+
+def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=gather, probe=duration_seconds, rate_limit=120, shared_secret=None, global_create_limit=60, path_prefix="/studio", audio_origins=None, manager_factory=None):
     data_dir = Path(data_dir or os.getenv("PODCAST_DATA_DIR", str(ROOT / "data")))
     audio_origins = tuple(origin.strip() for origin in os.getenv("STUDIO_AUDIO_ORIGINS", "").split(",") if origin.strip()) if audio_origins is None else tuple(audio_origins)
 
     @asynccontextmanager
     async def lifespan(app):
-        manager = JobManager(data_dir, notebook, local, gatherer, probe, global_create_limit=global_create_limit)
+        manager = manager_factory() if manager_factory else JobManager(data_dir, notebook, local, gatherer, probe, global_create_limit=global_create_limit)
         app.state.manager = manager
         await manager.start()
         try:
@@ -504,27 +513,29 @@ def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=ga
 
     @app.post("/v1/podcasts", status_code=202)
     async def create(body: PodcastRequest, request: Request):
+        if not studio_enabled():
+            raise HTTPException(503, "Studio generation is disabled")
         job = await request.app.state.manager.enqueue(body, request.state.uid, public=request.state.auth_mode == "gateway")
         return {"id": job["id"], "status": "queued"}
 
     @app.get("/v1/podcasts")
     async def list_jobs(request: Request):
-        jobs = request.app.state.manager.all()
+        jobs = await resolved(request.app.state.manager.all())
         if request.state.auth_mode != "bearer":
             jobs = [job for job in jobs if job["owner_uid"] == request.state.uid]
         return {"items": [public_job(job, transcript=False) for job in jobs[:100]]}
 
     @app.get("/v1/podcasts/{job_id}")
     async def get_job(job_id: str, request: Request):
-        return public_job(request.app.state.manager.get(job_id, request.state.uid))
+        return public_job(await resolved(request.app.state.manager.get(job_id, request.state.uid)))
 
     @app.get("/v1/podcasts/{job_id}/audio")
     async def audio(job_id: str, request: Request):
         manager = request.app.state.manager
-        job = manager.get(job_id, request.state.uid)
+        job = await resolved(manager.get(job_id, request.state.uid))
         if job["status"] != "ready":
             raise HTTPException(409, "Podcast audio is not ready")
-        path = manager.audio_path(job_id)
+        path = await resolved(manager.audio_path(job_id))
         if not path.is_file():
             raise HTTPException(409, "Podcast audio is missing")
         return FileResponse(path, media_type="audio/mpeg", filename="podcast.mp3", headers={"Cache-Control": "private, no-store", "Accept-Ranges": "bytes"})

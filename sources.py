@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 import aiohttp
+from aiohttp.abc import AbstractResolver
 
 UA = "Mozilla/5.0 (compatible; Feedbot/1.0)"
 MAX_BYTES = 3 * 1024 * 1024
@@ -56,7 +57,7 @@ def public_addresses(addresses):
     return addresses
 
 
-class PublicResolver(aiohttp.abc.AbstractResolver):
+class PublicResolver(AbstractResolver):
     async def resolve(self, host, port=0, family=socket.AF_INET):
         validate_url("https://" + host)
         results = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM, family=socket.AF_UNSPEC)

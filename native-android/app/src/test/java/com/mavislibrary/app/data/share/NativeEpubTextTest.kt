@@ -25,6 +25,55 @@ class NativeEpubTextTest {
         assertEquals(listOf("Second chapter", "First chapter"), NativeEpubText.read(epub))
     }
 
+    @Test fun scriptMarkupIsPlainTextNotHtml() {
+        val epub = temp.newFile("script.epub")
+        ZipOutputStream(epub.outputStream()).use { zip ->
+            mapOf(
+                "mimetype" to EPUB_MIME,
+                "META-INF/container.xml" to "<container><rootfile full-path=\"book.opf\"/></container>",
+                "book.opf" to "<package><manifest><item id=\"a\" href=\"chapter.xhtml\" media-type=\"application/xhtml+xml\"/></manifest><spine><itemref idref=\"a\"/></spine></package>",
+                "chapter.xhtml" to "<html><body><p>Safe &lt;script&gt;alert('x')&lt;/script&gt;</p><script>alert('bad')</script></body></html>",
+            ).forEach { (name, value) -> zip.putNextEntry(ZipEntry(name)); zip.write(value.toByteArray()); zip.closeEntry() }
+        }
+        val text = NativeEpubText.read(epub).single()
+        assertTrue(text.contains("<script>alert('x')</script>"))
+        assertFalse(text.contains("alert('bad')"))
+    }
+
+    @Test fun traversalEntryIsRejectedEvenWhenUnreferenced() {
+        val epub = temp.newFile("traversal.epub")
+        ZipOutputStream(epub.outputStream()).use { zip ->
+            mapOf("mimetype" to EPUB_MIME, "../outside.xhtml" to "<p>Bad</p>").forEach { (name, value) ->
+                zip.putNextEntry(ZipEntry(name)); zip.write(value.toByteArray()); zip.closeEntry()
+            }
+        }
+        assertFalse(validateEpub(epub, EPUB_MIME))
+        assertTrue(runCatching { NativeEpubText.read(epub) }.isFailure)
+    }
+
+    @Test fun oversizedChapterIsRejected() {
+        val epub = temp.newFile("large.epub")
+        ZipOutputStream(epub.outputStream()).use { zip ->
+            mapOf(
+                "mimetype" to EPUB_MIME,
+                "META-INF/container.xml" to "<container><rootfile full-path=\"book.opf\"/></container>",
+                "book.opf" to "<package><manifest><item id=\"a\" href=\"chapter.xhtml\" media-type=\"application/xhtml+xml\"/></manifest><spine><itemref idref=\"a\"/></spine></package>",
+                "chapter.xhtml" to "<p>${"a".repeat(2 * 1024 * 1024)}</p>",
+            ).forEach { (name, value) -> zip.putNextEntry(ZipEntry(name)); zip.write(value.toByteArray()); zip.closeEntry() }
+        }
+        assertTrue(validateEpub(epub, EPUB_MIME))
+        assertTrue(runCatching { NativeEpubText.read(epub) }.isFailure)
+    }
+
+    @Test fun excessiveZipEntriesRejected() {
+        val epub = temp.newFile("many.epub")
+        ZipOutputStream(epub.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("mimetype")); zip.write(EPUB_MIME.toByteArray()); zip.closeEntry()
+            repeat(10_000) { index -> zip.putNextEntry(ZipEntry("entry$index")); zip.closeEntry() }
+        }
+        assertFalse(validateEpub(epub, EPUB_MIME))
+    }
+
     @Test fun routeRejectsTraversalUnknownAndKids() {
         val id = UUID.randomUUID().toString()
         assertTrue(importedRouteAllowed(id, listOf(id), false))

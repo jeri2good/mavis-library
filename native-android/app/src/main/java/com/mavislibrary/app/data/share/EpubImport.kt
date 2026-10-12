@@ -48,7 +48,9 @@ fun validateEpub(file: File, mime: String): Boolean = runCatching {
         val entries = zip.entries()
         while (entries.hasMoreElements()) {
             val e = entries.nextElement()
-            if (++count > 10000 || e.size < 0 || e.size > EPUB_LIMIT || e.size > EPUB_LIMIT - total) return false
+            if (++count > 10000 || e.size < 0 || e.size > EPUB_LIMIT || e.size > EPUB_LIMIT - total ||
+                e.name.startsWith('/') || e.name.contains('\\') || e.name.split('/').any { it == ".." || it == "." } ||
+                e.name.any { it.isISOControl() }) return false
             total += e.size
             if (e.name == "mimetype") {
                 if (found || e.size != EPUB_MIME.length.toLong()) return false

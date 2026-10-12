@@ -15,6 +15,7 @@ object NativeEpubText {
     private const val MAX_TOTAL_TEXT = 3_000_000
 
     fun read(file: File): List<String> = ZipFile(file).use { zip ->
+        if (!validateEpub(file, EPUB_MIME)) throw IOException("Invalid or oversized EPUB")
         fun entry(name: String): ByteArray {
             val item = zip.getEntry(name) ?: throw IOException("Missing EPUB entry")
             if (item.size !in 1..MAX_XML_BYTES.toLong()) throw IOException("EPUB entry too large")
@@ -50,10 +51,16 @@ object NativeEpubText {
             if (resolved.startsWith('/') || resolved.split('/').any { it == ".." }) return@mapNotNull null
             val text = StringBuilder()
             parse(entry(resolved), object : DefaultHandler() {
+                private var hiddenDepth = 0
                 override fun startElement(uri: String?, localName: String?, qName: String?, attrs: Attributes) {
+                    if (hiddenDepth > 0 || localName in setOf("script", "style")) { hiddenDepth++; return }
                     if (localName in setOf("p", "h1", "h2", "h3", "h4", "br", "li", "div")) text.append('\n')
                 }
+                override fun endElement(uri: String?, localName: String?, qName: String?) {
+                    if (hiddenDepth > 0) hiddenDepth--
+                }
                 override fun characters(ch: CharArray, start: Int, length: Int) {
+                    if (hiddenDepth > 0) return
                     if (text.length + length + total > MAX_TOTAL_TEXT) throw IOException("EPUB text too large")
                     text.append(ch, start, length)
                 }

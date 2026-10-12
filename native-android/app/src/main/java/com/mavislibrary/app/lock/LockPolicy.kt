@@ -2,6 +2,13 @@ package com.mavislibrary.app.lock
 
 import android.os.SystemClock
 
+fun lockEnrollmentAvailable(result: Int): Boolean = result == androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
+
+fun secureWindowRequired(setting: Boolean?): Boolean = setting == true
+
+fun ownerCodeAllowed(setting: Boolean?, state: LockPolicy.State, kidsLoaded: Boolean, kidsEnabled: Boolean): Boolean =
+    setting != null && state == LockPolicy.State.UNLOCKED && kidsLoaded && !kidsEnabled
+
 class LockPolicy(
     private val clock: () -> Long = SystemClock::elapsedRealtime,
     private val timeoutMs: Long = 60_000L,

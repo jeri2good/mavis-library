@@ -15,6 +15,9 @@ import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import com.mavislibrary.app.lock.LockPolicy
 import com.mavislibrary.app.lock.LockScreen
+import com.mavislibrary.app.lock.lockEnrollmentAvailable
+import com.mavislibrary.app.lock.ownerCodeAllowed
+import com.mavislibrary.app.lock.secureWindowRequired
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import androidx.lifecycle.lifecycleScope
@@ -135,12 +138,12 @@ class MainActivity : FragmentActivity() {
         webHost = if (useWebHost) WebHost(this) else null
         lifecycleScope.launch {
             container.settings.appLockEnabled.collect { enabled ->
-                if (enabled && BiometricManager.from(this@MainActivity).canAuthenticate(AUTHENTICATORS) != BiometricManager.BIOMETRIC_SUCCESS) {
+                if (enabled && !lockEnrollmentAvailable(BiometricManager.from(this@MainActivity).canAuthenticate(AUTHENTICATORS))) {
                     lockMessage = "Set up a device PIN, face, or fingerprint before using app lock. Lock has been turned off."
                     container.settings.setAppLockEnabled(false)
                     return@collect
                 }
-                if (enabled) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                if (secureWindowRequired(enabled)) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 lockPolicy.setEnabled(enabled)
                 lockState = lockPolicy.state
@@ -225,21 +228,20 @@ class MainActivity : FragmentActivity() {
     }
 
     private suspend fun refreshOwnerCode() {
-        val allowed = lockSetting != null && lockState == LockPolicy.State.UNLOCKED && kidsModeLoaded && !kidsModeEnabled
-        if (!allowed) {
+        if (!ownerCodeAllowed(lockSetting, lockState, kidsModeLoaded, kidsModeEnabled)) {
             webHost?.setOwnerCode(null)
             return
         }
         val code = (application as MavisApp).container.secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE)
-        if (lockSetting != null && lockState == LockPolicy.State.UNLOCKED && kidsModeLoaded && !kidsModeEnabled) webHost?.setOwnerCode(code)
+        if (ownerCodeAllowed(lockSetting, lockState, kidsModeLoaded, kidsModeEnabled)) webHost?.setOwnerCode(code)
     }
 
     private fun changeAppLock(enabled: Boolean) {
-        if (enabled && BiometricManager.from(this).canAuthenticate(AUTHENTICATORS) != BiometricManager.BIOMETRIC_SUCCESS) {
+        if (enabled && !lockEnrollmentAvailable(BiometricManager.from(this).canAuthenticate(AUTHENTICATORS))) {
             Toast.makeText(this, "Set up a device PIN, face, or fingerprint first. Lock is still off.", Toast.LENGTH_LONG).show()
             return
         }
-        if (enabled) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        if (secureWindowRequired(enabled)) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         lockPolicy.setEnabled(enabled)
         lockState = lockPolicy.state
@@ -251,7 +253,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun unlock() {
-        if (BiometricManager.from(this).canAuthenticate(AUTHENTICATORS) != BiometricManager.BIOMETRIC_SUCCESS) {
+        if (!lockEnrollmentAvailable(BiometricManager.from(this).canAuthenticate(AUTHENTICATORS))) {
             lockMessage = "No device PIN, face, or fingerprint is available. App lock has been turned off so you aren't locked out."
             changeAppLock(false)
             return

@@ -10,6 +10,8 @@ class VoiceCommandParserTest(private val phrase: String, private val expected: C
     @Test fun parse() { assertEquals(phrase, expected, VoiceCommandParser(phrase)) }
     companion object {
         @JvmStatic @Parameterized.Parameters(name = "{0}") fun cases(): List<Array<Any?>> = listOf(
+            "Hey Mavis, pause." to Command.Pause, "Please, next chapter!" to Command.Chapter(1),
+            "pause, please." to Command.Pause, "play,stop" to null, "pause, and play" to null,
             "play" to Command.Play, "resume" to Command.Play, "pause" to Command.Pause,
             "stop" to Command.Stop, "next chapter" to Command.Chapter(1), "previous chapter" to Command.Chapter(-1),
             "back 30 seconds" to Command.Seek(-30_000), "forward a minute" to Command.Seek(60_000),

@@ -68,6 +68,13 @@ fun rememberVoiceUi(controller: PlaybackController, kidsMode: Boolean, page: (Bo
                 })
         }
     }
+    LaunchedEffect(voice.message) {
+        val message = voice.message
+        if (message.isNotEmpty() && !voice.bus.listening) {
+            kotlinx.coroutines.delay(5_000)
+            if (voice.message == message) voice.message = ""
+        }
+    }
     DisposableEffect(voice, lifecycle) {
         fun refresh() {
             voice.foreground = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)

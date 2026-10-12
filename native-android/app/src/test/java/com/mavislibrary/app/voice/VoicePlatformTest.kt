@@ -29,6 +29,9 @@ class VoicePlatformTest {
         event(true, 0); event(false, 600)
         assertEquals(2, starts)
     }
+    @Test fun `canceled long down cannot start microphone`() {
+        HeadsetGesture().handle(true, false, 800, true, canceled = true, trigger = { fail() }, shortPress = { fail() })
+    }
     @Test fun `canceled press cannot fire or toggle`() {
         val g = HeadsetGesture()
         g.handle(true, false, 0, false, trigger = { fail() }, shortPress = { fail() })

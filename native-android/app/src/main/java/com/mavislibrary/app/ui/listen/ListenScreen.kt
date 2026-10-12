@@ -182,7 +182,6 @@ private fun NativePlayer(
     onSleep: (String) -> Unit,
 ) {
     var sleepOpen by remember { mutableStateOf(false) }
-    var sleepLabel by remember { mutableStateOf("Sleep timer off") }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Cover(playback.artwork, playback.title, Modifier.size(width = 150.dp, height = 210.dp))
         Text(playback.title, style = MaterialTheme.typography.headlineSmall)
@@ -211,12 +210,12 @@ private fun NativePlayer(
         Box {
             OutlinedButton(onClick = { sleepOpen = true }) { Icon(Icons.Outlined.Bedtime, null); Text("  Sleep timer") }
             DropdownMenu(sleepOpen, { sleepOpen = false }) {
-                    listOf(15, 30, 45, 60).forEach { m -> DropdownMenuItem({ Text("$m minutes") }, { onSleep("mavis.sleep.$m"); sleepLabel = "Stops in $m minutes"; sleepOpen = false }) }
-                    DropdownMenuItem({ Text("End of chapter") }, { onSleep(AudioCommands.SLEEP_CHAPTER); sleepLabel = "Stops at end of chapter"; sleepOpen = false })
-                    DropdownMenuItem({ Text("Off") }, { onSleep(AudioCommands.SLEEP_CANCEL); sleepLabel = "Sleep timer off"; sleepOpen = false })
+                    listOf(15, 30, 45, 60).forEach { m -> DropdownMenuItem({ Text("$m minutes") }, { onSleep("mavis.sleep.$m"); sleepOpen = false }) }
+                    DropdownMenuItem({ Text("End of chapter") }, { onSleep(AudioCommands.SLEEP_CHAPTER); sleepOpen = false })
+                    DropdownMenuItem({ Text("Off") }, { onSleep(AudioCommands.SLEEP_CANCEL); sleepOpen = false })
                 }
         }
-        Text(sleepLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(playback.sleepLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
     }
 }
 

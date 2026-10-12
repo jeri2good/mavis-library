@@ -39,6 +39,7 @@ data class PlaybackUiState(
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val speed: Float = 1f,
+    val sleepLabel: String = "Sleep timer",
 )
 
 class PlaybackController(context: Context, connect: Boolean = android.os.Build.FINGERPRINT != "robolectric") : AutoCloseable {
@@ -110,6 +111,7 @@ class PlaybackController(context: Context, connect: Boolean = android.os.Build.F
     fun speed(value: Float) { controller?.playbackParameters = PlaybackParameters(value.coerceIn(.75f, 2f)) }
     fun command(action: String) { controller?.sendCustomCommand(SessionCommand(action, Bundle.EMPTY), Bundle.EMPTY) }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun refresh() {
         val p = controller ?: return
         val metadata = p.currentMediaItem?.mediaMetadata
@@ -124,6 +126,9 @@ class PlaybackController(context: Context, connect: Boolean = android.os.Build.F
             positionMs = p.currentPosition.coerceAtLeast(0),
             durationMs = p.duration.coerceAtLeast(0),
             speed = p.playbackParameters.speed,
+            sleepLabel = p.customLayout.firstOrNull {
+                it.sessionCommand?.customAction == AudioCommands.SLEEP_30
+            }?.displayName?.toString() ?: "Sleep timer",
         )
     }
 

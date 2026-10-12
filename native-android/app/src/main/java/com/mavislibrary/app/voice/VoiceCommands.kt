@@ -19,7 +19,7 @@ sealed interface Command {
 /** Whole utterances only: never search for a command inside conversational speech. */
 fun VoiceCommandParser(text: String): Command? {
     if (text.length > 160) return null
-    val words = text.trim().lowercase(Locale.ROOT).trimEnd('.', '!', '?').split(Regex("\\s+")).toMutableList()
+    val words = text.trim().lowercase(Locale.ROOT).trimEnd('.', '!', '?', ',').split(Regex("\\s+")).map { it.trim(',') }.toMutableList()
     if (words.size > 8) return null
     if (words.take(2) == listOf("hey", "mavis")) repeat(2) { words.removeAt(0) }
     if (words.firstOrNull() == "please") words.removeAt(0)

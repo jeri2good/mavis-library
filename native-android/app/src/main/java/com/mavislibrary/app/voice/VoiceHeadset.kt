@@ -23,6 +23,7 @@ class HeadsetGesture {
     fun handle(isDown: Boolean, isUp: Boolean, heldMs: Long, longPress: Boolean, canceled: Boolean = false,
                trigger: () -> Unit, shortPress: () -> Unit): Boolean {
         if (!isDown && !isUp) return false
+        if (canceled) { reset(); return true }
         if (isDown) {
             down = true
             if (!fired && (longPress || heldMs >= 500)) { fired = true; trigger() }

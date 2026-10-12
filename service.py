@@ -1,10 +1,12 @@
 import asyncio
 import fcntl
+import hashlib
+import hmac
 import json
 import logging
 import os
+import re
 import secrets
-import shutil
 import sqlite3
 import time
 import uuid
@@ -18,6 +20,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from starlette.datastructures import QueryParams
 
 from engines import LocalEngine, NotebookAuthError, NotebookEngine, NotebookQuotaError, duration_seconds
 from sources import gather, validate_url
@@ -81,55 +84,137 @@ def load_token(path):
     return token
 
 
+def load_shared_secret(path=None):
+    secret = os.getenv("STUDIO_SHARED_SECRET")
+    if secret is not None:
+        if not secret:
+            raise RuntimeError("STUDIO_SHARED_SECRET must not be empty")
+        return secret
+    return load_token(path or Path.home() / ".secure/podcast-lounge-shared-secret")
+
+
+def valid_uid(uid):
+    return isinstance(uid, str) and (uid == "owner" or re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", uid) is not None)
+
+
+def uid_hash(uid):
+    return hashlib.sha256(uid.encode("utf-8")).hexdigest()[:8]
+
+
+def verify_audio(secret, job_id, exp, uid, sig, now_milliseconds=None):
+    if not (re.fullmatch(r"[A-Za-z0-9_-]{1,100}", job_id) and valid_uid(uid)
+            and re.fullmatch(r"[0-9]{10}", exp) and re.fullmatch(r"[0-9a-f]{64}", sig)):
+        return False
+    now = int((time.time() * 1000 if now_milliseconds is None else now_milliseconds) // 1000)
+    if not now < int(exp) <= now + 600:
+        return False
+    expected = hmac.new(secret.encode("utf-8"), f"{job_id}.{exp}.{uid}".encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sig, expected)
+
+
 class SecurityMiddleware:
-    def __init__(self, app, token, rate_limit=120):
-        self.app, self.token, self.rate_limit = app, token, rate_limit
+    def __init__(self, app, token, shared_secret, rate_limit=120, path_prefix="/studio"):
+        self.app, self.token, self.shared_secret, self.rate_limit = app, token, shared_secret, rate_limit
+        self.path_prefix = path_prefix.rstrip("/")
         self.clients = defaultdict(deque)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
-        ip = (scope.get("client") or ("unknown",))[0]
-        now = time.monotonic()
-        if ip not in self.clients and len(self.clients) >= 4096:
-            self.clients = defaultdict(deque, {key: hits for key, hits in self.clients.items() if hits and hits[-1] > now - 60})
-            if len(self.clients) >= 4096:
-                return await JSONResponse({"detail": "Too many clients"}, 429)(scope, receive, send)
-        hits = self.clients[ip]
-        while hits and hits[0] <= now - 60:
-            hits.popleft()
-        if len(hits) >= self.rate_limit:
-            return await JSONResponse({"detail": "Rate limit exceeded; retry in a minute"}, 429, headers={"Retry-After": "60"})(scope, receive, send)
-        hits.append(now)
-        headers = dict(scope["headers"])
-        authorization = headers.get(b"authorization", b"")
-        expected = ("Bearer " + self.token).encode()
-        if not (scope["path"] == "/v1/health" and scope["method"] == "GET") and not secrets.compare_digest(authorization, expected):
-            return await JSONResponse({"detail": "Bearer authorization required"}, 401, headers={"WWW-Authenticate": "Bearer"})(scope, receive, send)
-        body = bytearray()
-        while True:
-            message = await receive()
-            if message["type"] == "http.disconnect":
-                return
-            body.extend(message.get("body", b""))
-            if len(body) > 3 * 1024 * 1024:
-                return await JSONResponse({"detail": "Request body exceeds 3 MB"}, 413)(scope, receive, send)
-            if not message.get("more_body", False):
-                break
-        delivered = False
+        scope = dict(scope)
+        path = scope["path"]
+        if self.path_prefix and path.startswith(self.path_prefix + "/"):
+            scope["path"] = path[len(self.path_prefix):]
+            scope["root_path"] = self.path_prefix
+        path = scope["path"]
+        state = scope.setdefault("state", {})
+        headers = defaultdict(list)
+        for name, value in scope["headers"]:
+            headers[name.lower()].append(value)
+        status = 500
 
-        async def replay():
-            nonlocal delivered
-            if not delivered:
-                delivered = True
-                return {"type": "http.request", "body": bytes(body), "more_body": False}
-            return await receive()
+        async def logged_send(message):
+            nonlocal status
+            if message["type"] == "http.response.start":
+                status = message["status"]
+            await send(message)
 
-        await self.app(scope, replay, send)
+        async def dispatch():
+            ip = (scope.get("client") or ("unknown",))[0]
+            now = time.monotonic()
+            if ip not in self.clients and len(self.clients) >= 4096:
+                self.clients = defaultdict(deque, {key: hits for key, hits in self.clients.items() if hits and hits[-1] > now - 60})
+                if len(self.clients) >= 4096:
+                    return await JSONResponse({"detail": "Too many clients"}, 429)(scope, receive, logged_send)
+            hits = self.clients[ip]
+            while hits and hits[0] <= now - 60:
+                hits.popleft()
+            if len(hits) >= self.rate_limit:
+                return await JSONResponse({"detail": "Rate limit exceeded; retry in a minute"}, 429, headers={"Retry-After": "60"})(scope, receive, logged_send)
+            hits.append(now)
+            uid, mode = None, None
+            params = QueryParams(scope.get("query_string", b""))
+            audio_match = re.fullmatch(r"/v1/podcasts/([A-Za-z0-9_-]{1,100})/audio", path)
+            signed = scope["method"] == "GET" and audio_match and any(key in params for key in ("exp", "uid", "sig"))
+            health = path == "/v1/health" and scope["method"] == "GET"
+            if signed:
+                if all(len(params.getlist(key)) == 1 for key in ("exp", "uid", "sig")) and verify_audio(self.shared_secret, audio_match[1], params["exp"], params["uid"], params["sig"]):
+                    uid, mode = params["uid"], "signed"
+            elif headers[b"x-studio-key"]:
+                if (len(headers[b"x-studio-key"]) == len(headers[b"x-mavis-user"]) == 1
+                        and secrets.compare_digest(headers[b"x-studio-key"][0], self.shared_secret.encode("utf-8"))):
+                    candidate = headers[b"x-mavis-user"][0].decode("latin-1")
+                    if valid_uid(candidate):
+                        uid, mode = candidate, "gateway"
+            elif len(headers[b"authorization"]) == 1 and secrets.compare_digest(headers[b"authorization"][0], ("Bearer " + self.token).encode()):
+                uid, mode = "owner", "bearer"
+            if not health and uid is None:
+                return await JSONResponse({"detail": "Valid studio authorization required"}, 401, headers={"WWW-Authenticate": "Bearer"})(scope, receive, logged_send)
+            state.update(uid=uid, auth_mode=mode)
+            create = path == "/v1/podcasts" and scope["method"] == "POST"
+            cap = 1024 * 1024 if create else 3 * 1024 * 1024
+            body = bytearray()
+            while True:
+                message = await receive()
+                if message["type"] == "http.disconnect":
+                    return
+                body.extend(message.get("body", b""))
+                if len(body) > cap:
+                    return await JSONResponse({"detail": "Request body exceeds byte limit"}, 413)(scope, receive, logged_send)
+                if not message.get("more_body", False):
+                    break
+            if create and len(body) > 450 * 1024:
+                try:
+                    payload = json.loads(body)
+                except (ValueError, UnicodeError):
+                    payload = None
+                if isinstance(payload, dict) and (payload.get("kind") == "chapter" or payload.get("text") is not None):
+                    return await JSONResponse({"detail": "Text request JSON exceeds 450 KiB"}, 413)(scope, receive, logged_send)
+            delivered = False
+
+            async def replay():
+                nonlocal delivered
+                if not delivered:
+                    delivered = True
+                    return {"type": "http.request", "body": bytes(body), "more_body": False}
+                return await receive()
+
+            await self.app(scope, replay, logged_send)
+
+        try:
+            await dispatch()
+        finally:
+            record = {"event": "request", "method": scope["method"], "status": status}
+            if state.get("uid"):
+                record.update(uidHash=uid_hash(state["uid"]), authMode=state["auth_mode"])
+            forwarded_proto = headers[b"x-forwarded-proto"]
+            if len(forwarded_proto) == 1 and forwarded_proto[0] in (b"http", b"https"):
+                record["forwardedProto"] = forwarded_proto[0].decode()
+            LOG.info(json.dumps(record))
 
 
 class JobManager:
-    def __init__(self, data_dir, notebook=None, local=None, gatherer=gather, probe=duration_seconds):
+    def __init__(self, data_dir, notebook=None, local=None, gatherer=gather, probe=duration_seconds, global_create_limit=60):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.data_dir.chmod(0o700)
@@ -137,7 +222,14 @@ class JobManager:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.execute("CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, record TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS create_events (uid_hash TEXT NOT NULL, created REAL NOT NULL)")
+        self.db.execute("CREATE INDEX IF NOT EXISTS create_events_time ON create_events (created)")
+        for job in self.all():
+            if "owner_uid" not in job:
+                job["owner_uid"] = "owner"
+                self.db.execute("UPDATE jobs SET record=? WHERE id=?", (json.dumps(job), job["id"]))
         self.db.commit()
+        self.global_create_limit = global_create_limit
         self.notebook, self.local = notebook or NotebookEngine(), local or LocalEngine()
         self.gatherer, self.probe = gatherer, probe
         self.queue = asyncio.Queue()
@@ -148,11 +240,14 @@ class JobManager:
     def all(self):
         return sorted((json.loads(row[0]) for row in self.db.execute("SELECT record FROM jobs")), key=lambda job: (job["createdAt"], job["id"]), reverse=True)
 
-    def get(self, job_id):
+    def get(self, job_id, uid=None):
         row = self.db.execute("SELECT record FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Podcast not found")
-        return json.loads(row[0])
+        job = json.loads(row[0])
+        if uid is not None and uid != "owner" and job["owner_uid"] != uid:
+            raise HTTPException(404, "Podcast not found")
+        return job
 
     def save(self, job):
         self.db.execute("INSERT OR REPLACE INTO jobs VALUES (?, ?)", (job["id"], json.dumps(job)))
@@ -168,7 +263,7 @@ class JobManager:
         if job["status"] in TERMINAL:
             job.pop("_request", None)
         self.save(job)
-        LOG.info(json.dumps({"jobId": job_id, "stage": job["status"], "progress": job["progress"]}))
+        LOG.info(json.dumps({"jobId": job_id, "uidHash": uid_hash(job["owner_uid"]), "stage": job["status"], "progress": job["progress"]}))
         return job
 
     async def start(self):
@@ -199,8 +294,9 @@ class JobManager:
     def audio_path(self, job_id, temporary=False):
         return self.data_dir / (job_id + (".mp3.tmp" if temporary else ".mp3"))
 
-    async def delete(self, job_id):
+    async def delete(self, job_id, uid=None):
         async with self.lifecycle_lock:
+            self.get(job_id, uid)
             await self._delete(job_id)
 
     async def _delete(self, job_id):
@@ -231,12 +327,30 @@ class JobManager:
                 await self._delete(job["id"])
                 jobs.remove(job)
 
-    async def enqueue(self, request):
+    def check_create_limits(self, uid, public):
+        cutoff = time.time() - 3600
+        global_count = self.db.execute("SELECT COUNT(*) FROM create_events WHERE created>?", (cutoff,)).fetchone()[0]
+        if global_count >= self.global_create_limit:
+            raise HTTPException(429, "Global create rate limit exceeded; retry in an hour", headers={"Retry-After": "3600"})
+        if uid != "owner":
+            count = self.db.execute("SELECT COUNT(*) FROM create_events WHERE uid_hash=? AND created>?", (uid_hash(uid), cutoff)).fetchone()[0]
+            if count >= 6:
+                raise HTTPException(429, "User create rate limit exceeded; retry in an hour", headers={"Retry-After": "3600"})
+        if public or uid != "owner":
+            jobs = [job for job in self.all() if job["owner_uid"] == uid]
+            if sum(job["status"] == "queued" for job in jobs) >= 3:
+                raise HTTPException(429, "User queue is full (3 queued jobs)", headers={"Retry-After": "60"})
+            if sum(job["status"] not in TERMINAL for job in jobs) >= 5:
+                raise HTTPException(429, "User capacity is full (2 concurrent plus 3 queued jobs)", headers={"Retry-After": "60"})
+
+    async def enqueue(self, request, uid="owner", public=False):
+        self.check_create_limits(uid, public)
         engine = request.engine
         if engine == "auto":
             engine = "notebooklm" if await self.notebook.logged_in() else "local"
         async with self.lifecycle_lock:
             await self._prune()
+            self.check_create_limits(uid, public)
             jobs = self.all()
             if len(jobs) >= 50:
                 victim = next((job for job in reversed(jobs) if job["status"] in TERMINAL), None)
@@ -244,9 +358,13 @@ class JobManager:
                     raise HTTPException(429, "Podcast queue is full (50 jobs); wait or delete a job")
                 await self._delete(victim["id"])
             job_id = str(uuid.uuid4())
-            job = {"id": job_id, "status": "queued", "progress": 0, "stage": "Queued", "engine": engine, "title": request.title, "kind": request.kind, "style": request.style, "createdAt": timestamp(), "sources": [], "_request": request.model_dump()}
+            job = {"id": job_id, "owner_uid": uid, "status": "queued", "progress": 0, "stage": "Queued", "engine": engine, "title": request.title, "kind": request.kind, "style": request.style, "createdAt": timestamp(), "sources": [], "_request": request.model_dump()}
+            now = time.time()
+            self.db.execute("DELETE FROM create_events WHERE created<=?", (now - 3600,))
+            self.db.execute("INSERT INTO create_events VALUES (?, ?)", (uid_hash(uid), now))
             self.save(job)
             self.queue.put_nowait(job_id)
+            LOG.info(json.dumps({"event": "created", "jobId": job_id, "uidHash": uid_hash(uid)}))
             return job
 
     async def worker(self):
@@ -297,7 +415,7 @@ class JobManager:
                 used = getattr(getattr(self.local, "llm", None), "used", None)
                 if used:
                     self.update(job_id, _llmUsed=used)
-                    LOG.info(json.dumps({"jobId": job_id, "stage": "local_engine", "llm": used}))
+                    LOG.info(json.dumps({"jobId": job_id, "uidHash": uid_hash(job["owner_uid"]), "stage": "local_engine", "llm": used}))
             if not output.is_file() or output.stat().st_size == 0:
                 raise RuntimeError("Engine produced no audio")
             duration = await self.probe(output)
@@ -337,15 +455,15 @@ class JobManager:
 
 
 def public_job(job, transcript=True):
-    return {key: value for key, value in job.items() if not key.startswith("_") and (transcript or key != "transcript")}
+    return {key: value for key, value in job.items() if not key.startswith("_") and key != "owner_uid" and (transcript or key != "transcript")}
 
 
-def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=gather, probe=duration_seconds, rate_limit=120):
+def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=gather, probe=duration_seconds, rate_limit=120, shared_secret=None, global_create_limit=60, path_prefix="/studio"):
     data_dir = Path(data_dir or os.getenv("PODCAST_DATA_DIR", str(ROOT / "data")))
 
     @asynccontextmanager
     async def lifespan(app):
-        manager = JobManager(data_dir, notebook, local, gatherer, probe)
+        manager = JobManager(data_dir, notebook, local, gatherer, probe, global_create_limit=global_create_limit)
         app.state.manager = manager
         await manager.start()
         try:
@@ -354,46 +472,51 @@ def create_app(data_dir=None, token=None, notebook=None, local=None, gatherer=ga
             await manager.close()
 
     app = FastAPI(title="Mavis Podcast Lounge", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-    app.add_middleware(SecurityMiddleware, token=token or load_token(os.getenv("PODCAST_TOKEN_PATH", str(Path.home() / ".secure/podcast-lounge-token"))), rate_limit=rate_limit)
+    app.add_middleware(SecurityMiddleware, token=token or load_token(os.getenv("PODCAST_TOKEN_PATH", str(Path.home() / ".secure/podcast-lounge-token"))), shared_secret=shared_secret if shared_secret is not None else load_shared_secret(), rate_limit=rate_limit, path_prefix=path_prefix)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, exc):
-        return JSONResponse({"detail": "; ".join(".".join(str(part) for part in error["loc"][1:]) + ": " + error["msg"] for error in exc.errors())}, 422)
+        details = []
+        for error in exc.errors():
+            field = error["loc"][1] if len(error["loc"]) > 1 else "body"
+            field = field if field in PodcastRequest.model_fields else "body"
+            details.append(field + ": " + error["msg"])
+        return JSONResponse({"detail": "; ".join(details)}, 422)
 
     @app.get("/v1/health")
-    async def health(request: Request):
-        manager = request.app.state.manager
-        logged_in = await manager.notebook.logged_in()
-        available = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
-        return {"ok": True, "engines": {"notebooklm": {"available": True, "loggedIn": logged_in, "note": "Signed in (verified with NotebookLM)" if logged_in else "NotebookLM needs a fresh sign-in"}, "local": {"available": available, "note": "Two-host Edge TTS with current-host compatibility; dialogue via Hermes gateway. TypeSafe System One cannot generate text. Requires network access." if available else "ffmpeg and ffprobe are required"}}}
+    async def health():
+        return {"ok": True}
 
     @app.post("/v1/podcasts", status_code=202)
     async def create(body: PodcastRequest, request: Request):
-        job = await request.app.state.manager.enqueue(body)
+        job = await request.app.state.manager.enqueue(body, request.state.uid, public=request.state.auth_mode == "gateway")
         return {"id": job["id"], "status": "queued"}
 
     @app.get("/v1/podcasts")
     async def list_jobs(request: Request):
-        return {"items": [public_job(job, transcript=False) for job in request.app.state.manager.all()[:100]]}
+        jobs = request.app.state.manager.all()
+        if request.state.auth_mode != "bearer":
+            jobs = [job for job in jobs if job["owner_uid"] == request.state.uid]
+        return {"items": [public_job(job, transcript=False) for job in jobs[:100]]}
 
     @app.get("/v1/podcasts/{job_id}")
     async def get_job(job_id: str, request: Request):
-        return public_job(request.app.state.manager.get(job_id))
+        return public_job(request.app.state.manager.get(job_id, request.state.uid))
 
     @app.get("/v1/podcasts/{job_id}/audio")
     async def audio(job_id: str, request: Request):
         manager = request.app.state.manager
-        job = manager.get(job_id)
+        job = manager.get(job_id, request.state.uid)
         if job["status"] != "ready":
             raise HTTPException(409, "Podcast audio is not ready")
         path = manager.audio_path(job_id)
         if not path.is_file():
             raise HTTPException(409, "Podcast audio is missing")
-        return FileResponse(path, media_type="audio/mpeg", filename="podcast.mp3")
+        return FileResponse(path, media_type="audio/mpeg", filename="podcast.mp3", headers={"Cache-Control": "private, no-store", "Accept-Ranges": "bytes"})
 
     @app.delete("/v1/podcasts/{job_id}", status_code=204)
     async def delete(job_id: str, request: Request):
-        await request.app.state.manager.delete(job_id)
+        await request.app.state.manager.delete(job_id, request.state.uid)
         return Response(status_code=204)
 
     return app

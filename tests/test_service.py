@@ -41,7 +41,7 @@ def test_health_open_and_other_routes_auth(tmp_path):
     with TestClient(make_app(tmp_path)) as client:
         health = client.get("/v1/health")
         assert health.status_code == 200
-        assert health.json()["engines"]["notebooklm"]["loggedIn"] is False
+        assert health.json() == {"ok": True}
         for method, path in [("GET", "/v1/podcasts"), ("POST", "/v1/podcasts"), ("GET", "/docs"), ("GET", "/openapi.json"), ("HEAD", "/v1/health"), ("GET", "/v1/podcasts/unknown/audio"), ("DELETE", "/v1/podcasts/unknown")]:
             assert client.request(method, path).status_code == 401
             assert client.request(method, path, headers={"Authorization": "Bearer wrong"}).status_code == 401

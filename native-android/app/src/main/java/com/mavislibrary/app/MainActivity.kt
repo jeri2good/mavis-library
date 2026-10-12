@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
         widgetDestination = requested?.takeIf { it == "shelf" || it in (1..366).map { day -> com.mavislibrary.app.work.VerseOfDay.forDay(day).route } }
         if (widgetDestination != null) widgetRequest++
     }
+    private var sharedIntent by mutableStateOf<android.content.Intent?>(null)
     private var webHost: WebHost? = null
     private var enablingReminder = false
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -80,6 +81,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         acceptWidgetDestination(intent)
+        if (savedInstanceState == null) sharedIntent = intent?.takeIf { it.action in setOf(android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_VIEW) }
         pendingDebugDrive = BuildConfig.DEBUG && savedInstanceState == null && intent?.action == "com.mavislibrary.app.DEBUG_DRIVE"
         lifecycleScope.launch {
             kidsPrefs().state.collect { state ->
@@ -142,6 +144,15 @@ class MainActivity : ComponentActivity() {
                 }
                 MavisRoot(
                     container, webHost, online,
+                    sharedIntent = sharedIntent,
+                    onShareConsumed = { consumed ->
+                        if (sharedIntent === consumed) {
+                            sharedIntent = null
+                            if (intent?.action in setOf(android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_VIEW)) {
+                                setIntent(android.content.Intent(android.content.Intent.ACTION_MAIN).setClass(this@MainActivity, MainActivity::class.java).addCategory(android.content.Intent.CATEGORY_LAUNCHER))
+                            }
+                        }
+                    },
                     onFirstAudio = ::requestNotificationPermission,
                     onEnableReminder = ::enableReadingReminder,
                     driveModeActive = driveModeActive,
@@ -205,6 +216,9 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         acceptWidgetDestination(intent)
+        if (intent.action in setOf(android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_VIEW)) {
+            sharedIntent = android.content.Intent(intent)
+        }
         if (BuildConfig.DEBUG && intent.action == "com.mavislibrary.app.DEBUG_DRIVE") {
             if (!kidsModeLoaded) pendingDebugDrive = true
             else if (!kidsModeEnabled) setDriveScreen(true)

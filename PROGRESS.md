@@ -54,3 +54,19 @@ Tests run as `env -u TYPESAFE_API_KEY -u FISH_AUDIO_API_KEY npm run test:functio
 - Fixed the `entries.takeLast` Kotlin compilation failure; tested PIN retry recovery after five misses and expiry. Commit de1e99b.
 - Kept Codex's existing Kids shell, curated Listen/Read repository path, Bible stories, and restricted WebView. Added selected-route denial tests and a Robolectric shell/Back test; stopped auto drive mode until the persisted Kids state is known, corrected the lifecycle audio-time snapshot, reduced reading-log writes to 30-second intervals, and enlarged setup controls.
 - Final background `./gradlew testDebugUnitTest assembleDebug --no-daemon -q` exited 0 with JDK 21 and Android SDK; 22 XML suites, 97 tests, 0 failures, 0 errors, 0 skipped. Debug APK built; no emulator, physical tablet, live LibriVox, or WebView runtime verification.
+
+## Share/stats step 1 — local data and pure helpers
+- Added bounded EPUB copying/ZIP validation, private import index, strict Bible-reference routes, and internal verse-card renderer/share helper.
+- Added adult-only stats DataStore, midnight accumulator reuse, streak/recap/goal math and JVM cases. No test result claimed yet.
+- Strict path allowlist currently keeps weekly goal in the stats DataStore; minimal SettingsStore exception requested.
+
+## Share/stats step 2 — shell integration
+- Added SEND/VIEW handling with Kids-mode suppression, private imported-book section and snackbars, FileProvider restricted to cache/share, and Settings → Reading stats.
+- Adult tracking reuses ReadingAccumulator, observes stable media book keys, samples reader route while resumed, and flushes at state changes/30-second intervals.
+- Existing WebHost owner-code logic and all Kids files remain unchanged. Imported EPUBs are stored/listed; native-to-web imported-file reading is not implemented in this scope. No natural Shelf verse action exists, so ShareVerse stays an internal API.
+
+## Share/stats step 3 — boundary tests and verification fixes
+- Added Robolectric tests for theme bitmap dimensions/background, provider confinement, valid private import persistence, invalid-file cleanup, Kids import suppression and URI/action restrictions; added persistence/reader identity and Compose route tests.
+- Fixed Android ClipData's void setter and stale intent consumption. Kept warm share payload separate from the original launch intent (ActivityScenario keys lifecycle events to that intent); Kids-mode shares are consumed without navigating by the persisted-state gate in MavisRoot.
+- First Gradle run failed compilation on ClipData; second run was stopped after thread-dump diagnosis of lifecycle teardown waiting on changed launch intents. Final verification is pending; no passing counts claimed here.
+- Continuation: targeted tracing found `nav.navigate` from the share effect could throw `IllegalStateException: Method setCurrentState must be called on the main thread` in Robolectric, swallowed by the share-error snackbar. Share navigation now switches to `Dispatchers.Main.immediate`, and the shell regression checks a stale cached Kids-mode flag cannot drop an adult share; persisted Kids state still gates delivery. Two full `testDebugUnitTest assembleDebug` runs (with a targeted navigation-class run between them) exited 0 after removing diagnostic logging. Final JUnit XML: 30 suites, 133 tests, 0 failures/errors/skips; debug APK built. No emulator/device run. Weekly goal remains in the isolated stats DataStore because changing SettingsStore is outside this brief's file allowlist; imported EPUBs are indexed/listed, not opened by the web reader.

@@ -73,6 +73,8 @@ import com.mavislibrary.app.data.stats.statsRepository
 import com.mavislibrary.app.ui.stats.StatsScreen
 import com.mavislibrary.app.ui.stats.AdultReadingTracker
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 
 enum class Tab(val route: String, val label: String, val icon: ImageVector, val webRoute: String? = null) {
@@ -127,35 +129,6 @@ fun MavisRoot(
     val snackbar = remember { SnackbarHostState() }
     AdultReadingTracker(container, stats, webHost,
         current?.route == ROUTE_WEB_SHELF || current?.route == Tab.BIBLE.route)
-    LaunchedEffect(sharedIntent) {
-        val incoming = sharedIntent ?: return@LaunchedEffect
-        try {
-            if (kidsPrefs.state.first().enabled) return@LaunchedEffect
-            if (incoming.action == android.content.Intent.ACTION_SEND && incoming.type == "text/plain") {
-                val verse = parseBibleReference(incoming.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString().orEmpty())
-                if (verse == null) snackbar.showSnackbar(SHARE_HELP)
-                else {
-                    webHost?.openLater(verse.route)
-                    // show() also consumes pending routes if the Bible tab is already attached.
-                    if (current?.route == Tab.BIBLE.route) webHost?.show(verse.route)
-                    nav.navigate(Tab.BIBLE.route) { launchSingleTop = true }
-                }
-            } else {
-                val uri = sharedEpubUri(incoming)
-                val mime = incoming.type ?: uri?.let { context.contentResolver.getType(it) }
-                if (uri == null || mime != EPUB_MIME) snackbar.showSnackbar(SHARE_HELP)
-                else {
-                    val book = imports.import(uri, mime)
-                    if (book != null && !kidsPrefs.state.first().enabled) {
-                        nav.navigate(Tab.SHELF.route) { launchSingleTop = true }
-                        snackbar.showSnackbar("Added ${book.title} to your shelf")
-                    }
-                }
-            }
-        } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { snackbar.showSnackbar((e as? ImportRejected)?.message ?: "Mavis couldn't open that share. Please try again.") }
-        finally { onShareConsumed(incoming) }
-    }
     val openBook: (String) -> Unit = { key ->
         webHost?.openLater("#/book/" + java.net.URLEncoder.encode(key, "UTF-8").replace("+", "%20"))
         nav.navigate(ROUTE_WEB_SHELF) {
@@ -242,6 +215,43 @@ fun MavisRoot(
                 composable(ROUTE_SHOWCASE) { ThemeShowcaseScreen(onBack = { nav.popBackStack() }) }
             }
         }
+    }
+
+    /** External deliveries can arrive before the start destination finishes entering. */
+    LaunchedEffect(sharedIntent) {
+        val incoming = sharedIntent ?: return@LaunchedEffect
+        try {
+            if (kidsPrefs.state.first().enabled) return@LaunchedEffect
+            if (incoming.action == android.content.Intent.ACTION_SEND && incoming.type == "text/plain") {
+                val verse = parseBibleReference(incoming.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString().orEmpty())
+                if (verse == null) snackbar.showSnackbar(SHARE_HELP)
+                else {
+                    withContext(Dispatchers.Main.immediate) {
+                        if (kidsPrefs.state.first().enabled) return@withContext
+                        webHost?.openLater(verse.route)
+                        // show() also consumes pending routes if the Bible tab is already attached.
+                        if (nav.currentDestination?.route == Tab.BIBLE.route) webHost?.show(verse.route)
+                        nav.navigate(Tab.BIBLE.route) { launchSingleTop = true }
+                    }
+                }
+            } else {
+                val uri = sharedEpubUri(incoming)
+                val mime = incoming.type ?: uri?.let { context.contentResolver.getType(it) }
+                if (uri == null || mime != EPUB_MIME) snackbar.showSnackbar(SHARE_HELP)
+                else {
+                    val book = imports.import(uri, mime)
+                    if (book != null) {
+                        val navigated = withContext(Dispatchers.Main.immediate) {
+                            if (kidsPrefs.state.first().enabled) false
+                            else { nav.navigate(Tab.SHELF.route) { launchSingleTop = true }; true }
+                        }
+                        if (navigated) snackbar.showSnackbar("Added ${book.title} to your shelf")
+                    }
+                }
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { snackbar.showSnackbar((e as? ImportRejected)?.message ?: "Mavis couldn't open that share. Please try again.") }
+        finally { onShareConsumed(incoming) }
     }
 
     webHost?.pendingMicRequest?.let {

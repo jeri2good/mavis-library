@@ -15,6 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -25,6 +26,7 @@ import org.robolectric.Shadows
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ShareAndroidTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     @Test fun cardsRenderAllLooksWithThemeBackground() {

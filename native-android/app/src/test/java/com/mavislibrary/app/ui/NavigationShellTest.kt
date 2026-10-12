@@ -61,11 +61,22 @@ class NavigationShellTest {
 
     @Test
     fun sharedBibleReferenceNavigatesViaOnNewIntent() {
+        assertEquals("robolectric", android.os.Build.FINGERPRINT)
         waitForTag("tab_settings")
+        compose.waitForIdle()
+        compose.onNodeWithTag("tab_search").assertIsSelected()
+        compose.onNodeWithTag("tab_settings").performClick()
+        waitForTag("settings")
         compose.activityRule.scenario.onActivity { activity ->
-            MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
-                .invoke(activity, Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "John 3:16"))
+            val cachedKidsMode = MainActivity::class.java.getDeclaredField("kidsModeEnabled").apply { isAccessible = true }
+            cachedKidsMode.setBoolean(activity, true)
+            try {
+                MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
+                    .invoke(activity, Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "John 3:16"))
+                assertEquals("John 3:16", (MainActivity::class.java.getDeclaredMethod("getSharedIntent").apply { isAccessible = true }.invoke(activity) as Intent?)?.getStringExtra(Intent.EXTRA_TEXT))
+            } finally { cachedKidsMode.setBoolean(activity, false) }
         }
+        compose.waitForIdle()
         compose.waitUntil(5_000) {
             compose.onAllNodes(androidx.compose.ui.test.hasText("Bible opens here in the full app.")).fetchSemanticsNodes().isNotEmpty()
         }

@@ -163,7 +163,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         if (intent.action in setOf(android.content.Intent.ACTION_SEND, android.content.Intent.ACTION_VIEW)) {
-            sharedIntent = if (kidsModeLoaded && kidsModeEnabled) null else android.content.Intent(intent)
+            sharedIntent = android.content.Intent(intent)
         }
         if (BuildConfig.DEBUG && intent.action == "com.mavislibrary.app.DEBUG_DRIVE") {
             if (!kidsModeLoaded) pendingDebugDrive = true

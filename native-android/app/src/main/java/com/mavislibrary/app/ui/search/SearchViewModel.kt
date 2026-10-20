@@ -13,8 +13,6 @@ import com.mavislibrary.app.data.model.BookSource
 import com.mavislibrary.app.data.repo.Origin
 import com.mavislibrary.app.data.repo.SearchRepository
 import com.mavislibrary.app.data.repo.ShelfRepository
-import com.mavislibrary.app.data.feeds.*
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,13 +26,6 @@ import kotlinx.coroutines.launch
 data class DiscoverShelf(val id: String, val label: String, val blurb: String, val books: List<Book>? = null)
 
 data class SearchUiState(
-    val sources: List<FeedSource> = emptyList(),
-    val addSiteOpen: Boolean = false,
-    val siteInput: String = "",
-    val findingFeed: Boolean = false,
-    val feedResult: DiscoveryResult? = null,
-    val sourceError: String? = null,
-    val techNote: String? = null,
     val techKind: String = "ai",
     val tech: List<TechItem>? = null,
     val techError: String? = null,
@@ -57,10 +48,6 @@ data class SearchUiState(
 class SearchViewModel(
     private val search: SearchRepository,
     private val shelf: ShelfRepository,
-    private val feedStore: FeedStore? = null,
-    private val feedDiscovery: FeedDiscovery? = null,
-    private val feedRepository: FeedRepository? = null,
-
 ) : ViewModel() {
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
@@ -69,71 +56,13 @@ class SearchViewModel(
 
     private var job: Job? = null
 
-    private var discoveryJob: Job? = null
     private var techJob: Job? = null
-    init {
-        loadDiscover(); loadTech("ai")
-        if (feedStore != null) viewModelScope.launch {
-            feedStore.sources.collect { sources ->
-                _state.update { it.copy(sources = sources) }
-                val kind = _state.value.techKind
-                if (kind == "mine" || kind.startsWith("site:")) {
-                    loadTech(if (kind == "mine" || sources.any { "site:${it.id}" == kind && it.enabled }) kind else "mine")
-                }
-            }
-        }
-    }
-
-    fun openAddSite() = _state.update { it.copy(addSiteOpen = true, sourceError = null) }
-    fun closeAddSite() {
-        discoveryJob?.cancel()
-        _state.update { it.copy(addSiteOpen = false, findingFeed = false, feedResult = null, sourceError = null) }
-    }
-    fun siteInput(value: String) {
-        discoveryJob?.cancel()
-        _state.update { it.copy(siteInput = value, findingFeed = false, feedResult = null, sourceError = null) }
-    }
-    fun findFeed() {
-        val discovery = feedDiscovery ?: return
-        discoveryJob?.cancel()
-        val input = _state.value.siteInput
-        _state.update { it.copy(findingFeed = true, feedResult = null, sourceError = null) }
-        discoveryJob = viewModelScope.launch {
-            val result = discovery.discover(input)
-            _state.update { it.copy(findingFeed = false, feedResult = result) }
-        }
-    }
-    fun addFeed() {
-        val found = _state.value.feedResult as? DiscoveryResult.Found ?: return
-        sourceAction {
-            val source = feedStore?.add(found) ?: return@sourceAction
-            closeAddSite()
-            // Read the added source immediately: the DataStore collector may resume afterward.
-            _state.update { it.copy(sources = (it.sources.filterNot { s -> s.id == source.id } + source)) }
-            loadTech("site:${source.id}")
-        }
-    }
-    fun renameFeed(id: String, name: String) = sourceAction { feedStore?.rename(id, name) }
-    fun enableFeed(id: String, enabled: Boolean) = sourceAction { feedStore?.setEnabled(id, enabled) }
-    fun removeFeed(id: String) = sourceAction { feedStore?.remove(id) }
-    private fun sourceAction(action: suspend () -> Unit) {
-        viewModelScope.launch {
-            try { action(); _state.update { it.copy(sourceError = null) } }
-            catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(sourceError = e.message ?: "Couldn't save this site.") } }
-        }
-    }
+    init { loadDiscover(); loadTech("ai") }
 
     fun loadTech(kind: String) {
         techJob?.cancel()
-        _state.update { it.copy(techKind = kind, tech = null, techError = null, techNote = null) }
+        _state.update { it.copy(techKind = kind, tech = null, techError = null) }
         techJob = viewModelScope.launch {
-            if (kind == "mine" || kind.startsWith("site:")) {
-                val sources = _state.value.sources.filter { it.enabled && (kind == "mine" || kind == "site:${it.id}") }
-                val result = feedRepository?.load(sources) ?: FeedLoad(emptyList())
-                _state.update { if (it.techKind == kind) it.copy(tech = result.stories.map { s -> s.item }, techNote = result.note) else it }
-                return@launch
-            }
             if (kind !in setOf("ai", "papers", "tech")) return@launch
             try {
                 val items = search.techFeed(kind).value.take(12)

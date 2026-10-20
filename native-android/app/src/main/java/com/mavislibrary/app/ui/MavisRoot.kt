@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.LocalLibrary
+import androidx.compose.material.icons.outlined.RssFeed
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
@@ -95,6 +96,7 @@ enum class Tab(val route: String, val label: String, val icon: ImageVector, val 
     SHELF("shelf", "Shelf", Icons.Outlined.LocalLibrary),
     SEARCH("search", "Search", Icons.Outlined.Search),
     BIBLE("bible", "Bible", Icons.AutoMirrored.Outlined.MenuBook, "#/bible"),
+    SITES("sites", "Sites", Icons.Outlined.RssFeed),
     LISTEN("listen", "Listen", Icons.Outlined.Headphones),
     SETTINGS("settings", "Settings", Icons.Outlined.Settings),
 }
@@ -183,7 +185,7 @@ fun MavisRoot(
     AdultReadingTracker(container, stats, webHost,
         current?.route == ROUTE_WEB_SHELF || current?.route == Tab.BIBLE.route)
     LaunchedEffect(widgetRequest, loadedKids.enabled) {
-        if (widgetDestination != null && !loadedKids.enabled) {
+        if (widgetDestination != null && widgetDestination != com.mavislibrary.app.MainActivity.LOUNGE && !loadedKids.enabled) {
             val tab = if (widgetDestination.startsWith("#/bible/")) Tab.BIBLE.route else Tab.SHELF.route
             goTab(tab)
         }
@@ -203,6 +205,13 @@ fun MavisRoot(
         if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) {
             article = source
             nav.navigate("article") { launchSingleTop = true }
+        }
+    }
+    // "Podcast ready" notifications open the Lounge, with Listen behind it for Back.
+    LaunchedEffect(widgetRequest, loadedKids.enabled) {
+        if (widgetDestination == com.mavislibrary.app.MainActivity.LOUNGE && !loadedKids.enabled) {
+            goTab(Tab.LISTEN.route)
+            openLounge(com.mavislibrary.app.data.podcast.PodcastDraft())
         }
     }
     val latestLounge by rememberUpdatedState(openLounge)
@@ -233,7 +242,7 @@ fun MavisRoot(
                 NavigationBar {
                     Tab.entries.forEach { tab ->
                         NavigationBarItem(
-                            selected = current?.hierarchy?.any { it.route == tab.route } == true,
+                            selected = current?.hierarchy?.any { it.route == tab.route } == true || tab == Tab.SITES && current?.route == "site/{id}",
                             onClick = {
                                 nav.navigate(tab.route) {
                                     popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -308,7 +317,8 @@ fun MavisRoot(
                     }
                 }
                 composable(Tab.SEARCH.route) {
-                    SearchScreen(container, online, onOpenBook = openBook, onPodcast = openLounge, onOpenArticle = openArticle, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
+                    SearchScreen(container, online, onOpenBook = openBook, onPodcast = openLounge, onOpenArticle = openArticle, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null,
+                        onOpenSites = { goTab(Tab.SITES.route) })
                 }
                 composable(ROUTE_SCAN) {
                     if (scanRouteAllowed(loadedKids.enabled, canScan)) ScanScreen(
@@ -318,6 +328,19 @@ fun MavisRoot(
                         onSaveBook = container.shelfRepository::add,
                         onSearch = { goTab(Tab.SEARCH.route) },
                     ) else LaunchedEffect(Unit) { nav.popBackStack() }
+                }
+                composable(Tab.SITES.route) {
+                    com.mavislibrary.app.ui.sites.SitesScreen(
+                        container,
+                        onOpenSite = { id -> nav.navigate("site/$id") { launchSingleTop = true } },
+                        onOpenLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) },
+                        onSettings = { goTab(Tab.SETTINGS.route) },
+                        onAskNotifications = onFirstAudio,
+                    )
+                }
+                composable("site/{id}") { route ->
+                    com.mavislibrary.app.ui.sites.SiteScreen(container, route.arguments?.getString("id").orEmpty(),
+                        onBack = { nav.popBackStack() }, onPodcast = openLounge, onOpenArticle = openArticle)
                 }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice, onLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) }) }
                 composable("article") {

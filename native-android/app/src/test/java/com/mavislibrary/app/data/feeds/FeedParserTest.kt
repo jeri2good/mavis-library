@@ -42,6 +42,21 @@ class FeedParserTest {
         assertTrue(feed.stories.zipWithNext().all { (a, b) -> a.published!! >= b.published!! })
     }
 
+    @Test fun bodyPrefersFullContentKeepsParagraphsAndDropsScripts() {
+        val feed = FeedParser.parse("""<rss xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>T</title>
+            <item><title>Full</title><link>https://example.com/full</link><description>Short teaser</description>
+            <content:encoded><![CDATA[<p>First &amp; best.</p><script>alert(1)</script><p>Second   line</p>]]></content:encoded></item>
+            <item><title>Teaser only</title><link>https://example.com/teaser</link><description>&lt;p&gt;Just this&lt;/p&gt;</description></item>
+            <item><title>Huge</title><link>https://example.com/huge</link><description>${"abcdefgh".repeat(2_000)}</description></item>
+            </channel></rss>""")
+        val byTitle = feed.stories.associateBy { it.item.title }
+        assertEquals("First & best.\nSecond line", byTitle.getValue("Full").body)
+        assertEquals("Short teaser", byTitle.getValue("Full").item.summary)
+        assertEquals("Just this", byTitle.getValue("Teaser only").body)
+        assertEquals(MAX_STORY_BODY, byTitle.getValue("Huge").body.length)
+        assertTrue(FeedParser.parse(javaClass.getResource("/feeds/world-of-ai.xml")!!.readText()).stories.all { it.body.isNotBlank() })
+    }
+
     @Test fun numericEntitiesDecodeToEmojiAndAmpersandIsLast() {
         assertEquals("Claude Builds Live Dashboards \uD83D\uDCCA, GPT-6.1 Sol Goes Ultrafast \u26A1",
             FeedParser.decodeEntities("Claude Builds Live Dashboards &#128202;, GPT-6.1 Sol Goes Ultrafast &#x26A1;"))

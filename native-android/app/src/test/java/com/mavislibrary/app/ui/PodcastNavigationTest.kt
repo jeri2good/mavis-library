@@ -22,14 +22,25 @@ class PodcastNavigationTest {
         MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
             .invoke(activity, Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text))
     }
-    @Test fun listenOpensSignInGateAndOnlyFiveTabs() {
+    @Test fun listenOpensSignInGateAndSixTabs() {
         waitFor("tab_listen"); compose.onNodeWithTag("tab_listen").performClick()
         compose.onNodeWithText("Open Podcast Lounge").performClick(); waitFor("podcast_lounge")
         compose.onNodeWithText("Sign in to use Podcast Lounge").assertExists()
-        assertEquals(5, Tab.entries.size)
+        assertEquals(listOf("shelf", "search", "bible", "sites", "listen", "settings"), Tab.entries.map { it.route })
         compose.onNodeWithText("Sign in in Settings").performClick(); waitFor("settings")
         compose.onNodeWithTag("account_settings").performScrollTo().assertExists()
         compose.onNodeWithTag("podcast_settings").performScrollTo().assertExists()
+    }
+    @Test fun sitesTabOffersDailyPodcastAndAsksToSignIn() {
+        waitFor("tab_sites"); compose.onNodeWithTag("tab_sites").performClick(); waitFor("sites")
+        compose.onNodeWithText("Daily podcast").assertExists()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Sign in under Settings → Account so your podcast studio can make these.")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("briefing_now").assertIsNotEnabled()
+        compose.onNodeWithTag("sites").performScrollToNode(hasText("Try World of AI"))
+        compose.onNodeWithText("Try World of AI").assertExists()
+        compose.onNodeWithTag("sites").performScrollToNode(hasTestTag("follow_site"))
+        compose.onNodeWithTag("follow_site").performClick()
+        compose.onNodeWithTag("site_address").assertExists()
     }
     @Test fun settingsHasNativeAccountRecoveryAndNoAnonymousApprovals() {
         waitFor("tab_settings"); compose.onNodeWithTag("tab_settings").performClick(); waitFor("settings")

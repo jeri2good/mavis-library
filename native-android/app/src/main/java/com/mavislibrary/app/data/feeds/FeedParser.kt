@@ -11,8 +11,11 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
- data class FeedStory(val item: TechItem, val published: Long?)
+/** [body] is the post's readable text (full content when the feed carries it, else its description), for podcasts. */
+ data class FeedStory(val item: TechItem, val published: Long?, val body: String = "")
  data class ParsedFeed(val title: String, val stories: List<FeedStory>, val itemCount: Int, val newest: Long?)
+
+const val MAX_STORY_BODY = 8_000
 
 object FeedParser {
     fun parse(xml: String): ParsedFeed {
@@ -27,6 +30,7 @@ object FeedParser {
             var count = 0
             var entryDepth = -1
             var title = ""; var link = ""; var guid = ""; var summary = ""; var date: Long? = null
+            var full = ""; var blurb = ""
             val stories = mutableListOf<FeedStory>()
             var field = ""; var fieldDepth = -1
             val text = StringBuilder()
@@ -41,7 +45,7 @@ object FeedParser {
                         }
                         if (name in setOf("item", "entry") && entryDepth < 0) {
                             entryDepth = p.depth; count++
-                            title = ""; link = ""; guid = ""; summary = ""; date = null
+                            title = ""; link = ""; guid = ""; summary = ""; date = null; full = ""; blurb = ""
                         } else if (name == "link" && entryDepth > 0 && p.depth == entryDepth + 1 &&
                             p.getAttributeValue(null, "href") != null) {
                             if (p.getAttributeValue(null, "rel") in listOf(null, "alternate")) link = p.getAttributeValue(null, "href")
@@ -60,7 +64,11 @@ object FeedParser {
                                 "title" -> title = clean(value)
                                 "link" -> if (link.isBlank()) link = value
                                 "guid", "id" -> guid = value
-                                "description", "summary", "encoded", "content" -> if (summary.isBlank()) summary = clean(value).take(200)
+                                "description", "summary", "encoded", "content" -> {
+                                    if (summary.isBlank()) summary = clean(value).take(200)
+                                    if (field == "encoded" || field == "content") { if (full.isBlank()) full = readable(value) }
+                                    else if (blurb.isBlank()) blurb = readable(value)
+                                }
                                 "pubDate", "published", "updated", "date" -> if (date == null) date = parseDate(value)
                             }
                             fieldDepth = -1
@@ -69,7 +77,7 @@ object FeedParser {
                             val safeLink = runCatching { UrlPolicy.normalize(link) }.getOrNull()
                             // Item links must explicitly be HTTPS, never upgrade publisher HTTP links.
                             if (link.startsWith("https://") && safeLink != null && title.isNotBlank()) {
-                                stories += FeedStory(TechItem(stableId(guid.ifBlank { safeLink }), title, safeLink, summary = summary), date)
+                                stories += FeedStory(TechItem(stableId(guid.ifBlank { safeLink }), title, safeLink, summary = summary), date, full.ifBlank { blurb })
                             }
                             entryDepth = -1
                         }
@@ -86,6 +94,15 @@ object FeedParser {
 
     private fun clean(value: String) = decodeEntities(value.replace(Regex("<[^>]*>"), " "))
         .replace(Regex("\\s+"), " ").trim()
+
+    /** Like [clean], but keeps paragraph breaks and drops scripts/styles, capped at [MAX_STORY_BODY]. */
+    private fun readable(value: String): String {
+        val text = value.replace(Regex("<(script|style)\\b.*?</\\1\\s*>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), " ")
+            .replace(Regex("<(br|/p|/div|/h[1-6]|/li|/blockquote)\\b[^>]*>", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("<[^>]*>"), " ")
+        return decodeEntities(text).lines().map { it.replace(Regex("\\s+"), " ").trim() }.filter { it.isNotEmpty() }
+            .joinToString("\n").take(MAX_STORY_BODY).trim()
+    }
 
     /** Numeric (&#128202; / &#x1F4CA;) and common named entities; &amp; last so "&amp;lt;" stays literal text. */
     internal fun decodeEntities(value: String): String {

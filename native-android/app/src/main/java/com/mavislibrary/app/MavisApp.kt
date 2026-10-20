@@ -91,6 +91,14 @@ class AppContainer(private val app: Application) {
         adult = { !app.kidsPrefs().state.first().enabled },
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) })
     fun podcastRepository() = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(), podcastSettings, BuildConfig.API_BASE, ::podcastAccountId)
+    val briefingStore by lazy { com.mavislibrary.app.data.briefing.BriefingStore(app.settingsDataStore) }
+    fun briefingRunner() = com.mavislibrary.app.data.briefing.BriefingRunner(
+        sources = { feedStore.sources.first() },
+        load = { feedRepository.load(listOf(it)) },
+        store = briefingStore,
+        create = { podcastRepository().create(it) },
+        defaults = { podcastSettings.preferences.first() },
+    )
 }
 
 class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Factory {
@@ -101,6 +109,7 @@ class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Fac
         super.onCreate()
         container = AppContainer(this)
         WidgetUpdater.schedule(this)
+        container.scope.launch { com.mavislibrary.app.work.BriefingScheduler.sync(this@MavisApp, restore = true) }
         container.scope.launch { kidsPrefs().state.map { it.enabled }.distinctUntilChanged().collect { WidgetUpdater.refresh(this@MavisApp) } }
     }
 

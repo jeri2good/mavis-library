@@ -1,6 +1,18 @@
 # HANDOFF: Mavis Library / Podcast Lounge / Subscriptions / Modal studio
 Written 2026-10-12 ~09:30 EDT by Hermes. Read this first in a new chat, then verify live state (processes, git, modal) before acting. Never print secrets.
 
+## Handback 2026-10-20: J returned the work to Hermes. Read this first.
+- **All of the cloud session's work is in PR jeri2good/mavis-library#1** (branch `claude/clever-thompson-ave0f4`, into `main`). It is pushed, with nothing uncommitted. The PR description lists every change and how each was verified. The branch already contains `native`'s handoff commit.
+- **Open decision: which key signs Mavis.** The cloud session made a new key because it couldn't reach `~/.secure`. The workflow (`.github/workflows/android-release.yml`) currently expects that new key: alias `mavis`, pinned fingerprint `8c754baa9acd605f4a469533e3a6564a455fb00fd9af91468cdba1e4b8a8afb9`. J has the key text and password as files from the chat. Neither is in the repository, and no repository secrets are set yet.
+  - **To keep the v4 key instead** (no reinstall on phones), change three things in the workflow:
+    - the `MAVIS_KEY_ALIAS: mavis` line becomes `trainingboard-v4`;
+    - the `MAVIS_KEY_PASSWORD` line reads the v4 key password (a new secret, if it differs from the store password);
+    - the pinned fingerprint becomes the v4 certificate's SHA-256.
+    Then set `MAVIS_SIGNING_KEYSTORE_BASE64` and `MAVIS_KEYSTORE_PASSWORD` from `~/.secure/TrainingBoardKiosk-v4-release.jks`, and update docs/ANDROID-UPDATES.md to match.
+  - **To adopt the new key,** J pastes the two values into the repository secrets. Each phone then uninstalls the v4-signed copy once.
+- **A preview APK** (build 100, `0.7.0-preview`, new key) was sent to J in chat. If J installed it, that phone is already on the new key.
+- **Not verified:** a real phone (daily podcast scheduling, notifications, downloads, the in-app updater) and a signed GitHub build.
+
 ## Update 2026-10-20 (Claude Code, cloud session; branch `claude/clever-thompson-ave0f4`, PR jeri2good/mavis-library#1 into `main`)
 - **Verified live:** `GET /api/features` on mavis-library.netlify.app reports `subscriptions:true, podcast:true`, so the subscriber layer and `STUDIO_URL` are deployed (NEXT STEP 3). `/api/subscription/status` and `/api/podcast/list` return 401 without sign-in, as designed. The Modal studio is live per the `modal` branch's RECEIPT-modal.md.
 - **Inferred from commit history, not verified:** NotebookLM on Modal (STEP 2: `3464026`, `769e991`) and the app's sign-in/subscription UI (STEP 5: `4d6a023`, `7308e1a`) are done. J reports listening to a podcast the app made. STEP 4 (seeding subscribers) can't be checked from the cloud.

@@ -34,6 +34,7 @@ Live at **https://mavis-library.netlify.app** (Netlify, deployed from `main`).
 | Full cast (a voice per character) | Browser · Function | Speaker detection is AI-based and can be wrong; the cast can be edited. |
 | LibriVox human-read audiobooks | Live (search, archive.org CORS) · Browser · Function | Six full recordings found for Pride and Prejudice, solo readers listed first; stage adaptations filtered out. |
 | Android: Sites tab and daily podcast from followed sites | Android JVM tests (fake studio) | Follow sites, see new posts, and choose per site: in the daily podcast, own episodes, or none. At the chosen time the phone sends new posts to the podcast studio, then downloads finished episodes and notifies. Real-phone scheduling, notifications, and a live studio run: not verified. |
+| Android: Podcast Lounge gallery | Android JVM tests | Episodes come first, grouped as Continue listening, New, Being made, Couldn't be made, and Played (from saved listening positions); "New podcast" opens the form in a sheet. Playing an episode queues the new ones after it. Tapping the mini player opens Listen. Real-phone playback of the queue: not verified. |
 
 ## Bible
 

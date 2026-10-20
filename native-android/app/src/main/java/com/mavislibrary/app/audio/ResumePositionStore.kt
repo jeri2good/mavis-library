@@ -2,6 +2,8 @@ package com.mavislibrary.app.audio
 
 import com.mavislibrary.app.data.db.AudioResumeDao
 import com.mavislibrary.app.data.db.AudioResumeEntity
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 data class ResumePosition(
     val bookKey: String,
@@ -28,6 +30,8 @@ class ResumePositionStore(
 
     suspend fun load(bookKey: String): ResumePosition? = dao.get(bookKey)?.toModel()
     suspend fun latest(): ResumePosition? = dao.latest()?.toModel()
+    /** Saved listening positions of podcasts, by resume key. */
+    fun podcastPositions(): Flow<Map<String, Long>> = dao.withPrefix("podcast:").map { rows -> rows.associate { it.bookKey to it.positionMs } }
 
     private fun AudioResumeEntity.toModel() = ResumePosition(bookKey, chapterIndex, positionMs, speed)
 }

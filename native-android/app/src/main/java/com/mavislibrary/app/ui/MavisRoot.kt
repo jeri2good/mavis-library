@@ -238,7 +238,8 @@ fun MavisRoot(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (current?.route != ROUTE_SCAN) Column {
-                MiniPlayer(playback, Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh), voice)
+                MiniPlayer(playback, Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh), voice,
+                    onOpen = { if (current?.route != Tab.LISTEN.route) goTab(Tab.LISTEN.route) })
                 NavigationBar {
                     Tab.entries.forEach { tab ->
                         NavigationBarItem(

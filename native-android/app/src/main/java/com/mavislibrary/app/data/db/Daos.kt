@@ -76,6 +76,9 @@ interface AudioResumeDao {
 
     @Query("SELECT * FROM audio_resume ORDER BY updatedAt DESC LIMIT 1")
     suspend fun latest(): AudioResumeEntity?
+
+    @Query("SELECT * FROM audio_resume WHERE bookKey LIKE :prefix || '%'")
+    fun withPrefix(prefix: String): Flow<List<AudioResumeEntity>>
 }
 
 @Dao

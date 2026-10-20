@@ -1,7 +1,7 @@
 # Builds the Android app and publishes it as a GitHub release.
 # From main: the release installed copies of Mavis update to (they read releases/latest/download/update.json).
 # From native and claude/* branches: a test build, published as a prerelease with a download link; phones never update to it on their own.
-# One-time setup (signing key secrets): docs/ANDROID-UPDATES.md.
+# Signing: the Mavis key and its password are the MAVIS_SIGNING_KEYSTORE_BASE64 and MAVIS_KEYSTORE_PASSWORD secrets (docs/ANDROID-UPDATES.md).
 name: Android release
 
 on:
@@ -48,19 +48,20 @@ jobs:
       - name: Signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.MAVIS_SIGNING_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.MAVIS_KEYSTORE_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
             # Releases must not be skipped silently; test builds just wait for the one-time setup.
             if [ "$GITHUB_REF_NAME" = main ]; then
-              echo "::error::The MAVIS_SIGNING_KEYSTORE_BASE64 secret is missing. See docs/ANDROID-UPDATES.md."
+              echo "::error::The MAVIS_SIGNING_KEYSTORE_BASE64 or MAVIS_KEYSTORE_PASSWORD secret is missing. See docs/ANDROID-UPDATES.md."
               exit 1
             fi
-            echo "::warning::No test build: the MAVIS_SIGNING_KEYSTORE_BASE64 secret isn't set yet. See docs/ANDROID-UPDATES.md."
+            echo "::warning::No test build: the signing secrets aren't set yet. See docs/ANDROID-UPDATES.md."
             echo "SIGNING=missing" >> "$GITHUB_ENV"
             exit 0
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/mavis.keystore"
-          echo "MAVIS_KEYSTORE=$RUNNER_TEMP/mavis.keystore" >> "$GITHUB_ENV"
+          echo "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/mavis-release.p12"
+          echo "MAVIS_KEYSTORE=$RUNNER_TEMP/mavis-release.p12" >> "$GITHUB_ENV"
           echo "SIGNING=ready" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
@@ -88,8 +89,8 @@ jobs:
         working-directory: native-android
         env:
           MAVIS_KEYSTORE_PASSWORD: ${{ secrets.MAVIS_KEYSTORE_PASSWORD }}
-          MAVIS_KEY_ALIAS: ${{ secrets.MAVIS_KEY_ALIAS }}
-          MAVIS_KEY_PASSWORD: ${{ secrets.MAVIS_KEY_PASSWORD }}
+          MAVIS_KEY_PASSWORD: ${{ secrets.MAVIS_KEYSTORE_PASSWORD }}
+          MAVIS_KEY_ALIAS: mavis
         run: ./gradlew assembleDebug -PmavisVersionCode="$VERSION_CODE" -PmavisVersionName="$VERSION_NAME" --no-daemon
 
       - name: Publish
@@ -99,8 +100,12 @@ jobs:
         run: |
           APK="mavis-$VERSION_NAME.apk"
           cp native-android/app/build/outputs/apk/debug/app-debug.apk "$APK"
-          echo "Signed with:"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | grep -i "SHA-256"
+          # Every published build must carry the one Mavis key, or phones would refuse it as an update.
+          SIGNER=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          if [ "$SIGNER" != "8c754baa9acd605f4a469533e3a6564a455fb00fd9af91468cdba1e4b8a8afb9" ]; then
+            echo "::error::The APK is signed with $SIGNER, not the Mavis key. Nothing was published."
+            exit 1
+          fi
           jq -n \
             --argjson versionCode "$VERSION_CODE" \
             --arg versionName "$VERSION_NAME" \

@@ -9,8 +9,8 @@ Written 2026-10-12 ~09:30 EDT by Hermes. Read this first in a new chat, then ver
   - a gallery-first Podcast Lounge;
   - an in-app updater;
   - the **Android release** GitHub workflow, which builds and signs on GitHub. Pushes to `main` become releases that phones update to; `native` and `claude/*` pushes become test-build prereleases with a download link.
-- **Signing:** the workflow signs with the existing v4 key once it is stored as repository secrets. Steps are in docs/ANDROID-UPDATES.md: `MAVIS_SIGNING_KEYSTORE_BASE64`, `MAVIS_KEY_ALIAS=trainingboard-v4`, `MAVIS_KEYSTORE_PASSWORD`, `MAVIS_KEY_PASSWORD`. Only the tower can do this, because the key lives in `~/.secure`. After that, "deliver any rebuild as an APK link" means the release or test-build link; no machine has to build locally.
-- **Phones need one manual install** of a build that has the updater; after that the app updates itself from `main` releases.
+- **Signing (changed 2026-10-20, J's decision: "take over every aspect"):** Mavis has a new key: alias `mavis`, RSA 4096, fingerprint `8c754baa…afb9`. It lives only in the `MAVIS_SIGNING_KEYSTORE_BASE64` and `MAVIS_KEYSTORE_PASSWORD` repository secrets plus J's private backup; it is not in the public repository. The tower's TrainingBoardKiosk-v4 key is no longer used for Mavis, and HANDOFF STEP 6's "sign with the v4 keystore" is superseded. Builds come from GitHub (releases from `main`, test-build links from branches); no machine builds locally. Details in docs/ANDROID-UPDATES.md.
+- **Each phone uninstalls the old (v4-signed) Mavis once** and installs a new-key build; after that the app updates itself from `main` releases.
 
 ## Standing rules (from J)
 - Mavis mode = fully autonomous. Devin ALWAYS `gpt-6-1-sol-medium` (changed from gpt-6-sol-medium). Codex `gpt-6-astra` (quota resets ~10:56 EDT). One worker per codebase.

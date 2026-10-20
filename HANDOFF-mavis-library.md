@@ -1,6 +1,17 @@
 # HANDOFF: Mavis Library / Podcast Lounge / Subscriptions / Modal studio
 Written 2026-10-12 ~09:30 EDT by Hermes. Read this first in a new chat, then verify live state (processes, git, modal) before acting. Never print secrets.
 
+## Update 2026-10-20 (Claude Code, cloud session; branch `claude/clever-thompson-ave0f4`, PR jeri2good/mavis-library#1 into `main`)
+- **Verified live:** `GET /api/features` on mavis-library.netlify.app reports `subscriptions:true, podcast:true`, so the subscriber layer and `STUDIO_URL` are deployed (NEXT STEP 3). `/api/subscription/status` and `/api/podcast/list` return 401 without sign-in, as designed. The Modal studio is live per the `modal` branch's RECEIPT-modal.md.
+- **Inferred from commit history, not verified:** NotebookLM on Modal (STEP 2: `3464026`, `769e991`) and the app's sign-in/subscription UI (STEP 5: `4d6a023`, `7308e1a`) are done. J reports listening to a podcast the app made. STEP 4 (seeding subscribers) can't be checked from the cloud.
+- **PR #1 adds:**
+  - a Sites tab with a daily podcast from followed sites (combined briefing plus per-site episodes, made by a WorkManager job through the existing gateway);
+  - a gallery-first Podcast Lounge;
+  - an in-app updater;
+  - the **Android release** GitHub workflow, which builds and signs on GitHub. Pushes to `main` become releases that phones update to; `native` and `claude/*` pushes become test-build prereleases with a download link.
+- **Signing:** the workflow signs with the existing v4 key once it is stored as repository secrets. Steps are in docs/ANDROID-UPDATES.md: `MAVIS_SIGNING_KEYSTORE_BASE64`, `MAVIS_KEY_ALIAS=trainingboard-v4`, `MAVIS_KEYSTORE_PASSWORD`, `MAVIS_KEY_PASSWORD`. Only the tower can do this, because the key lives in `~/.secure`. After that, "deliver any rebuild as an APK link" means the release or test-build link; no machine has to build locally.
+- **Phones need one manual install** of a build that has the updater; after that the app updates itself from `main` releases.
+
 ## Standing rules (from J)
 - Mavis mode = fully autonomous. Devin ALWAYS `gpt-6-1-sol-medium` (changed from gpt-6-sol-medium). Codex `gpt-6-astra` (quota resets ~10:56 EDT). One worker per codebase.
 - Nothing new heavy on the iMac: new services go to MODAL (workspace jermaine-hawthorne, `modal` CLI authed on iMac).

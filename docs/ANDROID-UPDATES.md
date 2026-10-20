@@ -1,14 +1,17 @@
-# Android updates
+# Android builds and updates
 
-Every change merged to `main` that touches the app is built by the **Android release** workflow (`.github/workflows/android-release.yml`) and published as a GitHub release: an APK plus `update.json`. Installed copies of Mavis read `releases/latest/download/update.json`, offer the newer build, download it, check its SHA-256, and hand it to Android's installer.
+The **Android release** workflow (`.github/workflows/android-release.yml`) builds and signs the app on GitHub, so no particular computer is needed to make an installable APK.
 
-Builds are the same debug build phones run today, signed with one shared key. The workflow numbers them build 101, 102, and so on. Local builds stay at build 2, so every published build counts as newer.
+- **From `main`:** every change that touches the app is published as a release (an APK plus `update.json`). Installed copies of Mavis read `releases/latest/download/update.json`, offer the newer build, download it, check its SHA-256, and hand it to Android's installer.
+- **From `native` and `claude/*` branches:** each push is published as a **test build** (a prerelease). It has a download link for trying unreleased work. Phones never update to a test build on their own.
 
-## One-time setup
+Builds are numbered from the workflow run: build 101, 102, and so on. Every build made before this workflow had build number 2, so published builds always count as newer. Every build is signed with the same key as the Mavis already on the phones, so each one installs over the last and keeps its data.
 
-Do steps 1 and 2 on the computer that built the Mavis now on the phones, with `adb` and the Android SDK available.
+## One-time setup: give GitHub the signing key
 
-### 1. Confirm the key matches the phones
+Do this on the tower, which holds the key: `~/.secure/TrainingBoardKiosk-v4-release.jks`, alias `trainingboard-v4`. You need `adb`, the Android SDK, and the `gh` CLI signed in with access to `jeri2good/mavis-library`. Never print or commit the key or its passwords.
+
+### 1. Confirm it is the key the phones have
 
 With a phone connected:
 
@@ -16,43 +19,37 @@ With a phone connected:
 adb shell pm path com.mavislibrary.app            # prints package:/data/app/…/base.apk
 adb pull /data/app/…/base.apk installed.apk        # the path from the line above
 "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs installed.apk | grep SHA-256
-keytool -list -v -keystore ~/.android/debug.keystore -storepass android | grep SHA256
+keytool -list -v -keystore ~/.secure/TrainingBoardKiosk-v4-release.jks -alias trainingboard-v4 | grep SHA256
 ```
 
-The two SHA-256 fingerprints must match. `keytool` prints the fingerprint with colons; ignore them when comparing. If they don't match, the phones were built with a different computer's key. Use that computer's `~/.android/debug.keystore` instead.
+`keytool` asks for the keystore password. The two SHA-256 fingerprints must match; ignore the colons `keytool` adds. If they don't match, find the keystore that signed the phone's copy and use that one below.
 
-### 2. Store the key as a GitHub secret
-
-This needs the `gh` CLI, signed in with access to `jeri2good/mavis-library`.
+### 2. Store the key and its passwords as repository secrets
 
 ```sh
-# Linux
-base64 -w0 ~/.android/debug.keystore | gh secret set MAVIS_SIGNING_KEYSTORE_BASE64 -R jeri2good/mavis-library
-# macOS
-base64 -i ~/.android/debug.keystore | gh secret set MAVIS_SIGNING_KEYSTORE_BASE64 -R jeri2good/mavis-library
+base64 -w0 ~/.secure/TrainingBoardKiosk-v4-release.jks | gh secret set MAVIS_SIGNING_KEYSTORE_BASE64 -R jeri2good/mavis-library
+gh secret set MAVIS_KEY_ALIAS -R jeri2good/mavis-library --body trainingboard-v4
+gh secret set MAVIS_KEYSTORE_PASSWORD -R jeri2good/mavis-library   # prompts; paste the keystore password
+gh secret set MAVIS_KEY_PASSWORD -R jeri2good/mavis-library        # prompts; paste the key password (often the same)
 ```
 
-The standard debug keystore uses the password `android` and the alias `androiddebugkey`, so nothing else is needed. If the keystore uses other values, also set `MAVIS_KEYSTORE_PASSWORD`, `MAVIS_KEY_ALIAS` and `MAVIS_KEY_PASSWORD`.
+On macOS, use `base64 -i <file>` instead of `base64 -w0 <file>`.
 
-Keep a private backup of this keystore file. Without it, phones can't take updates unless Mavis is uninstalled and reinstalled. Anyone with the file could sign an app that replaces Mavis, so never commit or share it.
+Secrets are encrypted. Only this repository's workflows can read them, and GitHub hides them in logs. The key file stays in `~/.secure`; keep a private backup of it. Without the key, phones can't take updates unless Mavis is uninstalled and reinstalled. Because the name says this keystore also signs the Training Board Kiosk app, anyone with write access to this repository could in principle use it for that app too.
 
-### 3. Publish a build
+### 3. Get the updater onto each phone once
 
-Merge to `main`, or run it by hand: **Actions → Android release → Run workflow**. The release appears under **Releases** a few minutes later.
+The Mavis on phones today predates the updater, so the first new build goes on by hand:
 
-### 4. Install that first build by hand on each phone
-
-The Mavis on phones today was built before the updater existed, so it can't update itself yet. On the phone:
-
-1. Open https://github.com/jeri2good/mavis-library/releases/latest and tap the `.apk` file.
+1. On the phone, open https://github.com/jeri2good/mavis-library/releases (or a test build's link) and tap the `.apk`.
 2. Open the download. Allow the browser to install apps if Android asks.
 3. Tap **Update**.
 
-This installs over the current Mavis and keeps its data. A computer can do the same with `adb install -r mavis-0.7.N.apk`.
+This installs over the current Mavis and keeps its data. From then on the app updates itself from `main` releases.
 
-## After that
+## On the phone after that
 
-- Mavis checks for updates shortly after it opens and once a day. When a newer build is out, it shows a **Mavis update ready** notification. Tapping it opens **Settings → App updates**; tap **Update now** there.
+- Mavis checks for updates shortly after it opens and once a day. When a newer `main` build is out, it shows a **Mavis update ready** notification. Tapping it opens **Settings → App updates**; tap **Update now** there.
 - **The first time**, Android asks you to let Mavis install apps:
   1. Tap **Allow**.
   2. Turn on **Allow from this source**.
@@ -63,6 +60,7 @@ This installs over the current Mavis and keeps its data. A computer can do the s
 
 ## Notes
 
-- The repository is public, so the releases are too. The APK contains no keys or passwords: the owner code and sign-in are entered on each phone.
-- A phone running a published build refuses a local build (build 2) as a downgrade. To test a local build on it, use `adb install -r -d`.
-- The workflow keeps the ten newest releases and deletes older ones.
+- The repository is public, so releases are too. The APK contains no keys or passwords: the owner code and sign-in are entered on each phone.
+- The workflow can also be run by hand: **Actions → Android release → Run workflow**.
+- A phone on a newer build refuses an older one as a downgrade. To put an older or locally made build on it, use `adb install -r -d`.
+- The workflow keeps the ten newest releases and the five newest test builds.

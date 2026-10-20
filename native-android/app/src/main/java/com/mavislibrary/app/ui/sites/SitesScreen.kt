@@ -174,7 +174,7 @@ private fun BriefingCard(
                 FilledTonalButton(onClick = onMakeNow, enabled = canMake && state.sources.isNotEmpty(), modifier = Modifier.testTag("briefing_now")) { Text("Make one now") }
                 TextButton(onClick = onOpenLounge) { Text("Your podcasts") }
             }
-            Text("Choose below which sites go in the daily podcast and which get episodes of their own. Your podcast studio needs to be running.",
+            Text("Choose below which sites go in the daily podcast and which get episodes of their own. Each podcast takes a few minutes to make.",
                 style = MaterialTheme.typography.bodySmall)
         }
     }

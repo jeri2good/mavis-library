@@ -13,6 +13,15 @@ val gitSha: String = providers.exec {
     isIgnoreExitValue = true
 }.standardOutput.asText.map { it.trim().ifEmpty { "unknown" } }.getOrElse("unknown")
 
+// Published builds (.github/workflows/android-release.yml) pass a rising build number and the shared signing
+// key, so every phone can install each new build over the last. Local builds keep these defaults and this
+// machine's own debug key.
+val publishedVersionCode = providers.gradleProperty("mavisVersionCode").orNull?.toIntOrNull()
+val publishedVersionName = providers.gradleProperty("mavisVersionName").orNull
+val sharedKeystore = providers.environmentVariable("MAVIS_KEYSTORE").orNull?.let(::file)?.takeIf { it.isFile }
+/** Unset or blank (an unset GitHub secret arrives as ""), the standard debug-keystore values apply. */
+fun signingValue(name: String, default: String) = providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() } ?: default
+
 android {
     namespace = "com.mavislibrary.app"
     compileSdk = 36
@@ -21,11 +30,23 @@ android {
         applicationId = "com.mavislibrary.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.6.0-m2"
+        versionCode = publishedVersionCode ?: 2
+        versionName = publishedVersionName ?: "0.6.0-m2"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         buildConfigField("String", "API_BASE", "\"https://mavis-library.netlify.app\"")
+        buildConfigField("String", "UPDATE_MANIFEST_URL", "\"https://github.com/jeri2good/mavis-library/releases/latest/download/update.json\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            if (sharedKeystore != null) {
+                storeFile = sharedKeystore
+                storePassword = signingValue("MAVIS_KEYSTORE_PASSWORD", "android")
+                keyAlias = signingValue("MAVIS_KEY_ALIAS", "androiddebugkey")
+                keyPassword = signingValue("MAVIS_KEY_PASSWORD", "android")
+            }
+        }
     }
 
     buildTypes {

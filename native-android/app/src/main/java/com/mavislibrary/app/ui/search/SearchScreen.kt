@@ -87,17 +87,17 @@ import com.mavislibrary.app.ui.theme.LocalLookTokens
 private val SUGGESTIONS = listOf("Jane Austen", "Sherlock Holmes", "Psalms", "Fairy tales", "Dickens", "Poetry")
 
 @Composable
-fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}, onScan: (() -> Unit)? = null, onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null, onOpenArticle: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null) {
+fun SearchScreen(container: AppContainer, online: Boolean, onOpenBook: (com.mavislibrary.app.data.model.Book) -> Unit = {}, onScan: (() -> Unit)? = null, onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null, onOpenArticle: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null, onOpenSites: (() -> Unit)? = null) {
     val appContext = LocalContext.current.applicationContext
     val kidsPrefs = remember(appContext) { appContext.kidsPrefs() }
     val kids by kidsPrefs.state.collectAsStateWithLifecycle(initialValue = null)
     if (!techSitesAllowed(kids?.enabled)) return
     val vm: SearchViewModel = viewModel(factory = viewModelFactory {
-        initializer { SearchViewModel(container.searchRepository, container.shelfRepository, container.feedStore, container.feedDiscovery, container.feedRepository) }
+        initializer { SearchViewModel(container.searchRepository, container.shelfRepository) }
     })
     val state by vm.state.collectAsStateWithLifecycle()
     val shelf by vm.shelfKeys.collectAsStateWithLifecycle()
-    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech, onScan, { MyTechSites(state, vm) }, onPodcast, onOpenArticle)
+    SearchContent(state, shelf, online, vm::onQueryChange, vm::onSourceChange, vm::submit, vm::loadMore, vm::select, vm::loadDiscover, vm::loadTech, onScan, onOpenSites, onPodcast, onOpenArticle)
     state.selected?.let { book ->
         BookDetailSheet(book, onShelf = book.key in shelf, onToggleShelf = { vm.toggleShelf(book) }, onOpen = { vm.select(null); onOpenBook(book) }, onDismiss = { vm.select(null) }, onPodcast = onPodcast?.let { callback -> { vm.select(null); callback(com.mavislibrary.app.data.podcast.PodcastDraft.book(book)) } })
     }
@@ -117,7 +117,7 @@ private fun SearchContent(
     onRetryDiscover: () -> Unit = {},
     onTech: (String) -> Unit = {},
     onScan: (() -> Unit)? = null,
-    customSites: @Composable () -> Unit = {},
+    onOpenSites: (() -> Unit)? = null,
     onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null,
     onOpenArticle: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null,
 ) {
@@ -223,7 +223,7 @@ private fun SearchContent(
             item(key = "tech-head", span = { GridItemSpan(maxLineSpan) }) {
                 Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("New in tech & AI", style = MaterialTheme.typography.titleLarge)
-                    customSites()
+                    if (onOpenSites != null) TextButton(onClick = onOpenSites, contentPadding = PaddingValues(0.dp)) { Text("Follow your own sites in the Sites tab") }
                     Text("Live from Hacker News and arXiv. Opens the original article.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("ai" to "AI news", "papers" to "Research papers", "tech" to "Tech front page").forEach { (kind, label) ->
@@ -231,9 +231,6 @@ private fun SearchContent(
                         }
                     }
                 }
-            }
-            state.techNote?.let { note ->
-                item(key = "tech-note", span = { GridItemSpan(maxLineSpan) }) { Text(note, style = MaterialTheme.typography.bodySmall) }
             }
             val techItems = state.tech
             if (techItems == null) item(key = "tech-loading", span = { GridItemSpan(maxLineSpan) }) { Centered { CircularProgressIndicator() } }

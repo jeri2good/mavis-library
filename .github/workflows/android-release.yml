@@ -1,0 +1,138 @@
+# Builds the Android app and publishes it as a GitHub release.
+# From main: the release installed copies of Mavis update to (they read releases/latest/download/update.json).
+# From native and claude/* branches: a test build, published as a prerelease with a download link; phones never update to it on their own.
+# Signing: the Mavis key and its password are the MAVIS_SIGNING_KEYSTORE_BASE64 and MAVIS_KEYSTORE_PASSWORD secrets (docs/ANDROID-UPDATES.md).
+name: Android release
+
+on:
+  push:
+    branches: [main, native, 'claude/**']
+    paths:
+      - 'native-android/**'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - '.env.android'
+      - '.github/workflows/android-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        # Above 2, the version of every build made before this workflow existed, so those copies update too.
+        run: |
+          echo "VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_NAME" = main ]; then
+            echo "VERSION_NAME=0.7.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+            echo "TAG=android-$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          else
+            echo "VERSION_NAME=0.7.$GITHUB_RUN_NUMBER-test" >> "$GITHUB_ENV"
+            echo "TAG=android-test-$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          fi
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MAVIS_SIGNING_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.MAVIS_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            # Releases must not be skipped silently; test builds just wait for the one-time setup.
+            if [ "$GITHUB_REF_NAME" = main ]; then
+              echo "::error::The MAVIS_SIGNING_KEYSTORE_BASE64 or MAVIS_KEYSTORE_PASSWORD secret is missing. See docs/ANDROID-UPDATES.md."
+              exit 1
+            fi
+            echo "::warning::No test build: the signing secrets aren't set yet. See docs/ANDROID-UPDATES.md."
+            echo "SIGNING=missing" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/mavis-release.p12"
+          echo "MAVIS_KEYSTORE=$RUNNER_TEMP/mavis-release.p12" >> "$GITHUB_ENV"
+          echo "SIGNING=ready" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        if: env.SIGNING == 'ready'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Web screens bundled in the app
+        if: env.SIGNING == 'ready'
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:android
+
+      - uses: actions/setup-java@v4
+        if: env.SIGNING == 'ready'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Android SDK packages
+        if: env.SIGNING == 'ready'
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
+      - name: Build
+        if: env.SIGNING == 'ready'
+        working-directory: native-android
+        env:
+          MAVIS_KEYSTORE_PASSWORD: ${{ secrets.MAVIS_KEYSTORE_PASSWORD }}
+          MAVIS_KEY_PASSWORD: ${{ secrets.MAVIS_KEYSTORE_PASSWORD }}
+          MAVIS_KEY_ALIAS: mavis
+        run: ./gradlew assembleDebug -PmavisVersionCode="$VERSION_CODE" -PmavisVersionName="$VERSION_NAME" --no-daemon
+
+      - name: Publish
+        if: env.SIGNING == 'ready'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="mavis-$VERSION_NAME.apk"
+          cp native-android/app/build/outputs/apk/debug/app-debug.apk "$APK"
+          # Every published build must carry the one Mavis key, or phones would refuse it as an update.
+          SIGNER=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          if [ "$SIGNER" != "8c754baa9acd605f4a469533e3a6564a455fb00fd9af91468cdba1e4b8a8afb9" ]; then
+            echo "::error::The APK is signed with $SIGNER, not the Mavis key. Nothing was published."
+            exit 1
+          fi
+          jq -n \
+            --argjson versionCode "$VERSION_CODE" \
+            --arg versionName "$VERSION_NAME" \
+            --arg apkUrl "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$APK" \
+            --arg sha256 "$(sha256sum "$APK" | cut -d' ' -f1)" \
+            --arg notes "$(git log -1 --format=%s)" \
+            --arg publishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{versionCode: $versionCode, versionName: $versionName, apkUrl: $apkUrl, sha256: $sha256, notes: $notes, publishedAt: $publishedAt}' > update.json
+          cat update.json
+          if [ "$GITHUB_REF_NAME" = main ]; then
+            printf '%s\n\nInstalled copies of Mavis offer this update on their own. To install by hand, open this page on the phone and download %s.\n' \
+              "$(git log -1 --format=%B)" "$APK" > notes.md
+            gh release create "$TAG" "$APK" update.json --target "$GITHUB_SHA" --latest \
+              --title "Mavis $VERSION_NAME" --notes-file notes.md
+          else
+            printf 'Test build from %s, not yet released. Phones only move to it if you install it by hand: open this page on the phone and download %s.\n\n%s\n' \
+              "$GITHUB_REF_NAME" "$APK" "$(git log -1 --format=%B)" > notes.md
+            gh release create "$TAG" "$APK" update.json --target "$GITHUB_SHA" --prerelease --latest=false \
+              --title "Mavis $VERSION_NAME (test build)" --notes-file notes.md
+          fi
+          echo "Download: https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$APK" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the ten newest releases and five newest test builds
+        if: env.SIGNING == 'ready'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAGS=$(gh release list --limit 200 --json tagName --jq '.[].tagName')
+          { echo "$TAGS" | grep '^android-[0-9]' | tail -n +11 || true; echo "$TAGS" | grep '^android-test-' | tail -n +6 || true; } |
+            xargs -r -n1 gh release delete --cleanup-tag --yes

@@ -49,6 +49,14 @@ class PodcastRepository(private val api: PodcastService, private val store: Podc
         studioCall { api.list() }.filterNot { it.id in deleted }.also { jobs -> jobs.forEach { StudioAddress.safeId(it.id); store.save(SavedPodcast(it, studio, accountId = account)) } }
     }
     suspend fun delete(id: String) = mutation.withLock { api.delete(id); deleted += id; store.remove(id, studio) }
+    /** One status read for background checks; saves the job like [poll] does. */
+    suspend fun check(id: String): PodcastJob {
+        val account = accountId()
+        val job = studioCall { api.get(StudioAddress.safeId(id)) }
+        require(job.id == id) { "Studio returned a different podcast." }
+        mutation.withLock { if (id !in deleted) store.save(SavedPodcast(job, studio, accountId = account)) }
+        return job
+    }
     fun poll(id: String, timeoutMs: Long = 25 * 60_000L): Flow<PodcastPoll> = flow {
         val account = accountId()
         val complete = withTimeoutOrNull(timeoutMs) {

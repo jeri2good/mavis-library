@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -59,6 +60,10 @@ import com.mavislibrary.app.audio.PlaybackController
 import com.mavislibrary.app.data.api.LibriVoxVersion
 import com.mavislibrary.app.data.model.Book
 import com.mavislibrary.app.data.model.BookSource
+import com.mavislibrary.app.ui.lounge.PodcastShelf
+import com.mavislibrary.app.ui.lounge.gallery
+import androidx.compose.runtime.produceState
+import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
 
 @Composable
@@ -73,6 +78,16 @@ fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirs
     var message by remember { mutableStateOf<String?>(null) }
     var downloadProgress by remember { mutableStateOf<String?>(null) }
     ShakeToExtend(controller)
+    val podcasts by container.podcastSettings.library.collectAsStateWithLifecycle(initialValue = emptyList())
+    val positionFlow = remember { container.resumePositionStore.podcastPositions() }
+    val positions by positionFlow.collectAsStateWithLifecycle(initialValue = emptyMap())
+    val identity by produceState<String?>(null) { value = container.podcastAccountId() }
+    val shelves = gallery(podcasts.filter { identity != null && (identity == "owner" || it.accountId == identity) }, positions)
+    val podcastSummary = listOfNotNull(
+        shelves[PodcastShelf.NEW]?.let { "${it.size} new" },
+        shelves[PodcastShelf.CONTINUE]?.let { "${it.size} in progress" },
+        shelves[PodcastShelf.MAKING]?.let { "${it.size} being made" },
+    ).joinToString(" · ")
 
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 18.dp),
@@ -82,7 +97,7 @@ fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirs
         if (onLounge != null) item {
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) {
                 Text("Podcast Lounge", style = MaterialTheme.typography.titleLarge)
-                Text("Turn a book, chapter, article or topic into a two-host podcast.")
+                Text(podcastSummary.ifEmpty { "Turn a book, chapter, article or topic into a two-host podcast." })
                 Button(onClick = onLounge) { Text("Open Podcast Lounge") }
             } }
         }
@@ -251,10 +266,11 @@ private fun ShakeToExtend(controller: PlaybackController) {
 }
 
 @Composable
-fun MiniPlayer(controller: PlaybackController, modifier: Modifier = Modifier, voice: com.mavislibrary.app.voice.VoiceUi? = null) {
+fun MiniPlayer(controller: PlaybackController, modifier: Modifier = Modifier, voice: com.mavislibrary.app.voice.VoiceUi? = null, onOpen: (() -> Unit)? = null) {
     val state by controller.state.collectAsStateWithLifecycle()
     if (state.chapterCount == 0) return
-    Row(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().clickable(enabled = onOpen != null, onClickLabel = "Open player") { onOpen?.invoke() }
+        .padding(horizontal = 12.dp, vertical = 6.dp).testTag("mini_player"), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Outlined.Headphones, null)
         Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
             Text(state.title, maxLines = 1, style = MaterialTheme.typography.labelLarge)

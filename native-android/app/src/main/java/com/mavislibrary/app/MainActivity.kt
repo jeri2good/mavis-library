@@ -58,6 +58,10 @@ import java.time.LocalTime
 class MainActivity : FragmentActivity() {
     companion object {
         const val WIDGET_DESTINATION = "com.mavislibrary.app.WIDGET_DESTINATION"
+        /** Destination of "podcast ready" notifications. */
+        const val LOUNGE = "lounge"
+        /** Destination of "update ready" notifications: Settings, where the update installs. */
+        const val UPDATES = "updates"
         private const val AUTHENTICATORS = BIOMETRIC_WEAK or DEVICE_CREDENTIAL
     }
     private val lockPolicy = LockPolicy()
@@ -88,7 +92,7 @@ class MainActivity : FragmentActivity() {
 
     private fun acceptWidgetDestination(intent: android.content.Intent?) {
         val requested = intent?.getStringExtra(WIDGET_DESTINATION)
-        widgetDestination = requested?.takeIf { it == "shelf" || it in (1..366).map { day -> com.mavislibrary.app.work.VerseOfDay.forDay(day).route } }
+        widgetDestination = requested?.takeIf { it == "shelf" || it == LOUNGE || it == UPDATES || it in (1..366).map { day -> com.mavislibrary.app.work.VerseOfDay.forDay(day).route } }
         if (widgetDestination != null) widgetRequest++
     }
     private var sharedIntent by mutableStateOf<android.content.Intent?>(null)

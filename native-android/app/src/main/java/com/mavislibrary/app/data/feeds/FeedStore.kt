@@ -9,8 +9,22 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+/** What a followed site's new posts become: nothing, part of the daily briefing, or episodes of their own. */
+object SitePodcast {
+    const val OFF = "off"
+    const val BRIEFING = "briefing"
+    const val OWN = "own"
+    val all = listOf(BRIEFING, OWN, OFF)
+}
+
+/** [viewedAt] is when the site's page was last opened; posts published after it count as new. */
 @Serializable
-data class FeedSource(val id: String, val name: String, val feedUrl: String, val siteUrl: String, val addedAt: Long, val enabled: Boolean = true)
+data class FeedSource(
+    val id: String, val name: String, val feedUrl: String, val siteUrl: String, val addedAt: Long, val enabled: Boolean = true,
+    val podcast: String = SitePodcast.BRIEFING, val viewedAt: Long = 0,
+) {
+    val seenSince get() = maxOf(addedAt, viewedAt)
+}
 
 class FeedStore(private val store: DataStore<Preferences>, private val clock: () -> Long = System::currentTimeMillis) {
     private val key = stringPreferencesKey("my_tech_sites_v1")
@@ -36,6 +50,11 @@ class FeedStore(private val store: DataStore<Preferences>, private val clock: ()
         change { all -> all.map { if (it.id == id) it.copy(name = name.trim().take(80)) else it } }
     }
     suspend fun setEnabled(id: String, enabled: Boolean) = change { all -> all.map { if (it.id == id) it.copy(enabled = enabled) else it } }
+    suspend fun setPodcast(id: String, mode: String) {
+        require(mode in SitePodcast.all) { "Choose how this site becomes podcasts." }
+        change { all -> all.map { if (it.id == id) it.copy(podcast = mode) else it } }
+    }
+    suspend fun markViewed(id: String) = clock().let { now -> change { all -> all.map { if (it.id == id) it.copy(viewedAt = now) else it } } }
     suspend fun remove(id: String) = change { all -> all.filterNot { it.id == id } }
     private suspend fun change(update: (List<FeedSource>) -> List<FeedSource>) {
         store.edit { it[key] = json.encodeToString(update(decode(it[key]))) }

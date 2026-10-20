@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Policy
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.DirectionsCar
@@ -91,6 +92,10 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
         TextButton(onClick = onOpenStats, modifier = Modifier.testTag("open_stats")) { Text("Reading stats") }
+
+        Section("App updates", Icons.Outlined.SystemUpdate) {
+            com.mavislibrary.app.update.UpdateSection(container.appUpdater)
+        }
 
         Section("Kids mode", Icons.Outlined.Lock) {
             KidsSetup(remember(context.applicationContext) { context.kidsPrefs() }, onStart = { onDriveModeChange(false) })

@@ -91,6 +91,25 @@ class AppContainer(private val app: Application) {
         adult = { !app.kidsPrefs().state.first().enabled },
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) })
     fun podcastRepository() = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(), podcastSettings, BuildConfig.API_BASE, ::podcastAccountId)
+    val briefingStore by lazy { com.mavislibrary.app.data.briefing.BriefingStore(app.settingsDataStore) }
+    fun briefingRunner() = com.mavislibrary.app.data.briefing.BriefingRunner(
+        sources = { feedStore.sources.first() },
+        load = { feedRepository.load(listOf(it)) },
+        store = briefingStore,
+        create = { podcastRepository().create(it) },
+        defaults = { podcastSettings.preferences.first() },
+    )
+    /** No HTTP cache: update checks must see the newest release, and APKs are too big to cache. */
+    private val updateHttp by lazy { okHttp.newBuilder().cache(null).readTimeout(60, TimeUnit.SECONDS).build() }
+    val updateChecker by lazy { com.mavislibrary.app.update.UpdateChecker(updateHttp, BuildConfig.UPDATE_MANIFEST_URL, BuildConfig.VERSION_CODE) }
+    val updateNotices by lazy { com.mavislibrary.app.update.UpdateNotices(app.settingsDataStore) }
+    val appUpdater by lazy {
+        com.mavislibrary.app.update.AppUpdater(
+            updateChecker, com.mavislibrary.app.update.UpdateDownloader(updateHttp, app.cacheDir.resolve("updates")), scope,
+            canInstall = { com.mavislibrary.app.update.UpdateInstaller.canInstall(app) },
+            installApk = { com.mavislibrary.app.update.UpdateInstaller.install(app, it) },
+        )
+    }
 }
 
 class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Factory {
@@ -101,6 +120,8 @@ class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Fac
         super.onCreate()
         container = AppContainer(this)
         WidgetUpdater.schedule(this)
+        container.scope.launch { com.mavislibrary.app.work.BriefingScheduler.sync(this@MavisApp, restore = true) }
+        com.mavislibrary.app.update.UpdateScheduler.schedule(this)
         container.scope.launch { kidsPrefs().state.map { it.enabled }.distinctUntilChanged().collect { WidgetUpdater.refresh(this@MavisApp) } }
     }
 

@@ -45,6 +45,15 @@ class PodcastRepositoryTest {
         assertEquals("ready", cache.library.value.single().job.status)
         assertEquals("Space", cache.library.value.single().request!!.query)
     }
+    @Test fun singleCheckSavesTheJobButNotAfterDeletion() = runTest {
+        val api = FakeStudio(podcastFixtures()); val cache = MemoryPodcastLibrary()
+        val repo = PodcastRepository(api, cache, "studio") { "user-1" }
+        assertEquals("queued", repo.check("job1").status)
+        assertEquals("user-1", cache.library.value.single().accountId)
+        repo.delete("job1"); repo.check("job1")
+        assertTrue(cache.library.value.isEmpty())
+        assertTrue(runCatching { repo.check("../job") }.isFailure)
+    }
     @Test fun failureIsTerminal() = runTest {
         val api = FakeStudio(listOf(podcastFixtures().last())); val cache = MemoryPodcastLibrary()
         val events = PodcastRepository(api, cache, "studio").poll("job1").toList()

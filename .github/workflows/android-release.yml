@@ -1,0 +1,104 @@
+# Builds the Android app on every change to main and publishes it as a GitHub release.
+# Installed copies of Mavis read releases/latest/download/update.json, then download and install the APK.
+# One-time setup (signing key secret): docs/ANDROID-UPDATES.md.
+name: Android release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native-android/**'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - '.env.android'
+      - '.github/workflows/android-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        # Above 2, the version of every build made before this workflow existed, so those copies update too.
+        run: |
+          echo "VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=0.7.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MAVIS_SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::The MAVIS_SIGNING_KEYSTORE_BASE64 secret is missing. See docs/ANDROID-UPDATES.md."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/mavis.keystore"
+          echo "MAVIS_KEYSTORE=$RUNNER_TEMP/mavis.keystore" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Web screens bundled in the app
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Android SDK packages
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
+      - name: Build
+        working-directory: native-android
+        env:
+          MAVIS_KEYSTORE_PASSWORD: ${{ secrets.MAVIS_KEYSTORE_PASSWORD }}
+          MAVIS_KEY_ALIAS: ${{ secrets.MAVIS_KEY_ALIAS }}
+          MAVIS_KEY_PASSWORD: ${{ secrets.MAVIS_KEY_PASSWORD }}
+        run: ./gradlew assembleDebug -PmavisVersionCode="$VERSION_CODE" -PmavisVersionName="$VERSION_NAME" --no-daemon
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="mavis-$VERSION_NAME.apk"
+          cp native-android/app/build/outputs/apk/debug/app-debug.apk "$APK"
+          echo "Signed with:"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | grep -i "SHA-256"
+          TAG="android-$VERSION_CODE"
+          jq -n \
+            --argjson versionCode "$VERSION_CODE" \
+            --arg versionName "$VERSION_NAME" \
+            --arg apkUrl "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$APK" \
+            --arg sha256 "$(sha256sum "$APK" | cut -d' ' -f1)" \
+            --arg notes "$(git log -1 --format=%s)" \
+            --arg publishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{versionCode: $versionCode, versionName: $versionName, apkUrl: $apkUrl, sha256: $sha256, notes: $notes, publishedAt: $publishedAt}' > update.json
+          cat update.json
+          printf '%s\n\nInstalled copies of Mavis offer this update on their own. To install by hand, open this page on the phone and download %s.\n' \
+            "$(git log -1 --format=%B)" "$APK" > notes.md
+          gh release create "$TAG" "$APK" update.json --target "$GITHUB_SHA" --latest \
+            --title "Mavis $VERSION_NAME" --notes-file notes.md
+
+      - name: Keep the ten newest releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | grep '^android-' | tail -n +11 |
+            xargs -r -n1 gh release delete --cleanup-tag --yes

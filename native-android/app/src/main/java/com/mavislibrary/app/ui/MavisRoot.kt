@@ -186,7 +186,11 @@ fun MavisRoot(
         current?.route == ROUTE_WEB_SHELF || current?.route == Tab.BIBLE.route)
     LaunchedEffect(widgetRequest, loadedKids.enabled) {
         if (widgetDestination != null && widgetDestination != com.mavislibrary.app.MainActivity.LOUNGE && !loadedKids.enabled) {
-            val tab = if (widgetDestination.startsWith("#/bible/")) Tab.BIBLE.route else Tab.SHELF.route
+            val tab = when {
+                widgetDestination.startsWith("#/bible/") -> Tab.BIBLE.route
+                widgetDestination == com.mavislibrary.app.MainActivity.UPDATES -> Tab.SETTINGS.route
+                else -> Tab.SHELF.route
+            }
             goTab(tab)
         }
     }

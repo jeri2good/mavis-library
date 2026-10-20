@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Installs its own published updates (GitHub releases); Android asks the user to confirm. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Declared so the first-use microphone prompt can appear; Android never grants it at install. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Voice features in the hosted web screens (getUserMedia); asked at first use. -->
@@ -91,6 +93,8 @@
         <receiver android:name=".web.ReaderMediaButtonReceiver" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MEDIA_BUTTON" /></intent-filter>
         </receiver>
+
+        <receiver android:name=".update.UpdateReceiver" android:exported="false" />
 
         <!-- WorkManager is initialised on demand from MavisApp (Configuration.Provider). -->
         <provider

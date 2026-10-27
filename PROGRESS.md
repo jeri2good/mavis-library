@@ -73,3 +73,4 @@ Tests run as `env -u TYPESAFE_API_KEY -u FISH_AUDIO_API_KEY npm run test:functio
 
 - 2026-10-27: Android podsub models, shared gateway API, per-account migration, Lounge controls and hourly offline worker implemented. Legacy DailyBriefing workers made inert; Sites reading retained. Verification pending.
 - 2026-10-27: First green Android build: testDebugUnitTest + assembleDebug passed (background /tmp/podsub-build-2.log); reduced Gradle concurrency cleared transient Robolectric initialization failures. Fake fetch/XHR account transport passed. Follow/unfollow sync and account-scoped download cleanup included.
+- 2026-10-27: Implementation committed as a3f9cc0. Final XML totals: 66 suites / 354 tests / 0 failures / 0 errors / 0 skipped. RECEIPT.md records APK SHA-256, commands and live/device limitations. No emulator, live generation or push.

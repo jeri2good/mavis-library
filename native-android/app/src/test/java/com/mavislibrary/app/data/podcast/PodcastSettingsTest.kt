@@ -32,6 +32,22 @@ class PodcastSettingsTest {
         override fun decode(text: String) = Base64.getDecoder().decode(text)
     }
     private fun TestScope.store(name: String) = PreferenceDataStoreFactory.create(scope = backgroundScope) { tmp.root.resolve("$name.preferences_pb") }
+    @Test fun subscriptionCleanupDeletesOnlyExpiredAccountFilesAndKeepsStreamMetadata() = runTest(UnconfinedTestDispatcher()) {
+        val settings = PodcastSettings(store("settings"), SecureStore(store("secure"), cipher, codec))
+        val files = com.mavislibrary.app.audio.AudioFileStore(tmp.root, okhttp3.OkHttpClient())
+        val api = PodcastApi("https://studio.example.org", execute = { fakeSignedAudio(it) ?: fakeResponse(it, "fake-mp3", type = "audio/mpeg") }, token = { "fixture" })
+        val now = java.time.Instant.parse("2026-10-27T12:00:00Z")
+        for ((id, account, created) in listOf(Triple("old", "alice", "2026-10-19T12:00:00Z"),
+            Triple("boundary", "alice", "2026-10-20T12:00:00Z"), Triple("other", "bob", "2026-10-19T12:00:00Z"))) {
+            val file = files.downloadPodcast(api, id)
+            settings.save(SavedPodcast(podcastFixtures()[4].copy(id = id, createdAt = created), api.address, file.absolutePath, accountId = account))
+        }
+        assertEquals(1, files.cleanupSubscriptionDownloads(settings, api.address, "alice", 7, now))
+        assertNull(files.podcastLocal(api.address, "old"))
+        assertNotNull(files.podcastLocal(api.address, "boundary")); assertNotNull(files.podcastLocal(api.address, "other"))
+        val library = settings.library.first()
+        assertEquals(3, library.size); assertNull(library.first { it.job.id == "old" }.localFile)
+    }
     @Test fun blankDefaultsAndEncryptedKeySurviveNewWrapper() = runTest(UnconfinedTestDispatcher()) {
         val ds = store("settings"); val secure = store("secure"); val secrets = SecureStore(secure, cipher, codec)
         val settings = PodcastSettings(ds, secrets)

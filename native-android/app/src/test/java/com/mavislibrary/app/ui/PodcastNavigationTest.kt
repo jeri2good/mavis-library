@@ -31,11 +31,10 @@ class PodcastNavigationTest {
         compose.onNodeWithTag("account_settings").performScrollTo().assertExists()
         compose.onNodeWithTag("podcast_settings").performScrollTo().assertExists()
     }
-    @Test fun sitesTabOffersDailyPodcastAndAsksToSignIn() {
+    @Test fun sitesTabLinksToSubscriptionsAndKeepsFeedReading() {
         waitFor("tab_sites"); compose.onNodeWithTag("tab_sites").performClick(); waitFor("sites")
-        compose.onNodeWithText("Daily podcast").assertExists()
-        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Sign in under Settings → Account so your podcast studio can make these.")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("briefing_now").assertIsNotEnabled()
+        compose.onNodeWithText("Podcast subscriptions in Lounge").assertExists()
+        compose.onNodeWithTag("briefing_now").assertDoesNotExist()
         compose.onNodeWithTag("sites").performScrollToNode(hasText("Try World of AI"))
         compose.onNodeWithText("Try World of AI").assertExists()
         compose.onNodeWithTag("sites").performScrollToNode(hasTestTag("follow_site"))

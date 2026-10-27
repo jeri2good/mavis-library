@@ -60,6 +60,20 @@ class AudioFileStore(
         expired.size
     }
 
+    suspend fun cleanupSubscriptionDownloads(store: com.mavislibrary.app.data.podcast.PodcastSettings,
+        studio: String, account: String?, days: Int, now: java.time.Instant = java.time.Instant.now()): Int = withContext(Dispatchers.IO) {
+        podcastDownloadLock.withLock {
+            val expired = store.library.first().filter { it.studio == studio && it.accountId == account &&
+                com.mavislibrary.app.data.podsub.downloadExpired(it.job.createdAt, days, now) }
+            expired.forEach {
+                val file = podcastFile(it.studio, it.job.id)
+                if (file.exists() && !file.delete()) throw IOException("Could not remove expired download.")
+                store.clearDownload(it.job.id, it.studio)
+            }
+            expired.size
+        }
+    }
+
     fun isComplete(version: LibriVoxVersion): Boolean =
         version.sections.isNotEmpty() && version.sections.indices.all { file(version.id, it).isFile }
 

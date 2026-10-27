@@ -49,7 +49,7 @@ class PodcastApi(
         catch (_: IOException) { throw IOException("Studio unavailable, try later") }
     }
     private suspend fun requireAdult() { check(adult()) { "Leave Kids mode to use Podcast Lounge." } }
-    private suspend fun request(path: String, method: String = "GET", body: String? = null): String {
+    internal suspend fun request(path: String, method: String = "GET", body: String? = null): String {
         requireAdult()
         val builder = Request.Builder().url(endpoint(path)).header("Accept", "application/json").header("Cache-Control", "no-store").header("x-mavis-source", "android-native")
         val session = token()?.takeIf(String::isNotBlank)

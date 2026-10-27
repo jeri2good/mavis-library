@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { BlobsServer } from '@netlify/blobs/server';
 import { subStore, transition, usage } from '../../netlify/lib/subs.mjs';
 import { createUser, signToken } from '../../netlify/lib/accounts.mjs';
-import { createPodcast, podcastUsage, reservePodcastQuota, settlePodcastQuota } from '../../netlify/lib/podcast.mjs';
+import { createPodcast, podcastUsage, reservePodcastQuota, settlePodcastQuota, refundFailedPodcast } from '../../netlify/lib/podcast.mjs';
 import { localDate, nextRunAt } from '../../netlify/lib/podsub-time.mjs';
 import { parseFeed, fetchFeed, publicAddress, feedUrl, pinnedDispatcher } from '../../netlify/lib/podsub-feed.mjs';
 import { validatePodsub, savePodsub, runSubscription, runs, tick, acquireLock, releaseLock, keys } from '../../netlify/lib/podsub.mjs';
@@ -292,6 +292,16 @@ try {
       const res = await realFetch('https://example.com/feed', { dispatcher: pinnedDispatcher('93.184.216.34', 4) });
       assert.equal(await res.text(), '<rss><channel/></rss>'); assert.ok(checked);
     } finally { https.request = savedRequest; }
+  });
+  await test('a podcast that fails in the studio is refunded exactly once', async () => {
+    const uid = 'refund-' + randomUUID(), now = Date.now();
+    const q = await reservePodcastQuota(uid, now); await settlePodcastQuota(q, true);
+    assert.equal((await podcastUsage(uid, now)).used, 1);
+    assert.equal(await refundFailedPodcast(uid, 'job-x', now), true);
+    assert.equal(await refundFailedPodcast(uid, 'job-x', now), false);
+    assert.equal((await podcastUsage(uid, now)).used, 0);
+    assert.equal(await refundFailedPodcast(uid, 'job-y', now), false, 'never goes below zero');
+    passed++;
   });
   await test('Telegram sends one optional bounded message and missing configuration silently skips', async () => {
     const uid = await setup(doc([site('notify')], { notify: { telegram: true } }));

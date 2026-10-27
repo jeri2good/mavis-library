@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { subStore, problem, getSub } from './subs.mjs';
 import { readForUpdate, writeIfUnchanged, getUser } from './accounts.mjs';
 import { isOwnerEmail } from './access.mjs';
-import { createPodcast, podcastUsage, studioConfig, studioJson, publicJob, terminalStatus, releaseSlot } from './podcast.mjs';
+import { createPodcast, podcastUsage, studioConfig, studioJson, publicJob, terminalStatus, releaseSlot, refundFailedPodcast } from './podcast.mjs';
 import { fetchFeed, feedUrl } from './podsub-feed.mjs';
 import { DAYS, nextRunAt, localDate } from './podsub-time.mjs';
 import { env } from './shared.mjs';
@@ -129,7 +129,9 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
       }));
       const planned = episodesFor(sites);
       for (const episode of planned) {
-        const usage = await podcastUsage(uid, now);
+        let usage = await podcastUsage(uid, now);
+        // At the cap? First give back any of today's podcasts that failed in the studio.
+        if (usage.used >= usage.limit) { await todayEpisodes(uid, now).catch(() => {}); usage = await podcastUsage(uid, now); }
         if (usage.used >= usage.limit) { episode.sites.forEach(site => skip(site.id, 'skipped_limit')); continue; }
         if (Date.now() >= deadline - 1500) { episode.sites.forEach(site => skip(site.id, 'skipped_budget')); continue; }
         try {
@@ -191,6 +193,7 @@ export async function todayEpisodes(uid, now = Date.now()) {
   return Promise.all(rows.map(async row => {
     const job = cfg ? publicJob(await studioJson({ ...cfg, deadline: Date.now() + 6000 }, `/${row.id}`, uid), row.id) : { id: row.id, status: row.status || 'queued', title: row.title };
     if (uid !== 'owner' && terminalStatus(job.status)) await releaseSlot(uid, row.id);
+    if (job.status === 'failed') await refundFailedPodcast(uid, row.id, row.createdAt);
     return { ...job, createdAt: new Date(row.createdAt).toISOString() };
   }));
 }

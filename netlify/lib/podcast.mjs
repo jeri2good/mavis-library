@@ -177,6 +177,18 @@ export async function settlePodcastQuota(reservation, accepted) {
   }
   throw problem(503, 'podcast_busy', 'Your podcast quota is busy. Try again.');
 }
+// A podcast that fails in the studio gives its slot back: refund once per job id.
+export async function refundFailedPodcast(uid, jobId, createdAt, now = Date.now()) {
+  const usage = await podcastUsage(uid, createdAt ?? now);
+  const s = subStore(), key = usage.key;
+  for (let i = 0; i < 80; i++) {
+    const cur = await readForUpdate(s, key), data = cur.data || {};
+    const refunded = data.refunded || [];
+    if (refunded.includes(jobId) || !(data.podcast > 0)) return false;
+    if (await writeIfUnchanged(s, key, { ...data, podcast: data.podcast - 1, refunded: [...refunded, jobId] }, cur)) return true;
+  }
+  return false;
+}
 export async function changeSlots(uid, change) {
   const s = subStore(), key = `pod-active/${uid}`;
   for (let i = 0; i < 80; i++) {

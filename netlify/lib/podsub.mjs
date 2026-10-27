@@ -190,10 +190,13 @@ export async function tick({ now = Date.now(), deadline = Date.now() + 25000, ..
 export async function todayEpisodes(uid, now = Date.now()) {
   const usage = await podcastUsage(uid, now), cfg = studioConfig();
   const rows = (await Promise.all((await keys(`pod/${uid}/`)).map(k => subStore().get(k, { type: 'json' })))).filter(row => row && localDate(row.createdAt, usage.timezone) === usage.date).sort((a, b) => b.createdAt - a.createdAt);
-  return Promise.all(rows.map(async row => {
-    const job = cfg ? publicJob(await studioJson({ ...cfg, deadline: Date.now() + 6000 }, `/${row.id}`, uid), row.id) : { id: row.id, status: row.status || 'queued', title: row.title };
+  const list = await Promise.all(rows.map(async row => {
+    let job;
+    try { job = cfg ? publicJob(await studioJson({ ...cfg, deadline: Date.now() + 6000 }, `/${row.id}`, uid), row.id) : { id: row.id, status: row.status || 'queued', title: row.title }; }
+    catch (e) { if (e?.response?.status === 404) return null; throw e; } // deleted in the studio: hide it, keep the rest
     if (uid !== 'owner' && terminalStatus(job.status)) await releaseSlot(uid, row.id);
     if (job.status === 'failed') await refundFailedPodcast(uid, row.id, row.createdAt);
     return { ...job, createdAt: new Date(row.createdAt).toISOString() };
   }));
+  return list.filter(Boolean);
 }

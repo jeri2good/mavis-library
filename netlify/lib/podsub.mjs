@@ -194,7 +194,11 @@ export async function todayEpisodes(uid, now = Date.now()) {
   const list = await Promise.all(rows.map(async row => {
     let job;
     try { job = cfg ? publicJob(await studioJson({ ...cfg, deadline: Date.now() + 6000 }, `/${row.id}`, uid), row.id) : { id: row.id, status: row.status || 'queued', title: row.title }; }
-    catch (e) { if (e?.response?.status === 404) return null; throw e; } // deleted in the studio: hide it, keep the rest
+    catch (e) {
+      if (e?.response?.status === 404) return null; // deleted in the studio: hide it
+      // Studio slow for this one: show it as last known rather than failing the whole Today list.
+      return { id: row.id, title: row.title || 'Daily briefing', status: row.status || 'queued', stage: 'Checking…', createdAt: new Date(row.createdAt).toISOString() };
+    }
     if (uid !== 'owner' && terminalStatus(job.status)) await releaseSlot(uid, row.id);
     if (job.status === 'failed') await refundFailedPodcast(uid, row.id, row.createdAt);
     return { ...job, createdAt: new Date(row.createdAt).toISOString() };

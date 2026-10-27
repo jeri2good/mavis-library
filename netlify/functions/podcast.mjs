@@ -51,13 +51,24 @@ const handler = async (req, context) => {
       const cursor = url.searchParams.get('cursor') || '';
       if (cursor && !/^pod\/(owner|[0-9a-f-]{36})\/[A-Za-z0-9_-]{1,100}$/.test(cursor)) return fail(400, 'bad_request', 'Invalid cursor.');
       const page = await indexedJobs(uid, access.owner, cursor);
-      const jobs = [];
-      for (const row of page.jobs) {
-        const job = publicJob(await studioJson(cfg, `/${row.id}`, row.userId), row.id);
-        if (terminalStatus(job.status) && row.userId !== 'owner') await releaseSlot(row.userId, row.id);
-        jobs.push(job);
-      }
-      return json({ jobs, cursor: page.cursor });
+      // Look jobs up in parallel (8 at a time). One slow or missing job must never sink the whole list:
+      // gone from the studio -> drop its stale row; studio slow -> show the row as last known.
+      const jobs = new Array(page.jobs.length);
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(8, page.jobs.length) }, async () => {
+        while (next < page.jobs.length) {
+          const i = next++, row = page.jobs[i];
+          try {
+            const job = publicJob(await studioJson(cfg, `/${row.id}`, row.userId), row.id);
+            if (terminalStatus(job.status) && row.userId !== 'owner') await releaseSlot(row.userId, row.id);
+            jobs[i] = job;
+          } catch (e) {
+            if (e?.response?.status === 404) continue; // not visible to this user in the studio: hide it
+            jobs[i] = { id: row.id, title: row.title || 'Podcast', status: row.status || 'queued', stage: 'Checking…' };
+          }
+        }
+      }));
+      return json({ jobs: jobs.filter(Boolean), cursor: page.cursor });
     }
     if (['job', 'audio'].includes(action) && parts.length === 2) {
       if (action === 'audio' ? req.method !== 'GET' : !['GET', 'DELETE'].includes(req.method)) return fail(405, 'method_not_allowed', action === 'audio' ? 'Use GET.' : 'Use GET or DELETE.');

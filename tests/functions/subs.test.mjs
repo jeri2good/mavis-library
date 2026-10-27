@@ -477,7 +477,11 @@ try {
   });
   await test('upstream ownership 404 remains 404 on indexed job, list, delete, and audio', async () => {
     jobs.get(jobA).uid = b.user.id;
-    for (const [action, method] of [[`job/${jobA}`, 'GET'], [`job/${jobA}`, 'DELETE'], ['list', 'GET'], [`audio/${jobA}`, 'GET']]) assert.equal((await pod(action, method, undefined, a.token)).status, 404);
+    for (const [action, method] of [[`job/${jobA}`, 'GET'], [`job/${jobA}`, 'DELETE'], [`audio/${jobA}`, 'GET']]) assert.equal((await pod(action, method, undefined, a.token)).status, 404);
+    // The list must not fail as a whole because one job is hidden upstream: it just leaves that job out.
+    const list = await pod('list', 'GET', undefined, a.token);
+    assert.equal(list.status, 200);
+    assert.ok(!list.body.jobs.some(j => j.id === jobA));
     jobs.get(jobA).uid = a.user.id;
   });
   await test('audio not ready returns friendly 409 without signing or fetching MP3', async () => {

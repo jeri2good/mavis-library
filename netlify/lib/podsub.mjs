@@ -197,7 +197,7 @@ export async function todayEpisodes(uid, now = Date.now()) {
     catch (e) {
       if (e?.response?.status === 404) return null; // deleted in the studio: hide it
       // Studio slow for this one: show it as last known rather than failing the whole Today list.
-      return { id: row.id, title: row.title || 'Daily briefing', status: row.status || 'queued', stage: 'Checking…', createdAt: new Date(row.createdAt).toISOString() };
+      return { id: row.id, title: row.title || 'Daily briefing', kind: row.kind || 'chapter', style: row.style || 'deep-dive', status: row.status || 'queued', stage: 'Checking…', progress: 0, sources: [], createdAt: new Date(row.createdAt).toISOString() };
     }
     if (uid !== 'owner' && terminalStatus(job.status)) await releaseSlot(uid, row.id);
     if (job.status === 'failed') await refundFailedPodcast(uid, row.id, row.createdAt);

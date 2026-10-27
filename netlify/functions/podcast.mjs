@@ -64,7 +64,7 @@ const handler = async (req, context) => {
             jobs[i] = job;
           } catch (e) {
             if (e?.response?.status === 404) continue; // not visible to this user in the studio: hide it
-            jobs[i] = { id: row.id, title: row.title || 'Podcast', status: row.status || 'queued', stage: 'Checking…' };
+            jobs[i] = { id: row.id, title: row.title || 'Podcast', kind: row.kind || 'chapter', style: row.style || 'deep-dive', status: row.status || 'queued', stage: 'Checking…', progress: 0, sources: [] };
           }
         }
       }));

@@ -71,7 +71,8 @@ export function validateCreate(b) {
 }
 export async function studioJson(cfg, path, uid, { method = 'GET', body, onAccepted, onRejected } = {}) {
   const ctl = new AbortController();
-  const remaining = Math.min(10000, (cfg.deadline ?? Date.now() + 10000) - Date.now());
+  // Interactive calls stay at 10 s; the scheduler may pass maxWait (the studio's queue admit can take ~10 s).
+  const remaining = Math.min(cfg.maxWait ?? 10000, (cfg.deadline ?? Date.now() + 10000) - Date.now());
   if (remaining <= 0) throw problem(502, 'studio_unavailable', 'The podcast studio took too long. Please try again.');
   const timer = setTimeout(() => ctl.abort(), remaining);
   const unavailable = () => problem(502, 'studio_unavailable', 'The podcast studio is not available right now. Please try again.');

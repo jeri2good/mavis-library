@@ -136,7 +136,7 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
           // Give every selected post a share of the source budget before marking it seen.
           const perPost = Math.floor(85000 / episode.posts.length);
           const text = episode.posts.map(p => `${p.title}\n${p.link || ''}\n${p.text || p.title}`.slice(0, perPost)).join('\n\n');
-          const job = await createPodcast(uid, { kind: 'chapter', title: episode.title, text, engine: doc.engine, style: 'brief' }, { cfg: cfg ? { ...cfg, deadline: deadline - 1000 } : null, now });
+          const job = await createPodcast(uid, { kind: 'chapter', title: episode.title, text, engine: doc.engine, style: 'brief' }, { cfg: cfg ? { ...cfg, deadline: deadline - 1000, maxWait: 20000 } : null, now });
           run.episodes.push({ jobId: job.id, title: episode.title, siteIds: episode.sites.map(site => site.id) });
           for (const site of episode.sites) {
             const ids = episode.posts.filter(p => site.posts.includes(p)).map(p => p.id);

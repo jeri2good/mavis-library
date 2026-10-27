@@ -199,8 +199,8 @@ export const releaseSlot = (uid, id) => changeSlots(uid, (slots) => slots.filter
 export async function createPodcast(uid, input, { cfg = studioConfig(), now = Date.now() } = {}) {
   if (!cfg) throw problem(503, 'studio_not_configured', 'The podcast studio is not configured yet.');
   const body = validateCreate(input);
-  const free = uid === 'owner';
-  const reservation = free ? null : await reserveSlot(uid, true);
+  // Active rows remain for lifecycle compatibility; the daily quota is the gate.
+  const reservation = uid === 'owner' ? null : await reserveSlot(uid, true);
   let quota, dispatched = false, accepted = false;
   try {
     quota = await reservePodcastQuota(uid, now);
@@ -216,7 +216,7 @@ export async function createPodcast(uid, input, { cfg = studioConfig(), now = Da
     const claimed = await subStore().setJSON(`pod-id/${out.id}`, row, { onlyIfNew: true });
     if (!claimed.modified) throw problem(502, 'studio_unavailable', 'The studio returned a duplicate job. Please contact the owner.');
     await subStore().setJSON(`pod/${uid}/${out.id}`, row, { onlyIfNew: true });
-    if (reservation) await changeSlots(uid, (slots) => slots.map((x) => x === reservation ? out.id : x));
+    if (reservation) await changeSlots(uid, (slots) => slots.map((x) => x === reservation ? out.id : x).slice(-100));
     return { id: out.id, status: out.status };
   } finally {
     if (!accepted) await settlePodcastQuota(quota, false);

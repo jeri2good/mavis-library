@@ -24,9 +24,9 @@ export function validatePodsub(b) {
     ids.add(site.id);
   }
   const s = b.schedule;
-  if (!object(s, ['enabled', 'readyBy', 'days', 'timezone']) || typeof s.enabled !== 'boolean' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.readyBy)
+  if (!object(s, ['enabled', 'readyBy', 'days', 'timezone']) || typeof s.enabled !== 'boolean' || typeof s.readyBy !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.readyBy)
     || !Array.isArray(s.days) || s.days.some(d => !DAYS.includes(d)) || new Set(s.days).size !== s.days.length || (s.enabled && !s.days.length)
-    || !str(s.timezone, 100) || !['auto', 'notebooklm'].includes(b.engine) || !['newest', 'important'].includes(b.rank)
+    || !str(s.timezone, 100) || !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)*$/.test(s.timezone) || !['auto', 'notebooklm'].includes(b.engine) || !['newest', 'important'].includes(b.rank)
     || (b.keepDays !== undefined && (!Number.isInteger(b.keepDays) || b.keepDays < 1 || b.keepDays > 30))
     || !object(b.notify, ['telegram']) || typeof b.notify.telegram !== 'boolean') bad();
   try { new Intl.DateTimeFormat('en', { timeZone: s.timezone }).format(); } catch { bad(); }
@@ -131,7 +131,9 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
         if (usage.used >= usage.limit) { episode.sites.forEach(site => skip(site.id, 'skipped_limit')); continue; }
         if (Date.now() >= deadline - 1500) { episode.sites.forEach(site => skip(site.id, 'skipped_budget')); continue; }
         try {
-          const text = episode.posts.map(p => `${p.title}\n${p.link || ''}\n${p.text || p.title}`).join('\n\n').slice(0, 95000);
+          // Give every selected post a share of the source budget before marking it seen.
+          const perPost = Math.floor(85000 / episode.posts.length);
+          const text = episode.posts.map(p => `${p.title}\n${p.link || ''}\n${p.text || p.title}`.slice(0, perPost)).join('\n\n');
           const job = await createPodcast(uid, { kind: 'chapter', title: episode.title, text, engine: doc.engine, style: 'brief' }, { cfg: cfg ? { ...cfg, deadline: Math.min(deadline - 1000, Date.now() + 6000) } : null, now });
           run.episodes.push({ jobId: job.id, title: episode.title, siteIds: episode.sites.map(site => site.id) });
           for (const site of episode.sites) {

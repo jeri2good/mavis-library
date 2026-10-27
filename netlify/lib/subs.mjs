@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { kv, readForUpdate, writeIfUnchanged } from './accounts.mjs';
 import { clean, env, json } from './shared.mjs';
 
-export const DEFAULT_CAPS = Object.freeze({ assistant: 150, tts: 80, rank: 300, study: 60, podcast: 3 });
+export const DEFAULT_CAPS = Object.freeze({ assistant: 150, tts: 80, rank: 300, study: 60, podcast: 1 });
 export const COOLDOWN_MS = 7 * 864e5;
 export const subStore = () => kv('mavis-subs');
 export const subError = (status, code, message, extra = {}) => json({ error: code, code, message, ...extra }, { status });
@@ -54,7 +54,11 @@ export async function transition(user, action, { message = '', note = '', plan, 
 }
 export async function usage(id, now = Date.now()) {
   const data = await subStore().get(`use/${id}/${utcDay(now)}`, { type: 'json' }) || {};
-  return Object.fromEntries(Object.entries(caps()).map(([k, cap]) => [k, { used: data[k] || 0, cap }]));
+  const out = Object.fromEntries(Object.entries(caps()).map(([k, cap]) => [k, { used: data[k] || 0, cap }]));
+  const { podcastUsage } = await import('./podcast.mjs');
+  const podcast = await podcastUsage(id, now);
+  out.podcast = { used: podcast.used, cap: podcast.limit };
+  return out;
 }
 export async function consume(id, feature, now = Date.now()) {
   if (!Object.hasOwn(DEFAULT_CAPS, feature)) throw new Error('Unknown subscription feature');

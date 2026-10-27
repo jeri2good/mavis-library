@@ -2,7 +2,7 @@ import { json, fail, onlyPost, readJson, sameOrigin, softLimit, clientKey } from
 import { withCors } from '../lib/cors.mjs';
 import { requireAccess } from '../lib/access.mjs';
 import { subStore, subError, unavailable } from '../lib/subs.mjs';
-import { createPodcast, studioConfig, studioJson, validateCreate, publicJob, validJobId, terminalStatus, signAudio, releaseSlot } from '../lib/podcast.mjs';
+import { createPodcast, studioConfig, studioJson, publicJob, validJobId, terminalStatus, signAudio, releaseSlot } from '../lib/podcast.mjs';
 
 async function indexedJobs(uid, owner, cursor = '', limit = 100) {
   const s = subStore(), jobs = [];
@@ -43,7 +43,7 @@ const handler = async (req, context) => {
     if (action === 'create' && parts.length === 1) {
       const bad = onlyPost(req);
       if (bad) return bad;
-      const body = validateCreate(await readJson(req, 1700000));
+      const body = await readJson(req, 1700000);
       return json(await createPodcast(uid, body, { cfg }), { status: 201 });
     }
     if (action === 'list' && parts.length === 1) {

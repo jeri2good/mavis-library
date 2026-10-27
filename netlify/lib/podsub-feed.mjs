@@ -12,7 +12,10 @@ export function publicAddress(address) {
       || (a === 203 && b === 0 && c === 113));
   }
   // Only globally routable IPv6 unicast; exclude documentation, 6to4 and Teredo.
-  return isIP(address) === 6 && /^[23]/i.test(address) && !/^(2001:(?:0:|db8:|[12][0-9a-f]:)|2002:)/i.test(address);
+  if (isIP(address) !== 6) return false;
+  const [first, second] = address.split(':').map(v => parseInt(v || '0', 16));
+  return first >= 0x2000 && first <= 0x3fff && first !== 0x2002
+    && !(first === 0x2001 && (second <= 0x1ff || second === 0xdb8));
 }
 export function feedUrl(value) {
   if (typeof value !== 'string' || value.length > 2048 || /[\s\\\u0000-\u001f]/.test(value)) throw new Error('Invalid feed URL');

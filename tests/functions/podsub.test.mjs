@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import https from 'node:https';
+import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { BlobsServer } from '@netlify/blobs/server';
-import { subStore, transition } from '../../netlify/lib/subs.mjs';
+import { subStore, transition, usage } from '../../netlify/lib/subs.mjs';
 import { createUser, signToken } from '../../netlify/lib/accounts.mjs';
 import { createPodcast, podcastUsage, reservePodcastQuota, settlePodcastQuota } from '../../netlify/lib/podcast.mjs';
 import { localDate, nextRunAt } from '../../netlify/lib/podsub-time.mjs';
-import { parseFeed, fetchFeed, publicAddress, feedUrl } from '../../netlify/lib/podsub-feed.mjs';
+import { parseFeed, fetchFeed, publicAddress, feedUrl, pinnedDispatcher } from '../../netlify/lib/podsub-feed.mjs';
 import { validatePodsub, savePodsub, runSubscription, runs, tick, acquireLock, releaseLock, keys } from '../../netlify/lib/podsub.mjs';
 import api from '../../netlify/functions/podsub.mjs';
 import { config as tickConfig } from '../../netlify/functions/podsub-tick.mjs';
@@ -55,7 +58,7 @@ const request = async (action = '', method = 'GET', body, token, owner = true, o
 };
 try {
   await test('strict subscription validation rejects malformed and server-owned fields', async () => {
-    const invalid = [null, [], {}, { ...doc(), version: 2 }, { ...doc(), nextRunAt: null }, { ...doc(), updatedAt: '' }, { ...doc(), engine: 'local' }, { ...doc(), rank: 'random' }, { ...doc(), keepDays: 31 }, { ...doc(), notify: { telegram: 1 } }, { ...doc(), schedule: { ...doc().schedule, timezone: 'Mars' } }, { ...doc(), schedule: { ...doc().schedule, days: [] } }, { ...doc(), schedule: { ...doc().schedule, readyBy: '24:00' } }, doc([site('a', { count: 0 })]), doc([site('../a')]), doc([site('a'), site('a')]), doc([site('a', { feedUrl: 'http://127.0.0.1' })]), doc(Array.from({ length: 13 }, (_, i) => site('s' + i)))];
+    const invalid = [null, [], {}, { ...doc(), version: 2 }, { ...doc(), nextRunAt: null }, { ...doc(), updatedAt: '' }, { ...doc(), engine: 'local' }, { ...doc(), rank: 'random' }, { ...doc(), keepDays: 31 }, { ...doc(), notify: { telegram: 1 } }, { ...doc(), schedule: { ...doc().schedule, timezone: 'Mars' } }, { ...doc(), schedule: { ...doc().schedule, days: [] } }, { ...doc(), schedule: { ...doc().schedule, readyBy: '24:00' } }, { ...doc(), schedule: { ...doc().schedule, readyBy: ['08:00'] } }, { ...doc(), schedule: { ...doc().schedule, timezone: '+01:00' } }, doc([site('a', { count: 0 })]), doc([site('../a')]), doc([site('a'), site('a')]), doc([site('a', { feedUrl: 'http://127.0.0.1' })]), doc(Array.from({ length: 13 }, (_, i) => site('s' + i)))];
     for (const b of invalid) assert.throws(() => validatePodsub(b));
     assert.equal(validatePodsub({ ...doc(), keepDays: undefined }).keepDays, 7);
   });
@@ -142,7 +145,7 @@ try {
     assert.throws(() => parseFeed('<!DOCTYPE rss><rss/>', 'https://example.com')); assert.throws(() => parseFeed('<rss><item></rss>', 'https://example.com'));
   });
   await test('SSRF rejects local literal IPs, private DNS, redirects and oversized feeds', async () => {
-    for (const ip of ['127.0.0.1', '10.1.2.3', '100.64.0.1', '169.254.169.254', '172.16.0.1', '192.168.1.1', '::1', '::ffff:127.0.0.1', 'fc00::1', 'fe80::1']) assert.equal(publicAddress(ip), false, ip);
+    for (const ip of ['127.0.0.1', '10.1.2.3', '100.64.0.1', '169.254.169.254', '172.16.0.1', '192.168.1.1', '::1', '::ffff:127.0.0.1', 'fc00::1', 'fe80::1', '2001:2::1', '2001:0000::1', '2001:db8::1', '2002:7f00:1::1']) assert.equal(publicAddress(ip), false, ip);
     for (const url of ['file:///etc/passwd', 'http://2130706433', 'http://[::1]', 'https://u:p@example.com']) assert.throws(() => feedUrl(url));
     const resolve = async () => [{ address: '93.184.216.34', family: 4 }];
     await assert.rejects(fetchFeed('https://example.com', { resolve: async () => [{ address: '127.0.0.1', family: 4 }], fetcher: () => assert.fail('must not fetch') }));
@@ -173,6 +176,113 @@ try {
     assert.equal((await request('runs')).body.length, 3);
     await createPodcast('owner', { kind: 'topic', title: 'Owner today', query: 'News' });
     const out = await request('today'); assert.equal(out.body.length, 1); assert.equal(out.body[0].title, 'Owner today'); assert.equal(out.body[0].status, 'queued');
+  });
+
+  await test('owner creates exactly 30 jobs before the shared daily gate stops studio dispatch', async () => {
+    const now = Date.parse('2030-01-02T12:00Z'), before = calls.length;
+    for (let i = 0; i < 30; i++) await createPodcast('owner', { kind: 'topic', title: `Owner ${i}`, query: 'News' }, { now });
+    await assert.rejects(createPodcast('owner', { kind: 'topic', title: 'Excess', query: 'News' }, { now }), e => e.response.status === 429);
+    assert.equal(calls.length - before, 30); assert.equal((await podcastUsage('owner', now)).used, 30);
+  });
+  await test('subscription status usage reports the same local-day counter and per-user cap', async () => {
+    const uid = await setup(doc()), now = Date.parse('2030-01-02T03:00Z');
+    await subStore().setJSON(`podlimit/${uid}`, { limit: 6 });
+    const reservation = await reservePodcastQuota(uid, now); await settlePodcastQuota(reservation, true);
+    assert.deepEqual((await usage(uid, now)).podcast, { used: 1, cap: 6 });
+  });
+  await test('tick selects at most ten unique users in oldest-first order', async () => {
+    for (const k of await keys('podsub-due/')) await subStore().delete(k);
+    const now = Date.now(), users = [];
+    for (let i = 0; i < 12; i++) {
+      const uid = randomUUID(), at = new Date(now - (12 - i) * 1000).toISOString(); users.push(uid);
+      await subStore().setJSON(`podsub/${uid}`, { ...doc(), nextRunAt: at, updatedAt: at });
+      await subStore().setJSON(`podsub-due/${at}/${uid}`, {});
+    }
+    await tick({ ...deps, now });
+    for (let i = 0; i < users.length; i++) assert.equal((await runs(users[i])).length, i < 10 ? 1 : 0);
+  });
+  await test('scheduled execution rechecks expired access without touching feeds or studio', async () => {
+    const { user } = await createUser('expired-scheduler@example.test', 'long-password-123');
+    await transition(user, 'add');
+    const sub = await subStore().get(`s/${user.id}`, { type: 'json' });
+    await subStore().setJSON(`s/${user.id}`, { ...sub, expiresAt: Date.now() - 1 });
+    await savePodsub(user.id, doc([site('blocked')]));
+    const before = calls.length;
+    const out = await runSubscription(user.id, { feed: () => assert.fail('expired access cannot fetch') });
+    assert.equal(out.status, 'failed'); assert.equal(calls.length, before);
+  });
+  await test('run history retains 30 records and seen IDs retain 300', async () => {
+    const uid = await setup(doc([site('retention')]));
+    const seen = Array.from({ length: 300 }, (_, i) => 'previous-' + i);
+    await subStore().setJSON(`podsub-seen/${uid}/retention`, { seen });
+    for (let i = 0; i < 32; i++) await subStore().setJSON(`podsub-runs/${uid}/${new Date(Date.now() - 3600000 + i).toISOString()}`, { startedAt: new Date(Date.now() - 3600000 + i).toISOString() });
+    await run(uid); const records = await runs(uid);
+    assert.equal(records.length, 30); assert.equal(records[0].status, 'ok'); assert.equal((await keys(`podsub-runs/${uid}/`)).length, 30);
+    const stored = (await subStore().get(`podsub-seen/${uid}/retention`, { type: 'json' })).seen;
+    assert.equal(stored.length, 300); assert.equal(stored[0], 'previous-1'); assert.equal(stored.at(-1), 'one');
+  });
+  await test('saving rewrites due indexes and disabling removes recurring work', async () => {
+    const uid = await setup(doc());
+    await savePodsub(uid, doc([], { schedule: { ...doc().schedule, readyBy: '18:00' } }));
+    let indexes = (await keys('podsub-due/')).filter(k => k.endsWith('/' + uid)); assert.equal(indexes.length, 1);
+    const saved = await savePodsub(uid, doc([], { schedule: { ...doc().schedule, enabled: false } }));
+    assert.equal(saved.nextRunAt, null); indexes = (await keys('podsub-due/')).filter(k => k.endsWith('/' + uid)); assert.equal(indexes.length, 0);
+  });
+  await test('deadline exhaustion is recorded, rescheduled and does not consume quota', async () => {
+    const uid = await setup(doc([site('budget')]));
+    const out = await run(uid, { deadline: Date.now() - 1 });
+    assert.equal(out.episodes.length, 0); assert.equal(out.skipped[0].reason, 'skipped_budget');
+    assert.equal((await podcastUsage(uid)).used, 0);
+    assert.ok(Date.parse((await subStore().get(`podsub/${uid}`, { type: 'json' })).nextRunAt) > Date.now());
+  });
+  await test('unavailable feeds and rejected studio requests do not mark posts seen or use quota', async () => {
+    const uid = await setup(doc([site('fail')]));
+    const failedFeed = await run(uid, { feed: async () => { throw new Error('Feed failed'); } });
+    assert.equal(failedFeed.status, 'failed'); assert.equal(failedFeed.skipped[0].reason, 'feed_failed');
+    const saved = globalThis.fetch;
+    globalThis.fetch = async () => Response.json({ detail: 'Unavailable' }, { status: 503 });
+    try { const out = await run(uid); assert.equal(out.status, 'failed'); assert.equal(out.skipped[0].reason, 'create_failed'); }
+    finally { globalThis.fetch = saved; }
+    assert.equal((await podcastUsage(uid)).used, 0);
+    assert.equal(await subStore().get(`podsub-seen/${uid}/fail`, { type: 'json' }), null);
+  });
+  await test('large briefing budgets source text across every selected post', async () => {
+    const uid = await setup(doc(Array.from({ length: 12 }, (_, i) => site('site' + i, { count: 5, delivery: 'briefing' }))));
+    const out = await run(uid, { feed: async url => Array.from({ length: 5 }, (_, i) => ({ ...post(url + '-' + i, i), text: 'x'.repeat(16000) })) });
+    assert.equal(out.episodes.length, 1);
+    const source = calls.filter(c => c.uid === uid)[0].body.text;
+    assert.ok(source.length < 90000); assert.match(source, /site0.xml-0/); assert.match(source, /site11.xml-0/);
+  });
+  await test('built-in fetch uses pinned transport lookup while preserving original TLS hostname', async () => {
+    const savedRequest = https.request;
+    let checked = false;
+    https.request = (url, opts) => {
+      assert.equal(url.hostname, 'example.com'); assert.equal(opts.agent, false);
+      opts.lookup(url.hostname, { all: true }, (_err, addresses) => { assert.deepEqual(addresses, [{ address: '93.184.216.34', family: 4 }]); checked = true; });
+      const req = new EventEmitter(); req.destroy = () => {};
+      req.end = () => queueMicrotask(() => {
+        const res = Readable.from([Buffer.from('<rss><channel/></rss>')]);
+        Object.assign(res, { statusCode: 200, statusMessage: 'OK', rawHeaders: ['Content-Type', 'application/xml'], rawTrailers: [] }); req.emit('response', res);
+      });
+      return req;
+    };
+    try {
+      const res = await realFetch('https://example.com/feed', { dispatcher: pinnedDispatcher('93.184.216.34', 4) });
+      assert.equal(await res.text(), '<rss><channel/></rss>'); assert.ok(checked);
+    } finally { https.request = savedRequest; }
+  });
+  await test('Telegram sends one optional bounded message and missing configuration silently skips', async () => {
+    const uid = await setup(doc([site('notify')], { notify: { telegram: true } }));
+    process.env.TELEGRAM_BOT_TOKEN = 'test-only-telegram-token'; process.env[`TELEGRAM_CHAT_ID_${uid}`] = 'test-chat';
+    const saved = globalThis.fetch, messages = [];
+    globalThis.fetch = async (url, options) => {
+      if (String(url).startsWith('https://api.telegram.org/')) { messages.push(JSON.parse(options.body)); assert.ok(options.signal); return Response.json({ ok: true }); }
+      return saved(url, options);
+    };
+    try {
+      await run(uid); assert.equal(messages.length, 1); assert.match(messages[0].text, /^Your 1 podcasts for .* are being made, ready by 08:00$/);
+      const other = await setup(doc([site('no-config')], { notify: { telegram: true } })); await run(other); assert.equal(messages.length, 1);
+    } finally { globalThis.fetch = saved; delete process.env.TELEGRAM_BOT_TOKEN; delete process.env[`TELEGRAM_CHAT_ID_${uid}`]; }
   });
   console.log(`\n${passed} podcast subscription checks passed.`);
 } finally {

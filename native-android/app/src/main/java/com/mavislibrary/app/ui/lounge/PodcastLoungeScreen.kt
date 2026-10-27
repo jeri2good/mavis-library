@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,6 +70,12 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val accountId by container.secureStore.observe(com.mavislibrary.app.data.secure.Secret.ACCOUNT_USER_ID).collectAsStateWithLifecycle(initialValue = null)
     val identity = if (owner == true) "owner" else accountId
+    val subscription: PodsubViewModel = androidx.lifecycle.viewmodel.compose.viewModel(key = "podsub-$identity",
+        factory = androidx.lifecycle.viewmodel.viewModelFactory { initializer { PodsubViewModel(container.podsubRepository) } })
+    val subscriptionState by subscription.state.collectAsStateWithLifecycle()
+    LaunchedEffect(identity, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { while (isActive) { subscription.refresh(); delay(60_000) } }
+    }
     val api = remember(identity) { container.podcastApi() }
     val repo = remember(identity) { container.podcastRepository() }
     val wakingStudio by repo.wakingStudio.collectAsStateWithLifecycle(initialValue = false)
@@ -178,8 +185,18 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                 notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             }
         }
+        item {
+            PodsubSection(subscriptionState, subscription) { ready -> act {
+                val queue = ready.map { job ->
+                    val saved = SavedPodcast(job, loaded.address, accountId = identity)
+                    container.podcastSettings.save(saved)
+                    saved to (uriOf(saved) ?: error("Audio unavailable"))
+                }
+                if (queue.isNotEmpty() && allowed()) { onFirstPlay(); playback.playPodcasts(queue, null) }
+            } }
+        }
         if (jobs.isEmpty()) item {
-            Text("Your podcasts will appear here. Make one with New podcast, or turn on the daily podcast in the Sites tab.",
+            Text("Your podcasts will appear here. Make one with New podcast, or set a subscription schedule above.",
                 Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyLarge)
         }
         shelves.forEach { (section, episodes) ->

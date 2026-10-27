@@ -52,6 +52,11 @@ class PodcastSettings(private val store: DataStore<Preferences>, private val sec
             p[LIBRARY] = podcastJson.encodeToString(listOf(merged) + decode(p).filterNot { it.key == merged.key })
         }
     }
+    suspend fun clearDownload(id: String, studio: String) {
+        store.edit { p -> p[LIBRARY] = podcastJson.encodeToString(decode(p).map {
+            if (it.job.id == id && it.studio == studio) it.copy(localFile = null) else it
+        }) }
+    }
     override suspend fun remove(id: String, studio: String) {
         store.edit { p -> p[LIBRARY] = podcastJson.encodeToString(decode(p).filterNot { it.job.id == id && it.studio == studio }) }
     }

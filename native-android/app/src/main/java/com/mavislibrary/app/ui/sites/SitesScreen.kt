@@ -83,18 +83,9 @@ fun SitesScreen(
             }
         }
         item {
-            BriefingCard(
-                state, canMake, needsSignIn, started,
-                onToggle = { on -> vm.setBriefing(on); if (on) onAskNotifications() },
-                onPickTime = {
-                    TimePickerDialog(context, { _, hour, minute -> vm.setBriefingTime(LocalTime.of(hour, minute)) },
-                        state.briefing.time.hour, state.briefing.time.minute, android.text.format.DateFormat.is24HourFormat(context)).show()
-                },
-                onMakeNow = { BriefingScheduler.runNow(appContext); started = true; onAskNotifications() },
-                onOpenLounge = onOpenLounge,
-                onSettings = onSettings,
-            )
+            OutlinedButton(onClick = onOpenLounge, modifier = Modifier.fillMaxWidth()) { Text("Podcast subscriptions in Lounge") }
         }
+
         state.error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
         if (state.sources.isEmpty()) item {
             Card(Modifier.fillMaxWidth()) {
@@ -135,48 +126,10 @@ fun SitesScreen(
         AlertDialog(
             onDismissRequest = { removing = null },
             title = { Text("Stop following ${source.name}?") },
-            text = { Text("Its posts leave this page and it won't be in your podcasts. Podcasts already made stay in Podcast Lounge.") },
+            text = { Text("Its posts leave this page. Podcast subscriptions sync when connected. Podcasts already made stay in Podcast Lounge.") },
             confirmButton = { TextButton(onClick = { vm.remove(source.id); removing = null }) { Text("Unfollow") } },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep") } },
         )
-    }
-}
-
-@Composable
-private fun BriefingCard(
-    state: SitesUiState, canMake: Boolean, needsSignIn: Boolean, started: Boolean,
-    onToggle: (Boolean) -> Unit, onPickTime: () -> Unit, onMakeNow: () -> Unit, onOpenLounge: () -> Unit, onSettings: () -> Unit,
-) {
-    Card(Modifier.fillMaxWidth().testTag("briefing_card"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Daily podcast", style = MaterialTheme.typography.titleLarge)
-                    Text("Every day, new posts from your sites become a podcast, saved on this phone so it plays offline.",
-                        style = MaterialTheme.typography.bodyMedium)
-                }
-                Switch(state.briefing.enabled, onToggle, Modifier.testTag("briefing_switch"))
-            }
-            if (needsSignIn) {
-                Text("Sign in under Settings → Account so your podcast studio can make these.", color = MaterialTheme.colorScheme.error)
-                OutlinedButton(onClick = onSettings) { Text("Open Settings") }
-            }
-            if (state.briefing.enabled) OutlinedButton(onClick = onPickTime, modifier = Modifier.testTag("briefing_time")) {
-                Text("Every day at ${SHORT_TIME.format(state.briefing.time)}")
-            }
-            when {
-                state.pending > 0 -> Text(if (state.pending == 1) "1 podcast is being made. You'll get a notification when it's ready."
-                    else "${state.pending} podcasts are being made. You'll get a notification when each is ready.")
-                started -> Text("Checking your sites now…")
-            }
-            state.status?.let { Text("${DateUtils.getRelativeTimeSpanString(it.at)}: ${it.message}", style = MaterialTheme.typography.bodySmall) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = onMakeNow, enabled = canMake && state.sources.isNotEmpty(), modifier = Modifier.testTag("briefing_now")) { Text("Make one now") }
-                TextButton(onClick = onOpenLounge) { Text("Your podcasts") }
-            }
-            Text("Choose below which sites go in the daily podcast and which get episodes of their own. Each podcast takes a few minutes to make.",
-                style = MaterialTheme.typography.bodySmall)
-        }
     }
 }
 
@@ -209,7 +162,6 @@ private fun SiteCard(
                         latest.published?.let { Text(day(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
-                PodcastModeChips(source.podcast, onMode)
             }
         }
     }
@@ -305,10 +257,6 @@ fun SiteScreen(container: AppContainer, id: String, onBack: () -> Unit, onPodcas
             TextButton(onClick = onBack) { Text("Back to Sites") }
             Text(source.name, style = MaterialTheme.typography.headlineMedium)
             Text(host(source.siteUrl), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        item {
-            Text("Podcasts from this site", style = MaterialTheme.typography.titleSmall)
-            PodcastModeChips(source.podcast) { mode -> scope.launch { container.feedStore.setPodcast(id, mode) } }
         }
         val current = load
         when {

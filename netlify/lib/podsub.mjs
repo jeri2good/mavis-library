@@ -62,6 +62,7 @@ async function writeDoc(uid, doc) {
 export async function savePodsub(uid, input, now = Date.now()) {
   const doc = validatePodsub(input), token = await acquireLock(uid);
   if (!token) throw problem(409, 'podsub_busy', 'A podcast subscription operation is already running.');
+  // Saving a schedule always clears any in-progress retry window.
   try { return await writeDoc(uid, { ...doc, nextRunAt: nextRunAt(doc.schedule, now), updatedAt: new Date(now).toISOString() }); }
   finally { await releaseLock(uid, token); }
 }
@@ -104,6 +105,7 @@ async function notify(uid, doc, run, now, deadline) {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text: `Your ${run.episodes.length} podcasts for ${localDate(now, doc.schedule.timezone)} are being made, ready by ${doc.schedule.readyBy}` }), signal: AbortSignal.timeout(Math.max(1, Math.min(1500, deadline - Date.now()))), redirect: 'error' });
   } catch { /* Optional notification failure never fails generation. */ }
 }
+export const RETRY_MS = 5 * 60000;
 export async function runSubscription(uid, { now = Date.now(), dueKey, deadline = Date.now() + 24000, feed = fetchFeed, cfg = studioConfig(), checkAccess = eligible } = {}) {
   const token = await acquireLock(uid);
   if (!token) throw problem(409, 'podsub_busy', 'A podcast subscription operation is already running.');
@@ -134,7 +136,7 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
           // Give every selected post a share of the source budget before marking it seen.
           const perPost = Math.floor(85000 / episode.posts.length);
           const text = episode.posts.map(p => `${p.title}\n${p.link || ''}\n${p.text || p.title}`.slice(0, perPost)).join('\n\n');
-          const job = await createPodcast(uid, { kind: 'chapter', title: episode.title, text, engine: doc.engine, style: 'brief' }, { cfg: cfg ? { ...cfg, deadline: Math.min(deadline - 1000, Date.now() + 6000) } : null, now });
+          const job = await createPodcast(uid, { kind: 'chapter', title: episode.title, text, engine: doc.engine, style: 'brief' }, { cfg: cfg ? { ...cfg, deadline: deadline - 1000 } : null, now });
           run.episodes.push({ jobId: job.id, title: episode.title, siteIds: episode.sites.map(site => site.id) });
           for (const site of episode.sites) {
             const ids = episode.posts.filter(p => site.posts.includes(p)).map(p => p.id);
@@ -154,7 +156,19 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
     while (await s.get(`podsub-runs/${uid}/${new Date(stamp).toISOString()}`, { type: 'json' })) stamp++;
     await s.setJSON(`podsub-runs/${uid}/${new Date(stamp).toISOString()}`, run);
     for (const key of (await keys(`podsub-runs/${uid}/`)).slice(0, -30)) await s.delete(key);
-    await writeDoc(uid, { ...doc, nextRunAt: nextRunAt(doc.schedule, Math.max(now, Date.now())), updatedAt: new Date().toISOString() });
+    // A sleeping studio (cold start ~35 s) or a flaky feed must not cost the whole day:
+    // retry every 5 minutes until 10 minutes before the ready-by time, then give up until tomorrow.
+    const transient = run.skipped.some(v => ['create_failed', 'skipped_budget', 'feed_failed'].includes(v.reason));
+    const readyAt = Date.parse(doc.retryReadyAt || doc.nextRunAt || '') + (doc.retryReadyAt ? 0 : 60 * 60000);
+    const retryAt = Date.now() + RETRY_MS;
+    if (dueKey && transient && Number.isFinite(readyAt) && retryAt <= readyAt - 10 * 60000) {
+      run.status = run.episodes.length ? 'partial_retrying' : 'retrying';
+      run.retryAt = new Date(retryAt).toISOString();
+      await writeDoc(uid, { ...doc, nextRunAt: run.retryAt, retryReadyAt: new Date(readyAt).toISOString(), updatedAt: new Date().toISOString() });
+    } else {
+      const { retryReadyAt: _drop, ...clean } = doc;
+      await writeDoc(uid, { ...clean, nextRunAt: nextRunAt(doc.schedule, Math.max(now, Date.now())), updatedAt: new Date().toISOString() });
+    }
     await notify(uid, doc, run, now, deadline);
     return run;
   } finally { await releaseLock(uid, token); }
@@ -162,6 +176,9 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
 export async function tick({ now = Date.now(), deadline = Date.now() + 25000, ...deps } = {}) {
   const due = (await keys('podsub-due/')).filter(key => Date.parse(key.split('/')[1]) <= now);
   const users = new Set(), selected = due.filter(key => { const uid = key.split('/')[2]; if (!validUid(uid) || users.has(uid)) return false; users.add(uid); return true; }).slice(0, 10);
+  // Wake the studio as early as possible: from idle it needs ~35 s to start, longer than one tick.
+  // Fire-and-forget; a run that still misses it retries 5 minutes later against a warm studio.
+  if (selected.length) { const cfg = studioConfig(); if (cfg) fetch(`${cfg.base}/v1/health`, { headers: { 'X-Studio-Key': cfg.secret }, signal: AbortSignal.timeout(Math.max(1, deadline - Date.now() - 500)) }).catch(() => {}); }
   // Each user has a separate lease and budget. No waiting for generated audio.
   return Promise.all(selected.map(async dueKey => {
     if (Date.now() >= deadline - 7000) return null;

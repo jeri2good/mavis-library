@@ -246,6 +246,28 @@ try {
     assert.equal((await podcastUsage(uid)).used, 0);
     assert.equal(await subStore().get(`podsub-seen/${uid}/fail`, { type: 'json' }), null);
   });
+  await test('a scheduled run whose studio is asleep retries in 5 minutes, then stops before ready-by', async () => {
+    const uid = await setup(doc([site('sleepy')]));
+    const ready = Date.now() + 60 * 60000;
+    const start = new Date(ready - 60 * 60000).toISOString();
+    await subStore().setJSON(`podsub/${uid}`, { ...(await subStore().get(`podsub/${uid}`, { type: 'json' })), nextRunAt: start });
+    const saved = globalThis.fetch;
+    globalThis.fetch = async () => Response.json({ detail: 'Unavailable' }, { status: 503 });
+    try {
+      const out = await run(uid, { dueKey: `podsub-due/${start}/${uid}`, now: Date.parse(start) });
+      assert.equal(out.status, 'retrying');
+      const after = await subStore().get(`podsub/${uid}`, { type: 'json' });
+      assert.ok(Math.abs(Date.parse(after.nextRunAt) - (Date.now() + 5 * 60000)) < 5000);
+      assert.equal(after.retryReadyAt, new Date(ready).toISOString());
+      // Last chance window closed: falls back to the next normal day.
+      await subStore().setJSON(`podsub/${uid}`, { ...after, retryReadyAt: new Date(Date.now() + 9 * 60000).toISOString() });
+      const late = await run(uid, { dueKey: `podsub-due/${after.nextRunAt}/${uid}`, now: Date.parse(after.nextRunAt) });
+      assert.equal(late.status, 'failed');
+      const final = await subStore().get(`podsub/${uid}`, { type: 'json' });
+      assert.equal(final.retryReadyAt, undefined);
+    } finally { globalThis.fetch = saved; }
+    assert.equal((await podcastUsage(uid)).used, 0);
+  });
   await test('large briefing budgets source text across every selected post', async () => {
     const uid = await setup(doc(Array.from({ length: 12 }, (_, i) => site('site' + i, { count: 5, delivery: 'briefing' }))));
     const out = await run(uid, { feed: async url => Array.from({ length: 5 }, (_, i) => ({ ...post(url + '-' + i, i), text: 'x'.repeat(16000) })) });

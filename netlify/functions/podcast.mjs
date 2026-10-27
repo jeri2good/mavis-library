@@ -2,7 +2,7 @@ import { json, fail, onlyPost, readJson, sameOrigin, softLimit, clientKey } from
 import { withCors } from '../lib/cors.mjs';
 import { requireAccess } from '../lib/access.mjs';
 import { subStore, subError, unavailable } from '../lib/subs.mjs';
-import { studioConfig, studioJson, validateCreate, publicJob, validJobId, terminalStatus, signAudio, reserveSlot, releaseSlot, changeSlots, reservePodcastQuota, settlePodcastQuota } from '../lib/podcast.mjs';
+import { createPodcast, studioConfig, studioJson, validateCreate, publicJob, validJobId, terminalStatus, signAudio, releaseSlot } from '../lib/podcast.mjs';
 
 async function indexedJobs(uid, owner, cursor = '', limit = 100) {
   const s = subStore(), jobs = [];
@@ -27,13 +27,6 @@ async function ownedJob(uid, owner, id) {
   }
   return null;
 }
-async function refreshSlots(cfg, uid) {
-  const slots = (await subStore().get(`pod-active/${uid}`, { type: 'json' }))?.slots || [];
-  for (const id of slots.filter(validJobId)) {
-    const job = publicJob(await studioJson(cfg, `/${id}`, uid), id);
-    if (terminalStatus(job.status)) await releaseSlot(uid, id);
-  }
-}
 const handler = async (req, context) => {
   if (!sameOrigin(req)) return fail(403, 'cross_origin', 'Cross-site requests are not allowed.');
   const access = await requireAccess(req, { feature: 'podcast' });
@@ -51,30 +44,7 @@ const handler = async (req, context) => {
       const bad = onlyPost(req);
       if (bad) return bad;
       const body = validateCreate(await readJson(req, 1700000));
-      const free = access.owner || access.unlimited;
-      if (!free) await refreshSlots(cfg, uid);
-      const reservation = free ? null : await reserveSlot(uid, false);
-      let quota, dispatched = false, accepted = false;
-      try {
-        quota = free ? null : await reservePodcastQuota(uid);
-        dispatched = true;
-        const result = await studioJson(cfg, '', uid, {
-          method: 'POST', body,
-          onAccepted: async () => { accepted = true; await settlePodcastQuota(quota, true); },
-          onRejected: async (status) => { if (reservation && status < 500 && status !== 408 && status !== 202) await releaseSlot(uid, reservation); },
-        });
-        const out = publicJob(result);
-        if (out.status !== 'queued') return subError(502, 'studio_bad_response', 'The studio did not return a queued podcast. Please contact the owner.');
-        const row = { id: out.id, userId: uid, createdAt: Date.now() };
-        const claimed = await subStore().setJSON(`pod-id/${out.id}`, row, { onlyIfNew: true });
-        if (!claimed.modified) return subError(502, 'studio_unavailable', 'The studio returned a duplicate job. Please contact the owner.');
-        await subStore().setJSON(`pod/${uid}/${out.id}`, row, { onlyIfNew: true });
-        if (reservation) await changeSlots(uid, (slots) => slots.map((x) => x === reservation ? out.id : x));
-        return json({ id: out.id, status: out.status }, { status: 201 });
-      } finally {
-        if (!accepted) await settlePodcastQuota(quota, false);
-        if (!dispatched && reservation) await releaseSlot(uid, reservation);
-      }
+      return json(await createPodcast(uid, body, { cfg }), { status: 201 });
     }
     if (action === 'list' && parts.length === 1) {
       if (req.method !== 'GET') return fail(405, 'method_not_allowed', 'Use GET.');

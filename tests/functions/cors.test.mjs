@@ -57,19 +57,21 @@ await test('preflight: 204 with headers for allowed origins, 403 for refused one
   for (const f of files) {
     const mod = await import(`../../netlify/functions/${f}`);
     assert.equal(typeof mod.default, 'function', f);
-    assert.ok(mod.config?.path?.startsWith('/api/'), `${f} keeps its config`);
+    if (mod.config?.schedule) { assert.equal(mod.config.path, undefined, `${f} is schedule-only`); continue; }
+    const paths = [].concat(mod.config?.path || []);
+    assert.ok(paths.length && paths.every(path => path.startsWith('/api/')), `${f} keeps its config`);
     const m = [].concat(mod.config.method || []);
     if (m.length) assert.ok(m.includes('OPTIONS'), `${f}: config.method must let preflight through`);
     for (const origin of ALLOWED) {
-      const res = await mod.default(preflight(mod.config.path, origin), ctx());
+      const res = await mod.default(preflight(paths[0], origin), ctx());
       assert.equal(res.status, 204, `${f} ${origin}`);
       assert.equal(res.headers.get('access-control-allow-origin'), origin);
-      assert.match(res.headers.get('access-control-allow-methods'), /GET, POST, (DELETE, )?OPTIONS/);
+      assert.match(res.headers.get('access-control-allow-methods'), /GET, (PUT, )?POST, (DELETE, )?OPTIONS/);
       assert.equal(res.headers.get('access-control-allow-headers'), HEADERS);
       assert.equal(res.headers.get('vary'), 'Origin');
     }
     for (const origin of REFUSED) {
-      const res = await mod.default(preflight(mod.config.path, origin), ctx());
+      const res = await mod.default(preflight(paths[0], origin), ctx());
       assert.equal(res.status, 403, `${f} ${origin}`);
       assert.equal(res.headers.get('access-control-allow-origin'), null);
     }

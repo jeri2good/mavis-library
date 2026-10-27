@@ -741,3 +741,4 @@ await test('tech feed: maps Hacker News + papers, sorts by points, refuses javas
 console.log(`\n${passed} endpoint checks passed.`);
 globalThis.fetch = originalFetch;
 await import('./subs.test.mjs');
+await import('./podsub.test.mjs');

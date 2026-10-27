@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { env } from './shared.mjs';
-import { subStore, problem, caps, utcDay, resetsAt } from './subs.mjs';
+import { subStore, problem } from './subs.mjs';
+import { localDate, nextMidnight } from './podsub-time.mjs';
 import { readForUpdate, writeIfUnchanged } from './accounts.mjs';
 
 export const validJobId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id);
@@ -141,12 +142,24 @@ export function publicJob(j, id = j.id, { transcript = false } = {}) {
   if (transcript && typeof j.transcript === 'string') out.transcript = j.transcript;
   return out;
 }
+export async function podcastUsage(uid, now = Date.now()) {
+  const s = subStore();
+  const doc = await s.get(`podsub/${uid}`, { type: 'json' });
+  const timezone = doc?.schedule?.timezone || 'UTC';
+  const date = localDate(now, timezone);
+  const override = await s.get(`podlimit/${uid}`, { type: 'json' });
+  const limit = Number.isInteger(override?.limit) && override.limit >= 1 && override.limit <= 50 ? override.limit : uid === 'owner' ? 30 : 1;
+  const key = `use/${uid}/${date.replaceAll('-', '')}`;
+  const data = await s.get(key, { type: 'json' });
+  return { used: data?.podcast || 0, limit, date, key, timezone };
+}
 export async function reservePodcastQuota(uid, now = Date.now()) {
-  const s = subStore(), key = `use/${uid}/${utcDay(now)}`, token = randomUUID();
+  const usage = await podcastUsage(uid, now);
+  const s = subStore(), key = usage.key, token = randomUUID();
   for (let i = 0; i < 80; i++) {
     const cur = await readForUpdate(s, key), data = cur.data || {};
     const pending = data.podcastReserved || [];
-    if ((data.podcast || 0) + pending.length >= caps().podcast) throw problem(429, 'daily_limit', 'You’ve reached today’s fair-use limit. Come back after midnight UTC.', { resetsAt: resetsAt(now) });
+    if ((data.podcast || 0) + pending.length >= usage.limit) throw problem(429, 'daily_limit', 'You’ve reached today’s podcast limit. Come back after local midnight.', { resetsAt: nextMidnight(now, usage.timezone) });
     if (await writeIfUnchanged(s, key, { ...data, podcastReserved: [...pending, token] }, cur)) return { key, token };
   }
   throw problem(503, 'podcast_busy', 'Your podcast quota is busy. Try again.');
@@ -182,3 +195,31 @@ export async function reserveSlot(uid, owner) {
   return reservation;
 }
 export const releaseSlot = (uid, id) => changeSlots(uid, (slots) => slots.filter((x) => x !== id));
+
+export async function createPodcast(uid, input, { cfg = studioConfig(), now = Date.now() } = {}) {
+  if (!cfg) throw problem(503, 'studio_not_configured', 'The podcast studio is not configured yet.');
+  const body = validateCreate(input);
+  const free = uid === 'owner';
+  const reservation = free ? null : await reserveSlot(uid, true);
+  let quota, dispatched = false, accepted = false;
+  try {
+    quota = await reservePodcastQuota(uid, now);
+    dispatched = true;
+    const result = await studioJson(cfg, '', uid, {
+      method: 'POST', body,
+      onAccepted: async () => { accepted = true; await settlePodcastQuota(quota, true); },
+      onRejected: async (status) => { if (reservation && status < 500 && status !== 408 && status !== 202) await releaseSlot(uid, reservation); },
+    });
+    const out = publicJob(result);
+    if (out.status !== 'queued') throw problem(502, 'studio_bad_response', 'The studio did not return a queued podcast. Please contact the owner.');
+    const row = { id: out.id, userId: uid, createdAt: now, title: body.title, status: out.status };
+    const claimed = await subStore().setJSON(`pod-id/${out.id}`, row, { onlyIfNew: true });
+    if (!claimed.modified) throw problem(502, 'studio_unavailable', 'The studio returned a duplicate job. Please contact the owner.');
+    await subStore().setJSON(`pod/${uid}/${out.id}`, row, { onlyIfNew: true });
+    if (reservation) await changeSlots(uid, (slots) => slots.map((x) => x === reservation ? out.id : x));
+    return { id: out.id, status: out.status };
+  } finally {
+    if (!accepted) await settlePodcastQuota(quota, false);
+    if (!dispatched && reservation) await releaseSlot(uid, reservation);
+  }
+}

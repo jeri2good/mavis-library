@@ -427,19 +427,20 @@ try {
     assert.equal((await pod(`job/${jobA}`, 'GET', undefined, null, owner)).status, 200);
     assert.equal((await pod('list', 'GET', undefined, null, owner)).body.jobs.length, 1);
   });
-  await test('parallel creates admit at most two active jobs for a subscriber', async () => {
+  await test('parallel creates admit one daily job by default', async () => {
     const out = await Promise.all(Array.from({ length: 6 }, () => pod('create', 'POST', base, b.token)));
-    assert.equal(out.filter((x) => x.status === 201).length, 2);
-    assert.ok(out.filter((x) => x.status === 429).every((x) => x.body.code === 'active_limit'));
+    assert.equal(out.filter((x) => x.status === 201).length, 1);
+    assert.ok(out.filter((x) => x.status === 429).every((x) => x.body.code === 'daily_limit'));
   });
-  await test('completed jobs free slots, but three daily podcast jobs remains the cap', async () => {
+  await test('completed jobs remain charged and a per-user override raises the cap', async () => {
     for (const job of jobs.values()) if (job.uid === b.user.id) job.status = 'ready';
+    await subStore().setJSON(`podlimit/${b.user.id}`, { limit: 2 });
     assert.equal((await pod('create', 'POST', base, b.token)).status, 201);
     for (const job of jobs.values()) if (job.uid === b.user.id) job.status = 'ready';
     const out = await pod('create', 'POST', base, b.token);
     assert.equal(out.status, 429); assert.equal(out.body.code, 'daily_limit'); assert.ok(out.body.resetsAt);
   });
-  await test('owner bypasses daily and active-job limits', async () => {
+  await test('owner has a separate default 30 daily limit independent of legacy caps', async () => {
     process.env.SUB_CAP_PODCAST = '0';
     for (let i = 0; i < 4; i++) assert.equal((await pod('create', 'POST', base, null, owner)).status, 201);
     delete process.env.SUB_CAP_PODCAST;
@@ -581,6 +582,7 @@ try {
     const list = await pod('list', 'GET', undefined, c.token);
     assert.equal(list.body.jobs[0].error, 'Generation failed.');
     assert.deepEqual((await subStore().get(`pod-active/${c.user.id}`, { type: 'json' })).slots, []);
+    await subStore().setJSON(`podlimit/${c.user.id}`, { limit: 2 });
     const next = await pod('create', 'POST', base, c.token);
     assert.equal(next.status, 201);
     const deleted = await pod(`job/${next.body.id}`, 'DELETE', undefined, c.token);

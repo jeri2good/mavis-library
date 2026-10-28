@@ -381,7 +381,7 @@ try {
     for (const data of [null, [], {}, { ...base, kind: 'bad' }, { ...base, title: '' }, { ...base, query: 'x'.repeat(301) }, { ...base, extra: true }, { ...base, engine: [] }, { ...base, length: -1 }, { kind: 'chapter', title: 'T' }, { kind: 'chapter', title: 'T', text: 'x'.repeat(400001) }, { kind: 'article', title: 'T', url: 'http://example.test' }, { kind: 'article', title: 'T', url: 'https://user:pass@example.test' }, { kind: 'book', title: 'T', gutenbergId: 0 }, { kind: 'book', title: 'T' }]) {
       assert.throws(() => validateCreate(data), (e) => e.response.status === 400);
     }
-    for (const data of [base, { kind: 'chapter', title: 'T', text: 'x'.repeat(400000) }, { kind: 'article', title: 'T', url: 'https://example.test/a' }, { kind: 'book', title: 'T', gutenbergId: '84' }, { kind: 'book', title: 'T', text: 'Book text' }]) assert.deepEqual(validateCreate(data), { ...data, style: 'deep-dive', length: 'default', language: 'en', engine: 'auto' });
+    for (const data of [base, { kind: 'chapter', title: 'T', text: 'x'.repeat(400000) }, { kind: 'article', title: 'T', url: 'https://example.test/a' }, { kind: 'book', title: 'T', gutenbergId: '84' }, { kind: 'book', title: 'T', text: 'Book text' }]) assert.deepEqual(validateCreate(data), { ...data, style: 'deep-dive', length: 'default', language: 'en', engine: 'notebooklm' });
     for (const field of ['style', 'length', 'engine', 'language']) {
       for (const value of ['unknown', '', null, 1]) assert.throws(() => validateCreate({ ...base, [field]: value }), (e) => e.response.status === 400);
     }
@@ -412,9 +412,16 @@ try {
     assert.equal(last.opts.headers['X-Mavis-User'], a.user.id);
     assert.equal(last.opts.headers['X-Studio-Key'], process.env.STUDIO_SHARED_SECRET);
     assert.equal(last.opts.redirect, 'manual'); assert.equal(last.opts.credentials, 'omit');
-    assert.deepEqual(JSON.parse(last.opts.body), { ...base, style: 'deep-dive', length: 'default', language: 'en', engine: 'auto' });
+    assert.deepEqual(JSON.parse(last.opts.body), { ...base, style: 'deep-dive', length: 'default', language: 'en', engine: 'notebooklm' });
     assert.ok(last.opts.signal instanceof AbortSignal);
     assert.deepEqual(Object.keys(out.body).sort(), ['id', 'status']);
+  });
+  await test('duplicate tap returns 200 and the same id without dispatch or quota charge', async () => {
+    const before = studioCalls.filter(c => c.opts.method === 'POST').length;
+    const again = await pod('create', 'POST', base, a.token);
+    assert.equal(again.status, 200); assert.equal(again.body.id, jobA);
+    assert.equal(studioCalls.filter(c => c.opts.method === 'POST').length, before);
+    assert.equal((await usage(a.user.id)).podcast.used, 1);
   });
   await test('podcast ownership isolation gives 404 without upstream calls for other users', async () => {
     const before = studioCalls.length;
@@ -430,19 +437,20 @@ try {
   await test('parallel creates admit one daily job by default', async () => {
     const out = await Promise.all(Array.from({ length: 6 }, () => pod('create', 'POST', base, b.token)));
     assert.equal(out.filter((x) => x.status === 201).length, 1);
-    assert.ok(out.filter((x) => x.status === 429).every((x) => x.body.code === 'daily_limit'));
+    assert.equal(out.filter((x) => x.status === 200).length, 5);
+    assert.equal(new Set(out.map(x => x.body.id)).size, 1);
   });
   await test('completed jobs remain charged and a per-user override raises the cap', async () => {
     for (const job of jobs.values()) if (job.uid === b.user.id) job.status = 'ready';
     await subStore().setJSON(`podlimit/${b.user.id}`, { limit: 2 });
-    assert.equal((await pod('create', 'POST', base, b.token)).status, 201);
+    assert.equal((await pod('create', 'POST', { ...base, title: 'Second job' }, b.token)).status, 201);
     for (const job of jobs.values()) if (job.uid === b.user.id) job.status = 'ready';
-    const out = await pod('create', 'POST', base, b.token);
+    const out = await pod('create', 'POST', { ...base, title: 'Third job' }, b.token);
     assert.equal(out.status, 429); assert.equal(out.body.code, 'daily_limit'); assert.ok(out.body.resetsAt);
   });
   await test('owner has a separate default 30 daily limit independent of legacy caps', async () => {
     process.env.SUB_CAP_PODCAST = '0';
-    for (let i = 0; i < 4; i++) assert.equal((await pod('create', 'POST', base, null, owner)).status, 201);
+    for (let i = 0; i < 4; i++) assert.equal((await pod('create', 'POST', { ...base, title: `Owner ${i}` }, null, owner)).status, 201);
     delete process.env.SUB_CAP_PODCAST;
   });
   await test('exact studio lifecycle forwards allowlisted metadata, owner transcript, and releases terminal slots', async () => {
@@ -467,6 +475,30 @@ try {
     assert.deepEqual(out.body.jobs.map((j) => j.id), [jobA]);
     assert.ok(!Object.hasOwn(out.body.jobs[0], 'transcript'));
   });
+  await test('job queue estimates survive a failed studio list; library returns last-known rows during outage', async () => {
+    jobs.get(jobA).status = 'generating';
+    const saved = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => String(url) === `${process.env.STUDIO_URL}/v1/podcasts`
+      ? reply({}, 500) : saved(url, opts);
+    try {
+      const out = await pod(`job/${jobA}`, 'GET', undefined, a.token);
+      assert.equal(out.status, 200); assert.ok(out.body.queuePosition >= 1);
+      assert.equal(out.body.etaMin, out.body.queuePosition * 5);
+      studioMode = '500';
+      const list = await pod('list', 'GET', undefined, a.token);
+      assert.equal(list.status, 200);
+      assert.equal(list.body.jobs[0].status, 'generating');
+      assert.equal(list.body.jobs[0].queuePosition, out.body.queuePosition);
+      assert.equal(list.body.jobs[0].etaMin, out.body.etaMin);
+    } finally { globalThis.fetch = saved; studioMode = 'ok'; jobs.get(jobA).status = 'ready'; }
+  });
+  await test('missing local job row returns deleted without calling studio; invalid ids remain 404', async () => {
+    const before = studioCalls.length;
+    const out = await pod('job/no-such-row', 'GET', undefined, a.token);
+    assert.equal(out.status, 200); assert.deepEqual(out.body, { id: 'no-such-row', status: 'deleted' });
+    assert.equal(studioCalls.length, before);
+    assert.equal((await pod('job/bad.id', 'GET', undefined, a.token)).status, 404);
+  });
   await test('unknown and guessed upstream statuses fail with studio_bad_response', async () => {
     for (const status of ['pending', 'running', 'processing', 'completed', 'cancelled', 'canceled', 'deleted', 'surprise']) {
       jobs.get(jobA).status = status;
@@ -475,14 +507,22 @@ try {
     }
     jobs.get(jobA).status = 'ready';
   });
-  await test('upstream ownership 404 remains 404 on indexed job, list, delete, and audio', async () => {
+  await test('upstream missing job becomes a persistent terminal deletion and is hidden from lists', async () => {
+    const savedRow = await subStore().get(`pod/${a.user.id}/${jobA}`, { type: 'json' });
     jobs.get(jobA).uid = b.user.id;
-    for (const [action, method] of [[`job/${jobA}`, 'GET'], [`job/${jobA}`, 'DELETE'], [`audio/${jobA}`, 'GET']]) assert.equal((await pod(action, method, undefined, a.token)).status, 404);
+    const gone = await pod(`job/${jobA}`, 'GET', undefined, a.token);
+    assert.equal(gone.status, 200); assert.equal(gone.body.status, 'deleted');
+    const before = studioCalls.length;
+    assert.equal((await pod(`job/${jobA}`, 'GET', undefined, a.token)).body.status, 'deleted');
+    assert.equal(studioCalls.length, before);
+    assert.equal((await pod(`audio/${jobA}`, 'GET', undefined, a.token)).status, 404);
     // The list must not fail as a whole because one job is hidden upstream: it just leaves that job out.
     const list = await pod('list', 'GET', undefined, a.token);
     assert.equal(list.status, 200);
     assert.ok(!list.body.jobs.some(j => j.id === jobA));
     jobs.get(jobA).uid = a.user.id;
+    await subStore().setJSON(`pod/${a.user.id}/${jobA}`, savedRow);
+    await subStore().setJSON(`pod-id/${jobA}`, savedRow);
   });
   await test('audio not ready returns friendly 409 without signing or fetching MP3', async () => {
     jobs.get(jobA).status = 'generating';
@@ -534,7 +574,7 @@ try {
   await test('podcast delete confirms cancellation, drops index, and frees its active slot', async () => {
     const out = await pod(`job/${jobA}`, 'DELETE', undefined, a.token);
     assert.equal(out.status, 200); assert.deepEqual(out.body, { id: jobA, status: 'deleted' });
-    assert.equal((await pod(`job/${jobA}`, 'GET', undefined, a.token)).status, 404);
+    assert.equal((await pod(`job/${jobA}`, 'GET', undefined, a.token)).body.status, 'deleted');
     assert.ok(!(await subStore().get(`pod-active/${a.user.id}`, { type: 'json' })).slots.includes(jobA));
   });
   await test('studio duplicate IDs cannot transfer another subscriber job into a new ownership index', async () => {
@@ -587,7 +627,7 @@ try {
     assert.equal(list.body.jobs[0].error, 'Generation failed.');
     assert.deepEqual((await subStore().get(`pod-active/${c.user.id}`, { type: 'json' })).slots, []);
     await subStore().setJSON(`podlimit/${c.user.id}`, { limit: 2 });
-    const next = await pod('create', 'POST', base, c.token);
+    const next = await pod('create', 'POST', { ...base, title: 'Replacement' }, c.token);
     assert.equal(next.status, 201);
     const deleted = await pod(`job/${next.body.id}`, 'DELETE', undefined, c.token);
     assert.deepEqual(deleted.body, { id: next.body.id, status: 'deleted' });

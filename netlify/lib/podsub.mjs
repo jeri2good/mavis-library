@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { subStore, problem, getSub } from './subs.mjs';
 import { readForUpdate, writeIfUnchanged, getUser } from './accounts.mjs';
 import { isOwnerEmail } from './access.mjs';
-import { createPodcast, podcastUsage, studioConfig, studioJson, publicJob, terminalStatus, releaseSlot, refundFailedPodcast } from './podcast.mjs';
+import { createPodcast, podcastUsage, studioConfig, studioJson, publicJob, terminalStatus, releaseSlot, refundFailedPodcast, deletePodcastRow, rememberPodcast, lastKnownPodcast, podcastQueue, withQueue } from './podcast.mjs';
 import { fetchFeed, feedUrl } from './podsub-feed.mjs';
 import { DAYS, nextRunAt, localDate } from './podsub-time.mjs';
 import { env } from './shared.mjs';
@@ -190,18 +190,20 @@ export async function tick({ now = Date.now(), deadline = Date.now() + 25000, ..
 }
 export async function todayEpisodes(uid, now = Date.now()) {
   const usage = await podcastUsage(uid, now), cfg = studioConfig();
-  const rows = (await Promise.all((await keys(`pod/${uid}/`)).map(k => subStore().get(k, { type: 'json' })))).filter(row => row && localDate(row.createdAt, usage.timezone) === usage.date).sort((a, b) => b.createdAt - a.createdAt);
+  const rows = (await Promise.all((await keys(`pod/${uid}/`)).map(k => subStore().get(k, { type: 'json' })))).filter(row => row && row.status !== 'deleted' && localDate(row.createdAt, usage.timezone) === usage.date).sort((a, b) => b.createdAt - a.createdAt);
   const list = await Promise.all(rows.map(async row => {
     let job;
     try { job = cfg ? publicJob(await studioJson({ ...cfg, deadline: Date.now() + 6000 }, `/${row.id}`, uid), row.id) : { id: row.id, status: row.status || 'queued', title: row.title }; }
     catch (e) {
-      if (e?.response?.status === 404) return null; // deleted in the studio: hide it
+      if (e?.response?.status === 404) { await deletePodcastRow(row); return null; } // deleted in the studio: hide it
       // Studio slow for this one: show it as last known rather than failing the whole Today list.
-      return { id: row.id, title: row.title || 'Daily briefing', kind: row.kind || 'chapter', style: row.style || 'deep-dive', status: row.status || 'queued', stage: 'Checking…', progress: 0, sources: [], createdAt: new Date(row.createdAt).toISOString() };
+      return lastKnownPodcast(row);
     }
+    await rememberPodcast(row, job);
     if (uid !== 'owner' && terminalStatus(job.status)) await releaseSlot(uid, row.id);
     if (job.status === 'failed') await refundFailedPodcast(uid, row.id, row.createdAt);
     return { ...job, createdAt: new Date(row.createdAt).toISOString() };
   }));
-  return list.filter(Boolean);
+  const queue = await podcastQueue(cfg);
+  return list.filter(Boolean).map(job => withQueue(job, queue));
 }

@@ -14,7 +14,7 @@ val podcastLengths = linkedMapOf("short" to "Short ~8 min", "default" to "Standa
 data class PodcastRequest(
     val kind: String, val title: String, val text: String? = null, val url: String? = null,
     val gutenbergId: Int? = null, val query: String? = null,
-    val style: String = "deep-dive", val length: String = "default", val language: String = "en", val engine: String = "auto",
+    val style: String = "deep-dive", val length: String = "default", val language: String = "en", val engine: String = "notebooklm",
 ) {
     fun validated(): PodcastRequest {
         require(kind in setOf("book", "chapter", "article", "topic") && title.isNotBlank()) { "Choose a subject and title." }

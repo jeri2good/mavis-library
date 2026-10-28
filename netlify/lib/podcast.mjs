@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
+import { createHmac, timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { env } from './shared.mjs';
 import { subStore, problem } from './subs.mjs';
@@ -64,7 +64,7 @@ export function validateCreate(b) {
   if (b.kind === 'article' && !b.url) bad('Article podcasts need a public HTTPS URL.');
   if (b.kind === 'book' && !b.url && !b.gutenbergId && !b.text) bad('Book podcasts need text, a public HTTPS URL, or a Gutenberg ID.');
   if (b.kind === 'topic' && !b.query) bad('Topic podcasts need a query of at most 300 characters.');
-  const out = { style: 'deep-dive', length: 'default', language: 'en', engine: 'auto', ...b };
+  const out = { style: 'deep-dive', length: 'default', language: 'en', engine: 'notebooklm', ...b };
   const maxBytes = b.kind === 'chapter' || b.text != null ? 450000 : 1000000;
   if (Buffer.byteLength(JSON.stringify(out), 'utf8') > maxBytes) bad('The encoded podcast source is too large. Please send a shorter excerpt.');
   return out;
@@ -209,7 +209,79 @@ export async function reserveSlot(uid, owner) {
 }
 export const releaseSlot = (uid, id) => changeSlots(uid, (slots) => slots.filter((x) => x !== id));
 
+// Keep deletion ownership outside the visible index so polling never recontacts the studio.
+export async function deletePodcastRow(row) {
+  const s = subStore();
+  await s.setJSON(`pod-id/${row.id}`, { ...row, status: 'deleted' });
+  await s.delete(`pod/${row.userId}/${row.id}`);
+  if (row.userId !== 'owner') await releaseSlot(row.userId, row.id);
+}
+export async function rememberPodcast(row, job) {
+  const s = subStore(), key = `pod/${row.userId}/${row.id}`;
+  const cur = await readForUpdate(s, key);
+  // Never resurrect a concurrently deleted row.
+  if (cur.data && cur.data.status !== 'deleted') await writeIfUnchanged(s, key, { ...cur.data, status: job.status, lastKnown: job }, cur);
+}
+export function lastKnownPodcast(row) {
+  return { id: row.id, title: row.title || 'Podcast', kind: row.kind || 'chapter', style: row.style || 'deep-dive',
+    status: row.status || 'queued', createdAt: new Date(row.createdAt).toISOString(), ...row.lastKnown };
+}
+const inQueue = job => ['queued', 'sourcing', 'writing', 'generating'].includes(job.status);
+export async function podcastQueue(cfg) {
+  const rows = [];
+  for await (const page of subStore().list({ prefix: 'pod/', paginate: true })) {
+    rows.push(...await Promise.all(page.blobs.map(b => subStore().get(b.key, { type: 'json' }))));
+  }
+  const known = new Map(rows.filter(Boolean).map(row => [row.id, row]));
+  try {
+    const list = await studioJson(cfg, '', 'owner');
+    if (!Array.isArray(list.items)) throw new Error('Invalid studio list');
+    for (const item of list.items) {
+      const row = known.get(item.id);
+      if (row) known.set(item.id, { ...row, ...publicJob(item), createdAt: row.createdAt });
+    }
+  } catch { /* Queue estimates remain available from last-known indexed state. */ }
+  return new Map([...known.values()].filter(inQueue).sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)).map((row, i) => [row.id, i + 1]));
+}
+export function withQueue(job, queue) {
+  const queuePosition = inQueue(job) ? queue.get(job.id) ?? null : null;
+  return { ...job, queuePosition, etaMin: queuePosition == null ? null : queuePosition * 5 };
+}
+
+// A CAS lease also covers simultaneous taps on different function instances.
 export async function createPodcast(uid, input, { cfg = studioConfig(), now = Date.now() } = {}) {
+  if (!cfg) throw problem(503, 'studio_not_configured', 'The podcast studio is not configured yet.');
+  const body = validateCreate(input);
+  const hash = createHash('sha256').update(JSON.stringify([body.title, body.text ?? '', body.text ? '' : [body.url, body.query, body.gutenbergId]])).digest('hex');
+  const s = subStore(), key = `pod-dedupe/${uid}/${hash}`;
+  const deadline = Math.min(cfg.deadline ?? Date.now() + 10000, Date.now() + 10000);
+  let claim;
+  while (Date.now() < deadline) {
+    const cur = await readForUpdate(s, key);
+    if (cur.data?.id && now - cur.data.createdAt < 60000) {
+      const row = await s.get(`pod/${uid}/${cur.data.id}`, { type: 'json' });
+      if (row && row.status !== 'deleted') return { id: row.id, status: row.status, reused: true };
+    }
+    if (cur.data?.pendingUntil > Date.now()) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      continue;
+    }
+    claim = { token: randomUUID(), pendingUntil: Date.now() + 60000 };
+    if (!await writeIfUnchanged(s, key, claim, cur)) continue;
+    try {
+      const job = await dispatchPodcast(uid, body, { cfg, now });
+      await s.setJSON(key, { id: job.id, createdAt: now });
+      return job;
+    } catch (err) {
+      const current = await readForUpdate(s, key);
+      if (current.data?.token === claim.token) await writeIfUnchanged(s, key, { pendingUntil: 0 }, current);
+      throw err;
+    }
+  }
+  throw problem(409, 'podcast_pending', 'This podcast is already being submitted. Please check again shortly.');
+}
+
+async function dispatchPodcast(uid, input, { cfg = studioConfig(), now = Date.now() } = {}) {
   if (!cfg) throw problem(503, 'studio_not_configured', 'The podcast studio is not configured yet.');
   const body = validateCreate(input);
   // Active rows remain for lifecycle compatibility; the daily quota is the gate.

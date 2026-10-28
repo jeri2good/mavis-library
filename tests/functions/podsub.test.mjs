@@ -12,7 +12,7 @@ import { createUser, signToken } from '../../netlify/lib/accounts.mjs';
 import { createPodcast, podcastUsage, reservePodcastQuota, settlePodcastQuota, refundFailedPodcast } from '../../netlify/lib/podcast.mjs';
 import { localDate, nextRunAt } from '../../netlify/lib/podsub-time.mjs';
 import { parseFeed, fetchFeed, publicAddress, feedUrl, pinnedDispatcher } from '../../netlify/lib/podsub-feed.mjs';
-import { validatePodsub, savePodsub, runSubscription, runs, tick, acquireLock, releaseLock, keys } from '../../netlify/lib/podsub.mjs';
+import { validatePodsub, savePodsub, runSubscription, runs, tick, acquireLock, releaseLock, keys, todayEpisodes } from '../../netlify/lib/podsub.mjs';
 import api from '../../netlify/functions/podsub.mjs';
 import { config as tickConfig } from '../../netlify/functions/podsub-tick.mjs';
 const dir = mkdtempSync(join(tmpdir(), 'podsub-'));
@@ -315,6 +315,60 @@ try {
       await run(uid); assert.equal(messages.length, 1); assert.match(messages[0].text, /^Your 1 podcasts for .* are being made, ready by 08:00$/);
       const other = await setup(doc([site('no-config')], { notify: { telegram: true } })); await run(other); assert.equal(messages.length, 1);
     } finally { globalThis.fetch = saved; delete process.env.TELEGRAM_BOT_TOKEN; delete process.env[`TELEGRAM_CHAT_ID_${uid}`]; }
+  });
+  await test('60-second duplicate window isolates users and content, and expires at the boundary', async () => {
+    const uid = await setup(doc()), other = await setup(doc());
+    await subStore().setJSON(`podlimit/${uid}`, { limit: 10 });
+    const input = { kind: 'chapter', title: 'Double tap', text: 'Source text' }, now = Date.now();
+    const first = await createPodcast(uid, input, { now });
+    const count = calls.length;
+    const repeat = await createPodcast(uid, input, { now: now + 59999 });
+    assert.equal(repeat.id, first.id); assert.equal(repeat.reused, true); assert.equal(calls.length, count);
+    assert.notEqual((await createPodcast(uid, input, { now: now + 60000 })).id, first.id);
+    assert.notEqual((await createPodcast(other, input, { now })).id, first.id);
+    assert.notEqual((await createPodcast(uid, { ...input, text: 'Different source' }, { now })).id, first.id);
+    assert.notEqual((await createPodcast(uid, { ...input, title: 'Different title' }, { now })).id, first.id);
+    assert.equal(calls.at(-1).body.engine, 'notebooklm');
+    await createPodcast(uid, { ...input, title: 'Subscription auto', engine: 'auto' }, { now });
+    assert.equal(calls.at(-1).body.engine, 'auto');
+  });
+  await test('Today hides missing rows persistently, reports queue estimates, and preserves last-known rows on outage', async () => {
+    const uid = await setup(doc());
+    const now = Date.now();
+    const rows = [
+      { id: 'queue-first', status: 'generating', createdAt: now - 3000 },
+      { id: 'queue-second', status: 'queued', createdAt: now - 2000 },
+      { id: 'queue-ready', status: 'ready', createdAt: now - 1000 },
+      { id: 'queue-gone', status: 'queued', createdAt: now },
+    ].map(row => ({ ...row, userId: uid, title: row.id }));
+    for (const row of rows) await subStore().setJSON(`pod/${uid}/${row.id}`, row);
+    const saved = globalThis.fetch;
+    let offline = false, missingCalls = 0;
+    globalThis.fetch = async (url, opts = {}) => {
+      if (String(url).startsWith(process.env.MAVIS_BLOBS_URL)) return saved(url, opts);
+      assert.ok(String(url).startsWith(process.env.STUDIO_URL));
+      if (offline) throw new Error('studio offline');
+      const id = String(url).split('/').at(-1);
+      if (id === 'podcasts') return Response.json({ items: rows.slice(0, 3).map(row => ({ ...row, createdAt: new Date(row.createdAt).toISOString() })) });
+      if (id === 'queue-gone') { missingCalls++; return Response.json({}, { status: 404 }); }
+      return Response.json({ ...rows.find(row => row.id === id), stage: 'Last studio stage' });
+    };
+    try {
+      const list = await todayEpisodes(uid, now);
+      assert.equal(list.length, 3);
+      const first = list.find(j => j.id === 'queue-first'), second = list.find(j => j.id === 'queue-second');
+      assert.ok(first.queuePosition >= 1); assert.equal(second.queuePosition, first.queuePosition + 1);
+      assert.equal(first.etaMin, first.queuePosition * 5); assert.equal(second.etaMin, second.queuePosition * 5);
+      assert.equal(list.find(j => j.id === 'queue-ready').queuePosition, null);
+      assert.equal(await subStore().get(`pod/${uid}/queue-gone`, { type: 'json' }), null);
+      assert.equal((await subStore().get('pod-id/queue-gone', { type: 'json' })).status, 'deleted');
+      await todayEpisodes(uid, now); assert.equal(missingCalls, 1);
+      offline = true;
+      const fallback = await todayEpisodes(uid, now);
+      assert.equal(fallback.length, 3);
+      assert.equal(fallback.find(j => j.id === 'queue-first').stage, 'Last studio stage');
+      assert.equal(fallback.find(j => j.id === 'queue-second').etaMin, second.etaMin);
+    } finally { globalThis.fetch = saved; }
   });
   console.log(`\n${passed} podcast subscription checks passed.`);
 } finally {

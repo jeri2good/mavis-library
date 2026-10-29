@@ -8,6 +8,7 @@ import com.mavislibrary.app.data.briefing.BriefingSettings
 import com.mavislibrary.app.data.briefing.BriefingStatus
 import com.mavislibrary.app.data.briefing.BriefingStore
 import com.mavislibrary.app.data.feeds.*
+import com.mavislibrary.app.data.podcast.PodcastJob
 import com.mavislibrary.app.data.podcast.PodcastRequest
 import com.mavislibrary.app.data.podcast.PodcastService
 import com.mavislibrary.app.data.podsub.PodsubRepository
@@ -44,7 +45,14 @@ data class SitesUiState(
     val siteRules: Map<String, SiteRule> = emptyMap(),
     /** Read article ids per site id. */
     val read: Map<String, Set<String>> = emptyMap(),
+    /** Today's ready subscription episodes for the Up next strip. */
+    val upNext: List<PodcastJob> = emptyList(),
 ) {
+    /** Unread stories across enabled followed sites, newest first. */
+    fun allUnread(): List<Pair<FeedSource, FeedStory>> = sources.filter { it.enabled }.flatMap { s ->
+        posts[s.id].orEmpty().unread(read[s.id].orEmpty()).map { s to it }
+    }.distinctBy { it.second.item.url }.sortedByDescending { it.second.published ?: Long.MIN_VALUE }
+
     fun newCount(source: FeedSource) = posts[source.id].orEmpty().count { (it.published ?: 0) > source.seenSince }
     fun isRead(siteId: String, story: FeedStory) = story.item.id in read[siteId].orEmpty()
     fun unreadCount(source: FeedSource) = posts[source.id].orEmpty().unread(read[source.id].orEmpty()).size
@@ -86,6 +94,7 @@ class SitesViewModel(
                     _state.update { it.copy(siteRules = res.sites.associateBy { r -> r.id }) }
                 }
             }
+            viewModelScope.launch { runCatching { p.today() }.onSuccess { jobs -> _state.update { it.copy(upNext = jobs.filter { j -> j.status == "ready" }) } } }
         }
     }
 

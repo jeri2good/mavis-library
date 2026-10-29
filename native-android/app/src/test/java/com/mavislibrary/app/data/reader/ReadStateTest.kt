@@ -46,5 +46,7 @@ class ReadStateTest {
         assertEquals(1, state.unreadCount(two))
         assertTrue(state.isRead("one", story("b", 2)))
         assertEquals(listOf("a", "c"), state.posts.getValue("one").unread(state.read.getValue("one")).map { it.item.id })
+        assertEquals("All new merges sites newest first", listOf("d", "a", "c"), state.allUnread().map { it.second.item.id })
+        assertEquals(listOf("a", "c"), state.copy(sources = listOf(one, two.copy(enabled = false))).allUnread().map { it.second.item.id })
     }
 }

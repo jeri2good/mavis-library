@@ -159,3 +159,31 @@ Both PNGs were re-rendered to `/tmp/shelf.png` and `/tmp/records.png`. I used a 
 Notes:
 - Two different keys can share a tone (10 tones). For example, Moby Dick and Frankenstein are both plum in the render. That is expected with a fixed palette.
 - The render still can't show drop shadows (a renderer limit). I haven't checked it on a phone; Hermes owns that.
+
+---
+
+# BRIEF-080c follow-up (Hermes live emulator review of the Shelf tab)
+
+Commit:
+- `8cbe64a`: Shelf plates move above their books and Sites row mirrors real FeedStore data.
+
+Full memory-limited build command from `BRIEF-080.md` (`testDebugUnitTest assembleDebug` with `--max-workers=2`, `-Xmx1536m`, in-process Kotlin compiler): **418 tests, 0 failed, 0 skipped. BUILD SUCCESSFUL.** `app-debug.apk` was built. That is 415 before plus 3 new tests. `ShareAndroidTest` was not touched and passed on the first run.
+
+1. **Brass category plates moved above each row's books** (`ui/shelf/ShelfArt.kt`, `ui/shelf/ShelfScreen.kt`):
+   - `BrassPlate` (same brushed-brass gradient, border, two screws, engraved serif uppercase label, and `heading()` semantics) moved off `ShelfPlank` and into `ShelfBay` at `Alignment.TopStart` (`start = SHELF_EDGE + 8.dp`, `top = 9.dp`, tagged `shelf_plate_<id>`).
+   - `WALL_HEIGHT` increased from `172.dp` to `184.dp` and row content sits in the `152.dp` space below the plate (`padding(top = 32.dp)`), so even the tallest (`148.dp`) books keep clear room under the plate while resting flush on `ShelfPlank` (`shelf_plank_<id>`, `8.dp` lit top + `18.dp` grained front edge).
+   - New UI test `ShelfScreenTest.brassPlatesSitAboveTheirRowOfBooksWithPlankUnderBooks` verifies across `mine`, `popular`, and `sites` that `plate.bottom <= book.top`, the plate sits at top-left, and `book.bottom <= plank.top`.
+2. **Sites row on real `FeedStore` data** (`ui/shelf/ShelfViewModel.kt`, `ui/shelf/ShelfScreen.kt`, `ui/shelf/ShelfArt.kt`, `MavisApp.kt`):
+   - **Root causes found**:
+     - On a clean phone/emulator with an owner code or signed-in account, followed sites live in the server's `/api/podsub` briefing list until mirrored into `FeedStore`. `SitesViewModel` called `mirrorServerSites()`, so opening the Sites tab populated `FeedStore`, whereas opening the Shelf tab first left `FeedStore` empty and omitted the `Sites` row.
+     - `ShelfViewModel` also never cleared its per-site `loading` set after `stories()` returned, so any site whose initial fetch returned empty (while offline at startup or before owner credentials were entered for `source = "page"` sites) stayed stuck at `0` unread with no ribbon even after returning to the Shelf tab.
+   - **Fixes**:
+     - `ShelfSites` gains `suspend fun mirror()`, wired in `ShelfScreen` to `container.feedStore.addMissing(container.podsubRepository.serverSites().map { it.toFeedSource() })` (quietly swallowing offline/unauthenticated errors, identical to `SitesViewModel.mirrorServerSites()`).
+     - `ShelfViewModel` separates `read` and `sources` collectors, clears `loadingSites` in `finally`, and re-syncs (`onScreenShown()` -> `syncSites()`) when `ShelfScreen` is re-entered or when `connectivity.online`, `ACCOUNT_USER_ID`, or `OWNER_ACCESS_CODE` changes.
+     - `SiteShelfBook`'s unread `Ribbon` is tagged `shelf_site_unread_<id>` with single-line non-wrapping count text, and tapping a site book navigates to `"site/$id"` (`SiteScreen`).
+     - `AppContainer` gains an `internal` test constructor for isolated fake `FeedFetcher`, fake gateway transport, and temporary `DataStore`s (leaving the public `AppContainer(Application)` constructor unchanged).
+   - **Tests added** (all fake HTTP / fake RSS, no network):
+     - `ShelfViewModelTest.realFeedStoreMirrorsServerSitesAndRetriesWhenOwnerUnlocks`: verifies a real `FeedStore` + `ReadStateStore` + `FeedRepository` + `PodsubRepository` mirrors both RSS and `page` sites once online/owner-unlocked, computes unread counts, and updates when an article is marked read.
+     - `ShelfScreenTest.realFeedStoreSitesRenderWithUnreadRibbonsAndTapOpensSiteArticleList`: mounts the real `ShelfScreen(container, ...)` and `SiteScreen(container, ...)` inside a `NavHost`, verifying that every followed site in `FeedStore` (local and mirrored) renders with its unread ribbon (and no ribbon when 0 unread), and tapping opens that site's article list and navigates back cleanly.
+3. **Re-rendered `/tmp/shelf.png`**:
+   - Re-rendered `/tmp/shelf.png` (`720×1616`, `MavisTheme(Look.MIDNIGHT)`) via a temporary Robolectric native-graphics test (deleted before commit) showing each brass plate (`MY BOOKS`, `CONTINUE READING`, `MOST POPULAR`, `SITES`) at top-left above its books, the wooden plank under each row, and red unread ribbons on the `Sites` row.

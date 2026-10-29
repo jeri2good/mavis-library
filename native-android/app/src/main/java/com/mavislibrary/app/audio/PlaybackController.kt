@@ -40,6 +40,8 @@ data class PlaybackUiState(
     val durationMs: Long = 0,
     val speed: Float = 1f,
     val sleepLabel: String = "Sleep timer",
+    /** Media id of the loaded item; a podcast's is its resume key. */
+    val mediaId: String = "",
 )
 
 class PlaybackController(context: Context, connect: Boolean = android.os.Build.FINGERPRINT != "robolectric") : AutoCloseable {
@@ -145,6 +147,7 @@ class PlaybackController(context: Context, connect: Boolean = android.os.Build.F
             sleepLabel = p.customLayout.firstOrNull {
                 it.sessionCommand?.customAction == AudioCommands.SLEEP_30
             }?.displayName?.toString() ?: "Sleep timer",
+            mediaId = p.currentMediaItem?.mediaId.orEmpty(),
         )
     }
 

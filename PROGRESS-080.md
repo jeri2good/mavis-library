@@ -9,6 +9,8 @@ Branch `reader-api`, base 774b5af. Android only.
 
 ## Status
 - [x] Part 1 shelf (CircularRow helper, shelfRows builder, ShelfScreen redraw, VM changes, tests) — commit 1
-- [ ] Part 2 records (RecordCrate logic, RecordSelector UI, Lounge + Listen, tests) — commit 2
+- [x] Part 2 records (RecordCrate logic, RecordSelector UI, Lounge + Listen, tests) — commit 2
 - [ ] Full build + RECEIPT-080.md
 - Part 1 verified: full testDebugUnitTest 403 tests, 0 failed (before Part 2).
+- Shelf polish commit after rendering snapshots (Robolectric native graphics, temporary test, not committed).
+- Part 2 verified: full testDebugUnitTest assembleDebug 409 tests, 0 failed; app-debug.apk built.

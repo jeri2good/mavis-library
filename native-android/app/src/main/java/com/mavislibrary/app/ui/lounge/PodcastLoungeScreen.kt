@@ -97,7 +97,6 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     var results by remember { mutableStateOf<List<Book>>(emptyList()) }
     var editingSource by remember(initial) { mutableStateOf(false) }
     var moreOptions by remember { mutableStateOf(false) }
-    var showPlayed by remember { mutableStateOf(false) }
     var refresh by remember { mutableIntStateOf(0) }
     val pollingMessages = remember(loaded.address) { mutableStateMapOf<String, String>() }
     val active = remember(loaded.address) { mutableMapOf<String, Job>() }
@@ -105,7 +104,8 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     var reading by remember { mutableStateOf<SavedPodcast?>(null) }
     var details by remember { mutableStateOf<Pair<PodcastJob, () -> Unit>?>(null) }
     var sharedConfirm by remember(initial) { mutableStateOf(initial?.confirmShare == true) }
-    val jobs = all.filter { (identity == "owner" || identity != null && it.accountId == identity) && (it.studio == loaded.address || it.localFile != null) && !podcastExpired(it.job, loaded.cleanupDays) }.sortedByDescending { it.job.createdAt }
+    val jobs = visiblePodcasts(all, identity, loaded.address, loaded.cleanupDays)
+    val nowPlaying by playback.state.collectAsStateWithLifecycle()
     val shelves = gallery(jobs, positions)
 
     suspend fun allowed() = loungeRouteAllowed(context.kidsPrefs().state.first().enabled)
@@ -164,8 +164,8 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     }
     fun uriOf(saved: SavedPodcast): Uri? = container.audioFiles.podcastLocal(saved.studio, saved.job.id)?.let(Uri::fromFile)
         ?: Uri.parse(api.audioUrl(saved.job.id)).takeIf { saved.studio == loaded.address }
-    fun play(episode: Episode) = act {
-        val queue = upNext(episode, shelves).mapNotNull { e -> uriOf(e.saved)?.let { e.saved to it } }
+    fun play(episode: Episode, next: List<Episode> = upNext(episode, shelves)) = act {
+        val queue = playableQueue(next, ::uriOf)
         if (queue.firstOrNull()?.first?.key != episode.saved.key) error("Choose this podcast's studio in Settings, or download it first.")
         val resume = container.resumePositionStore.load(episode.saved.resumeKey)?.takeIf { episode.shelf == PodcastShelf.CONTINUE }
         if (allowed()) { onFirstPlay(); playback.playPodcasts(queue, resume) }
@@ -204,29 +204,29 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
             Text("Your podcasts will appear here. Make one with New podcast, or set a subscription schedule above.",
                 Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyLarge)
         }
-        shelves.forEach { (section, episodes) ->
-            item(key = "section-${section.name}") {
-                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(section.label, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    if (section == PodcastShelf.PLAYED) TextButton(onClick = { showPlayed = !showPlayed }) {
-                        Text(if (showPlayed) "Hide" else "Show ${episodes.size}")
-                    }
-                }
-            }
-            if (section != PodcastShelf.PLAYED || showPlayed) items(episodes, key = { it.saved.key }) { episode ->
-                EpisodeRow(
-                    episode, busy, loaded.address, pollingMessages[episode.job.id],
-                    onPlay = { play(episode) },
-                    onDetails = { details = episode.job to { play(episode) } },
-                    onDownload = { act {
-                        val file = container.audioFiles.downloadPodcast(api, episode.job.id)
-                        container.podcastSettings.save(episode.saved.copy(localFile = file.absolutePath)); notice = "Saved for offline listening."
-                    } },
-                    onRetry = episode.saved.request?.let { request -> { act { repo.create(request); notice = "Sent to your studio again." } } },
-                    onRead = { reading = episode.saved },
-                    onDelete = { delete = episode.saved },
-                )
-            }
+        if (jobs.isNotEmpty()) item(key = "records") {
+            RecordSelector(
+                shelves, nowPlaying.mediaId, nowPlaying.playing, enabled = !busy,
+                onPlay = ::play,
+                onToggle = playback::toggle,
+                onDetails = { episode -> details = episode.job to { play(episode) } },
+                modifier = Modifier.padding(top = 16.dp),
+                polling = pollingMessages,
+                menu = { episode, close ->
+                    val job = episode.job
+                    if (job.status == "ready" && episode.saved.localFile == null && episode.saved.studio == loaded.address)
+                        DropdownMenuItem({ Text("Download for offline") }, { close(); act {
+                            val file = container.audioFiles.downloadPodcast(api, job.id)
+                            container.podcastSettings.save(episode.saved.copy(localFile = file.absolutePath)); notice = "Saved for offline listening."
+                        } })
+                    if (!job.transcript.isNullOrBlank() || job.sources.isNotEmpty())
+                        DropdownMenuItem({ Text("Transcript and sources") }, { close(); reading = episode.saved })
+                    val request = episode.saved.request
+                    if (job.status == "failed" && request != null && episode.saved.studio == loaded.address)
+                        DropdownMenuItem({ Text("Try again") }, { close(); act { repo.create(request); notice = "Sent to your studio again." } })
+                    DropdownMenuItem({ Text(if (job.terminal) "Delete" else "Cancel and delete") }, { close(); delete = episode.saved })
+                },
+            )
         }
     }
 
@@ -304,52 +304,6 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     } }) { Text("Delete") } }, dismissButton = { TextButton(onClick = { delete = null }) { Text("Keep") } }) }
 }
 
-@Composable
-internal fun EpisodeRow(
-    episode: Episode, busy: Boolean, studio: String, polling: String?,
-    onPlay: () -> Unit, onDetails: () -> Unit, onDownload: () -> Unit, onRetry: (() -> Unit)?, onRead: () -> Unit, onDelete: () -> Unit,
-) {
-    val job = episode.job
-    val ready = job.status == "ready"
-    val headline = episodeHeadline(job)
-    var menu by remember { mutableStateOf(false) }
-    Row(
-        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(enabled = ready, onClick = onDetails).padding(vertical = 8.dp).testTag("episode_${job.id}"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PodcastThumb(headline)
-        Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(headline, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            when (episode.shelf) {
-                PodcastShelf.MAKING -> {
-                    Text(stageLabel(job), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                    LinearProgressIndicator(progress = { (job.progress / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                    polling?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                }
-                PodcastShelf.FAILED -> Text(job.error ?: "The studio couldn't make this one.", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                else -> {
-                    Text(episodeDetails(episode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (episode.shelf == PodcastShelf.CONTINUE) episode.heard?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
-                }
-            }
-        }
-        if (ready) FilledTonalIconButton(onClick = onPlay, enabled = !busy) { Icon(Icons.Outlined.PlayArrow, contentDescription = "Play ${job.title}") }
-        Box {
-            IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, contentDescription = "Options for ${job.title}") }
-            DropdownMenu(menu, { menu = false }) {
-                if (ready && episode.saved.localFile == null && episode.saved.studio == studio)
-                    DropdownMenuItem({ Text("Download for offline") }, { menu = false; onDownload() })
-                if (!job.transcript.isNullOrBlank() || job.sources.isNotEmpty())
-                    DropdownMenuItem({ Text("Transcript and sources") }, { menu = false; onRead() })
-                if (job.status == "failed" && onRetry != null && episode.saved.studio == studio)
-                    DropdownMenuItem({ Text("Try again") }, { menu = false; onRetry() })
-                DropdownMenuItem({ Text(if (job.terminal) "Delete" else "Cancel and delete") }, { menu = false; onDelete() })
-            }
-        }
-    }
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PodcastChoices(style: String, length: String, engine: String, onStyle: (String) -> Unit, onLength: (String) -> Unit, onEngine: (String) -> Unit) {
@@ -372,14 +326,5 @@ private fun coverColors(title: String): List<Color> {
 fun PodcastCover(title: String) {
     Box(Modifier.fillMaxWidth().height(100.dp).background(Brush.linearGradient(coverColors(title))).padding(16.dp)) {
         Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge, maxLines = 3)
-    }
-}
-
-/** Small square version of [PodcastCover] for gallery rows. */
-@Composable
-internal fun PodcastThumb(title: String) {
-    val initials = title.split(' ', '·', ':', '-').filter { it.firstOrNull()?.isLetterOrDigit() == true }.take(2).joinToString("") { it.take(1).uppercase() }
-    Box(Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(Brush.linearGradient(coverColors(title))), contentAlignment = Alignment.Center) {
-        Text(initials, color = Color.White, style = MaterialTheme.typography.titleMedium)
     }
 }

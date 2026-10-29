@@ -60,16 +60,29 @@ import com.mavislibrary.app.audio.PlaybackController
 import com.mavislibrary.app.data.api.LibriVoxVersion
 import com.mavislibrary.app.data.model.Book
 import com.mavislibrary.app.data.model.BookSource
+import android.net.Uri
+import androidx.compose.material3.TextButton
+import com.mavislibrary.app.BuildConfig
+import com.mavislibrary.app.data.kids.kidsPrefs
+import com.mavislibrary.app.data.podcast.loungeRouteAllowed
+import com.mavislibrary.app.ui.lounge.Episode
 import com.mavislibrary.app.ui.lounge.PodcastShelf
+import com.mavislibrary.app.ui.lounge.RecordSelector
 import com.mavislibrary.app.ui.lounge.gallery
+import com.mavislibrary.app.ui.lounge.playableQueue
+import com.mavislibrary.app.ui.lounge.upNext
+import com.mavislibrary.app.ui.lounge.visiblePodcasts
+import com.mavislibrary.app.ui.podcast.EpisodeDetailsSheet
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.produceState
 import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
 
 @Composable
-fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirstPlay: () -> Unit, voice: com.mavislibrary.app.voice.VoiceUi? = null, onLounge: (() -> Unit)? = null) {
+fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirstPlay: () -> Unit, voice: com.mavislibrary.app.voice.VoiceUi? = null, onLounge: (() -> Unit)? = null, onOpenReader: ((com.mavislibrary.app.ui.reader.ReaderTarget) -> Unit)? = null) {
     val playback by controller.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     var books by remember { mutableStateOf<List<Book>>(emptyList()) }
     var selected by remember { mutableStateOf<Book?>(null) }
@@ -82,7 +95,25 @@ fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirs
     val positionFlow = remember { container.resumePositionStore.podcastPositions() }
     val positions by positionFlow.collectAsStateWithLifecycle(initialValue = emptyMap())
     val identity by produceState<String?>(null) { value = container.podcastAccountId() }
-    val shelves = gallery(podcasts.filter { identity != null && (identity == "owner" || it.accountId == identity) }, positions)
+    val podcastPrefs by container.podcastSettings.preferences.collectAsStateWithLifecycle(initialValue = null)
+    val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
+    val shelves = gallery(visiblePodcasts(podcasts, identity, BuildConfig.API_BASE, podcastPrefs?.cleanupDays ?: 0), positions)
+    val api = remember(identity) { container.podcastApi() }
+    var details by remember { mutableStateOf<Episode?>(null) }
+    fun playEpisode(episode: Episode, next: List<Episode> = upNext(episode, shelves)) {
+        scope.launch {
+            val queue = playableQueue(next) { saved ->
+                container.audioFiles.podcastLocal(saved.studio, saved.job.id)?.let(Uri::fromFile)
+                    ?: Uri.parse(api.audioUrl(saved.job.id)).takeIf { saved.studio == BuildConfig.API_BASE }
+            }
+            if (queue.firstOrNull()?.first?.key != episode.saved.key || !loungeRouteAllowed(context.kidsPrefs().state.first().enabled)) {
+                message = "Open Podcast Lounge to play this one."
+                return@launch
+            }
+            val resume = container.resumePositionStore.load(episode.saved.resumeKey)?.takeIf { episode.shelf == PodcastShelf.CONTINUE }
+            onFirstPlay(); controller.playPodcasts(queue, resume)
+        }
+    }
     val podcastSummary = listOfNotNull(
         shelves[PodcastShelf.NEW]?.let { "${it.size} new" },
         shelves[PodcastShelf.CONTINUE]?.let { "${it.size} in progress" },
@@ -95,11 +126,23 @@ fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirs
     ) {
         item { Spacer(Modifier.height(4.dp)); Text("Listen", style = MaterialTheme.typography.headlineLarge) }
         if (onLounge != null) item {
-            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) {
-                Text("Podcast Lounge", style = MaterialTheme.typography.titleLarge)
-                Text(podcastSummary.ifEmpty { "Turn a book, chapter, article or topic into a two-host podcast." })
-                Button(onClick = onLounge) { Text("Open Podcast Lounge") }
-            } }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Podcasts", style = MaterialTheme.typography.titleLarge)
+                        Text(podcastSummary.ifEmpty { "Turn a book, chapter, article or topic into a two-host podcast." },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = onLounge) { Text("Open Podcast Lounge") }
+                }
+                if (shelves.isNotEmpty() && loungeRouteAllowed(kids?.enabled)) RecordSelector(
+                    shelves, playback.mediaId, playback.playing, enabled = true,
+                    onPlay = ::playEpisode,
+                    onToggle = controller::toggle,
+                    onDetails = { details = it },
+                    menu = { _, close -> DropdownMenuItem({ Text("Manage in Podcast Lounge") }, { close(); onLounge() }) },
+                )
+            }
         }
         item { com.mavislibrary.app.voice.VoiceMic(voice) }
         if (playback.chapterCount > 0) item {
@@ -191,6 +234,7 @@ fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirs
         }
         item { Spacer(Modifier.height(12.dp)) }
     }
+    details?.let { episode -> EpisodeDetailsSheet(episode.job, onDismiss = { details = null }, onPlay = { playEpisode(episode) }, onOpenReader = onOpenReader) }
 }
 
 @Composable

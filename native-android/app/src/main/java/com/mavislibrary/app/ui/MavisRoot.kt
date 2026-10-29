@@ -384,7 +384,7 @@ fun MavisRoot(
                         com.mavislibrary.app.ui.reader.ReaderScreen(container, it, onBack = { nav.popBackStack() }, onPodcast = openLounge, onOpenOriginal = openArticle)
                     } ?: LaunchedEffect(Unit) { nav.popBackStack() }
                 }
-                composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice, onLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) }) }
+                composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice, onLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) }, onOpenReader = openReader) }
                 composable("article") {
                     article?.takeIf { com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled) }?.let {
                         ArticleScreen(it, onBack = { nav.popBackStack() }, onPodcast = openLounge)

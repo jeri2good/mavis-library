@@ -7,6 +7,10 @@ import java.io.IOException
 
  data class FeedLoad(val stories: List<FeedStory>, val note: String? = null)
 
+const val OWNER_CODE_NOTE = "Add your owner code in Settings to load this site"
+/** Page sites go through the gateway; 401/403 means no owner code or sign-in was accepted. */
+fun needsOwnerCode(e: Throwable) = (e as? com.mavislibrary.app.data.api.ApiException)?.status in setOf(401, 403)
+
 /** Fifteen-minute process cache. Offline cache survives navigation, but not process death. */
 class FeedRepository(private val fetcher: FeedFetcher, private val online: () -> Boolean, private val clock: () -> Long = System::currentTimeMillis, private val reader: com.mavislibrary.app.data.reader.ReaderService? = null) {
     private data class Cached(val at: Long, val feed: ParsedFeed)
@@ -34,8 +38,8 @@ class FeedRepository(private val fetcher: FeedFetcher, private val online: () ->
                     if (cache.size >= 20 && "${source.source}:${source.feedUrl}" !in cache) cache.remove(cache.keys.first())
                     cache["${source.source}:${source.feedUrl}"] = Cached(clock(), it)
                 }
-            } catch (e: CancellationException) { throw e } catch (_: Exception) {
-                notes += if (old != null) "Couldn't refresh ${source.name} — showing cached stories." else "Couldn't load ${source.name}. Try again when connected."
+            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                notes += if (source.source == "page" && needsOwnerCode(e)) OWNER_CODE_NOTE else if (old != null) "Couldn't refresh ${source.name} — showing cached stories." else "Couldn't load ${source.name}. Try again when connected."
                 old?.feed
             }
             feed?.stories.orEmpty().map { it.copy(item = it.item.copy(source = source.name)) }

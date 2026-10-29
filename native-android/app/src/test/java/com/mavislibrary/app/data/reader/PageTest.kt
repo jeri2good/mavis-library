@@ -29,4 +29,23 @@ class PageTest {
         assertEquals(first.stories, repo.load(listOf(site)).stories)
         assertEquals(1, calls)
     }
+
+    @Test fun pageAndPreviewWithoutOwnerAccessAskForOwnerCode() = runTest {
+        for (code in listOf(401, 403)) {
+            val api = ReaderApi(PodcastApi("https://gateway.example", execute = { req ->
+                Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(code).message("fixture").body("{}".toResponseBody()).build()
+            }, token = { "fixture" }))
+            val repo = FeedRepository(FeedFetcher { error("Page must not use feed parser") }, { true }, reader = api)
+            val site = FeedSource("s", "Site", "https://example.com/news", "https://example.com", 0, source = "page")
+            assertEquals(OWNER_CODE_NOTE, repo.load(listOf(site)).note)
+            val found = discoverSite("https://example.com", FeedDiscovery(FeedFetcher { FeedResponse(it, 200, "<html></html>") }), api)
+            assertEquals(OWNER_CODE_NOTE, (found.result as DiscoveryResult.NotFound).message)
+        }
+        // No credentials at all fails before HTTP with the same friendly note.
+        val none = FeedRepository(FeedFetcher { error("unused") }, { true }, reader = ReaderApi(PodcastApi("https://gateway.example", execute = { error("no HTTP") }, token = { null })))
+        assertEquals(OWNER_CODE_NOTE, none.load(listOf(FeedSource("s", "Site", "https://example.com/news", "https://example.com", 0, source = "page"))).note)
+        // A feed site keeps the normal connection message.
+        val feed = FeedRepository(FeedFetcher { FeedResponse(it, 503, "") }, { true })
+        assertTrue(feed.load(listOf(FeedSource("f", "Feed", "https://example.com/rss", "https://example.com", 0))).note!!.startsWith("Couldn't load"))
+    }
 }

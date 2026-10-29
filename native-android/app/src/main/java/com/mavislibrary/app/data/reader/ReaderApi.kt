@@ -57,5 +57,6 @@ suspend fun discoverSite(input: String, discovery: FeedDiscovery, reader: Reader
         val preview = reader.preview(input).validated()
         SiteDiscovery(preview.found(), preview)
     } catch (e: CancellationException) { throw e }
-    catch (_: Exception) { SiteDiscovery(DiscoveryResult.NotFound(local.reason, "No readable articles found. Try another address.")) }
+    catch (e: Exception) { SiteDiscovery(DiscoveryResult.NotFound(local.reason,
+        if (needsOwnerCode(e)) OWNER_CODE_NOTE else "No readable articles found. Try another address.")) }
 }

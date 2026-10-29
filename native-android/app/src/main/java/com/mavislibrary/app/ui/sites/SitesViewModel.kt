@@ -1,5 +1,6 @@
 package com.mavislibrary.app.ui.sites
 
+import com.mavislibrary.app.data.reader.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mavislibrary.app.data.briefing.Briefing
@@ -31,6 +32,7 @@ data class SitesUiState(
     val siteInput: String = "",
     val findingFeed: Boolean = false,
     val feedResult: DiscoveryResult? = null,
+    val preview: SitePreview? = null,
     val error: String? = null,
     val briefing: BriefingSettings = BriefingSettings(),
     val status: BriefingStatus? = null,
@@ -52,6 +54,7 @@ class SitesViewModel(
     private val briefing: BriefingStore,
     private val podsub: PodsubRepository? = null,
     private val podcastApi: PodcastService? = null,
+    private val reader: ReaderService? = null,
     private val reschedule: suspend () -> Unit = {},
 ) : ViewModel() {
     private val _state = MutableStateFlow(SitesUiState())
@@ -225,24 +228,25 @@ class SitesViewModel(
     fun openAddSite() = _state.update { it.copy(addOpen = true, error = null) }
     fun closeAddSite() {
         discoveryJob?.cancel()
-        _state.update { it.copy(addOpen = false, findingFeed = false, feedResult = null, siteInput = "", error = null) }
+        _state.update { it.copy(addOpen = false, findingFeed = false, feedResult = null, preview = null, siteInput = "", error = null) }
     }
     fun siteInput(value: String) {
         discoveryJob?.cancel()
-        _state.update { it.copy(siteInput = value, findingFeed = false, feedResult = null, error = null) }
+        _state.update { it.copy(siteInput = value, findingFeed = false, feedResult = null, preview = null, error = null) }
     }
     fun findFeed() {
         discoveryJob?.cancel()
         val input = _state.value.siteInput
-        _state.update { it.copy(findingFeed = true, feedResult = null, error = null) }
+        _state.update { it.copy(findingFeed = true, feedResult = null, preview = null, error = null) }
         discoveryJob = viewModelScope.launch {
-            val result = discovery.discover(input)
-            _state.update { it.copy(findingFeed = false, feedResult = result) }
+            val result = discoverSite(input, discovery, reader)
+            _state.update { it.copy(findingFeed = false, feedResult = result.result, preview = result.preview) }
         }
     }
     fun addFeed() {
         val found = _state.value.feedResult as? DiscoveryResult.Found ?: return
-        act { store.add(found); closeAddSite() }
+        val source = _state.value.preview?.source ?: "feed"
+        act { store.add(found, source); closeAddSite() }
     }
     fun rename(id: String, name: String) = act { store.rename(id, name) }
     fun setEnabled(id: String, enabled: Boolean) = act { store.setEnabled(id, enabled) }

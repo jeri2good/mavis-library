@@ -67,6 +67,7 @@ fun SitesScreen(
                 container.briefingStore,
                 podsub = container.podsubRepository,
                 podcastApi = container.podcastApi(),
+                reader = container.readerApi(),
             ) {
                 BriefingScheduler.sync(appContext)
             }
@@ -325,7 +326,7 @@ private fun AddSiteDialog(state: SitesUiState, vm: SitesViewModel) {
         title = { Text("Follow a site") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Paste the site's address. Your phone checks the site directly for new posts.")
+                Text("Paste the site's address. Mavis finds its feed or watches the page for new posts.")
                 OutlinedTextField(
                     state.siteInput,
                     vm::siteInput,
@@ -345,7 +346,8 @@ private fun AddSiteDialog(state: SitesUiState, vm: SitesViewModel) {
                 when (val result = state.feedResult) {
                     is DiscoveryResult.Found -> Card {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Found: ${result.title}", style = MaterialTheme.typography.titleSmall)
+                            Text(if (state.preview?.source == "page") "No feed here — Mavis will watch this page" else "Found: ${result.title}", style = MaterialTheme.typography.titleSmall)
+                            state.preview?.posts?.take(3)?.forEach { Text(it.title, style = MaterialTheme.typography.bodyMedium) }
                             Text("${result.items} recent posts" + (result.newest?.let { " · newest ${day(it)}" } ?: ""))
                         }
                     }
@@ -384,6 +386,7 @@ fun SiteScreen(
                 container.briefingStore,
                 podsub = container.podsubRepository,
                 podcastApi = container.podcastApi(),
+                reader = container.readerApi(),
             ) {
                 BriefingScheduler.sync(appContext)
             }

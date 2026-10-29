@@ -1,3 +1,4 @@
 - Read house context, three recent checkpoints, full shared contract, and existing Android feed/subscription/article/auth flows; verified reader-app branch and bundled web assets; backed up app/src to /tmp/reader-app-backup/src.
 - Feature 1: memory-safe testDebugUnitTest + assembleDebug passed; corrected source contract fixture and stale Sites navigation assertion; fake account transport passed.
 - Feature 2: authenticated preview fallback and three-headline page card; fake local-feed/page/422 cases passed with full unit suite and APK assembly.
+- Feature 3 (Devin takeover): reviewed Codex's uncommitted page-source edits (cache key by source, authenticated /api/podsub/page via PodcastApi gateway, PageTest); memory-safe build + full unit suite green.

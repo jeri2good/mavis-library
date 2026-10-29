@@ -69,7 +69,7 @@ class AppContainer(private val app: Application) {
     val feedStore by lazy { com.mavislibrary.app.data.feeds.FeedStore(app.settingsDataStore) }
     private val feedFetcher by lazy { com.mavislibrary.app.data.feeds.DeviceFeedFetcher() }
     val feedDiscovery by lazy { com.mavislibrary.app.data.feeds.FeedDiscovery(feedFetcher) }
-    val feedRepository by lazy { com.mavislibrary.app.data.feeds.FeedRepository(feedFetcher, connectivity::isOnline) }
+    val feedRepository by lazy { com.mavislibrary.app.data.feeds.FeedRepository(feedFetcher, connectivity::isOnline, reader = readerApi()) }
     val secureStore: SecureStore by lazy { SecureStore(app.secureDataStore, KeystoreCipher()) }
     val accountsApi by lazy { com.mavislibrary.app.data.api.AccountsApi(BuildConfig.API_BASE,
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) },

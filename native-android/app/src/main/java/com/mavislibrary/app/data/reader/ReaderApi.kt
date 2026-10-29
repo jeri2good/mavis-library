@@ -18,9 +18,18 @@ import java.net.URLEncoder
         return this
     }
 }
-interface ReaderService { suspend fun preview(url: String): SitePreview }
+@Serializable data class PagePost(val id: String, val title: String, val link: String, val publishedAt: Long)
+@Serializable data class PagePosts(val posts: List<PagePost>)
+interface ReaderService {
+    suspend fun preview(url: String): SitePreview
+    suspend fun page(url: String): List<PagePost> = error("Page loading unavailable")
+}
 /** Reuses the podcast gateway's adult gate, HTTP client and account/owner headers. */
 class ReaderApi(private val gateway: PodcastApi) : ReaderService {
+    override suspend fun page(url: String) = podcastJson.decodeFromString<PagePosts>(
+        gateway.request("/api/podsub/page?url=" + URLEncoder.encode(UrlPolicy.normalize(url), "UTF-8"))).posts.take(30).map {
+            it.copy(link = UrlPolicy.normalize(it.link))
+        }
     override suspend fun preview(url: String) = podcastJson.decodeFromString<SitePreview>(
         gateway.request("/api/podsub/preview?url=" + URLEncoder.encode(UrlPolicy.normalize(url), "UTF-8"))).validated()
 }

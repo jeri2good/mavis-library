@@ -50,7 +50,7 @@ function nodes(root, predicate) {
   }
   return out;
 }
-const noiseTags = new Set('script style nav aside form iframe noscript template footer header'.split(' '));
+const noiseTags = new Set('script style nav aside form iframe noscript template footer header button'.split(' '));
 function noisy(n) {
   return noiseTags.has(n.tag) || n.attrs.hidden !== undefined || n.attrs['aria-hidden'] === 'true'
     || /(?:^|[\s_-])(ad|ads|advertisement|advertising|sponsor|social|share|cookie|newsletter|related)(?:$|[\s_-])/i.test(`${n.attrs.class || ''} ${n.attrs.id || ''}`)
@@ -102,8 +102,14 @@ export function pageLinks(html, baseUrl) {
     return true;
   });
   const preferred = n => { for (let p = n.parent; p; p = p.parent) if (['article', 'main', 'h2', 'h3'].includes(p.tag)) return true; return false; };
-  for (const n of anchors.filter(preferred)) add(n.attrs.href, tidy(content(n)));
-  for (const n of anchors.filter(n => !preferred(n))) { const t = tidy(content(n)); if (t.length >= 25 && t.length <= 200) add(n.attrs.href, t); }
+  // Card-style links wrap the headline plus source labels/buttons ("blog.google", "Show TLDR"):
+  // use the first heading/paragraph inside the anchor as the title when one exists.
+  const linkTitle = n => {
+    const inner = nodes(n, c => c !== n && /^(h[1-6]|p|strong)$/.test(c.tag)).map(c => tidy(content(c))).find(t => t.length >= 12);
+    return inner || tidy(content(n));
+  };
+  for (const n of anchors.filter(preferred)) add(n.attrs.href, linkTitle(n));
+  for (const n of anchors.filter(n => !preferred(n))) { const t = linkTitle(n); if (t.length >= 25 && t.length <= 200) add(n.attrs.href, t); }
   for (const c of candidates) {
     if (!c.url || !c.title) continue;
     const link = httpsLink(c.url, baseUrl);
@@ -139,6 +145,11 @@ export function extractArticle(html, url) {
     if (scored[0]) text = scored[0].body || (articles.length ? tidy(content(scored[0].n, true)) : '');
   }
   text = text.slice(0, 40000).trim();
+  // Pages often repeat the kicker/author/role/date as short lines before the first real sentence.
+  const lead = text.split('\n\n');
+  let skip = 0;
+  while (skip < Math.min(6, lead.length - 1) && lead[skip].length < 90 && !/[.!?…"”]$/.test(lead[skip].trim())) skip++;
+  if (skip) text = lead.slice(skip).join('\n\n');
   const words = text.match(/\S+/g)?.length || 0;
   const author = data?.author;
   return { title: titleOf(root), byline: (Array.isArray(author) ? author.map(a => a.name || a).join(', ') : author?.name || author) || meta(root, 'author'), siteName: meta(root, 'og:site_name') || new URL(url).hostname, image: httpsLink(meta(root, 'og:image'), url), publishedAt: data?.datePublished || meta(root, 'article:published_time') || null, text, words, readMin: Math.max(1, Math.round(words / 230)) };
@@ -153,7 +164,8 @@ export async function fetchArticle(url, opts = {}) {
 export async function previewSite(url, opts = {}) {
   pageUrl(url);
   const feedOpts = { ...opts, httpsOnly: true };
-  const result = (source, feedUrl, title, posts, siteUrl = url) => ({ source, feedUrl, siteUrl, title, posts: posts.slice(0, 8).map(({ title, link }) => ({ title, link })) });
+  const short = t => { const head = String(t || '').split(/\s+[-|–—:·]\s+/)[0].trim(); return head.length >= 3 ? head : String(t || '').trim(); };
+  const result = (source, feedUrl, title, posts, siteUrl = url) => ({ source, feedUrl, siteUrl, title: short(title), posts: posts.slice(0, 8).map(({ title, link }) => ({ title, link })) });
   try { const posts = await fetchFeed(url, feedOpts); if (posts.length >= 3) return result('feed', url, new URL(url).hostname, posts); } catch { /* Try HTML discovery. */ }
   const page = await fetchPage(url, opts), root = document(page.html);
   for (const n of nodes(root, n => n.tag === 'link' && /\balternate\b/i.test(n.attrs.rel) && /(?:rss|atom)/i.test(n.attrs.type)).slice(0, 5)) {

@@ -224,7 +224,13 @@ export async function rememberPodcast(row, job) {
 }
 export function lastKnownPodcast(row) {
   return { id: row.id, title: row.title || 'Podcast', kind: row.kind || 'chapter', style: row.style || 'deep-dive',
-    status: row.status || 'queued', createdAt: new Date(row.createdAt).toISOString(), ...row.lastKnown };
+    status: row.status || 'queued', createdAt: new Date(row.createdAt).toISOString(), ...row.lastKnown, ...withMeta(row) };
+}
+// Briefing context saved at creation: which sites and stories an episode covers, plus when it was made.
+export function withMeta(row) {
+  const out = Number.isFinite(row?.createdAt) ? { createdAt: new Date(row.createdAt).toISOString() } : {};
+  if (row?.meta) { out.sites = row.meta.sites; out.stories = row.meta.stories; }
+  return out;
 }
 const inQueue = job => ['queued', 'sourcing', 'writing', 'generating'].includes(job.status);
 export async function podcastQueue(cfg) {
@@ -249,7 +255,7 @@ export function withQueue(job, queue) {
 }
 
 // A CAS lease also covers simultaneous taps on different function instances.
-export async function createPodcast(uid, input, { cfg = studioConfig(), now = Date.now() } = {}) {
+export async function createPodcast(uid, input, { cfg = studioConfig(), now = Date.now(), meta = null } = {}) {
   if (!cfg) throw problem(503, 'studio_not_configured', 'The podcast studio is not configured yet.');
   const body = validateCreate(input);
   const hash = createHash('sha256').update(JSON.stringify([body.title, body.text ?? '', body.text ? '' : [body.url, body.query, body.gutenbergId]])).digest('hex');
@@ -269,7 +275,7 @@ export async function createPodcast(uid, input, { cfg = studioConfig(), now = Da
     claim = { token: randomUUID(), pendingUntil: Date.now() + 60000 };
     if (!await writeIfUnchanged(s, key, claim, cur)) continue;
     try {
-      const job = await dispatchPodcast(uid, body, { cfg, now });
+      const job = await dispatchPodcast(uid, body, { cfg, now, meta });
       await s.setJSON(key, { id: job.id, createdAt: now });
       return job;
     } catch (err) {
@@ -281,7 +287,7 @@ export async function createPodcast(uid, input, { cfg = studioConfig(), now = Da
   throw problem(409, 'podcast_pending', 'This podcast is already being submitted. Please check again shortly.');
 }
 
-async function dispatchPodcast(uid, input, { cfg = studioConfig(), now = Date.now() } = {}) {
+async function dispatchPodcast(uid, input, { cfg = studioConfig(), now = Date.now(), meta = null } = {}) {
   if (!cfg) throw problem(503, 'studio_not_configured', 'The podcast studio is not configured yet.');
   const body = validateCreate(input);
   // Active rows remain for lifecycle compatibility; the daily quota is the gate.
@@ -297,7 +303,7 @@ async function dispatchPodcast(uid, input, { cfg = studioConfig(), now = Date.no
     });
     const out = publicJob(result);
     if (out.status !== 'queued') throw problem(502, 'studio_bad_response', 'The studio did not return a queued podcast. Please contact the owner.');
-    const row = { id: out.id, userId: uid, createdAt: now, title: body.title, status: out.status };
+    const row = { id: out.id, userId: uid, createdAt: now, title: body.title, status: out.status, ...(meta ? { meta } : {}) };
     const claimed = await subStore().setJSON(`pod-id/${out.id}`, row, { onlyIfNew: true });
     if (!claimed.modified) throw problem(502, 'studio_unavailable', 'The studio returned a duplicate job. Please contact the owner.');
     await subStore().setJSON(`pod/${uid}/${out.id}`, row, { onlyIfNew: true });

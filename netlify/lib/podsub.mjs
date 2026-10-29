@@ -90,7 +90,7 @@ async function eligible(uid, now) {
   return sub?.state === 'active' && (sub.expiresAt == null || Number.isFinite(sub.expiresAt) && sub.expiresAt > now);
 }
 function episodesFor(sites) {
-  const episodes = [], briefing = { title: 'Daily briefing', sites: [], posts: [] };
+  const episodes = [], briefing = { title: 'Daily briefing', briefing: true, sites: [], posts: [] };
   for (const site of sites) {
     if (!site.posts.length) continue;
     if (site.delivery === 'briefing') {
@@ -99,6 +99,24 @@ function episodesFor(sites) {
     } else for (const post of site.posts) episodes.push({ title: post.title, sites: [site], posts: [post] });
   }
   return episodes;
+}
+const clip = (t, n) => { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1).replace(/[\s,;:–—-]+\S*$/, '')}…` : t; };
+// "Thu, Oct 29 · Google Expands AI Mode Ads, Claude for Legal + 2 more": the day plus what it is about.
+export function briefingTitle(posts, now, timezone = 'UTC') {
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(now));
+  const heads = posts.slice(0, 2).map(p => clip(p.title, 48)).filter(Boolean);
+  const more = posts.length - heads.length;
+  return clip(`${day} · ${heads.join(', ')}${more > 0 ? ` + ${more} more` : ''}`, 300);
+}
+// Stored with the podcast row (never sent to the studio) so lists can show what an episode covers.
+export function episodeMeta(episode) {
+  return {
+    sites: [...new Set(episode.sites.map(s => clip(s.name, 80)))].slice(0, 20),
+    stories: episode.posts.slice(0, 30).map(p => {
+      const site = episode.sites.find(s => s.posts.includes(p));
+      return { title: clip(p.title, 200), site: clip(site?.name || '', 80), ...(/^https:\/\//i.test(p.link || '') ? { link: String(p.link).slice(0, 1000) } : {}) };
+    }),
+  };
 }
 async function notify(uid, doc, run, now, deadline) {
   const token = env('TELEGRAM_BOT_TOKEN'), chat = env(`TELEGRAM_CHAT_ID_${uid === 'owner' ? 'OWNER' : uid}`);
@@ -149,6 +167,7 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
         }
       }));
       const planned = episodesFor(sites);
+      for (const episode of planned) if (episode.briefing) episode.title = briefingTitle(episode.posts, now, doc.schedule.timezone);
       for (const episode of planned) {
         let usage = await podcastUsage(uid, now);
         // At the cap? First give back any of today's podcasts that failed in the studio.
@@ -160,7 +179,7 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
           const perPost = Math.floor(85000 / episode.posts.length);
           const text = episode.posts.map(p => `${p.title}\n${p.link || ''}\n${p.text || p.title}`.slice(0, perPost)).join('\n\n');
           // 'deep-dive' = NotebookLM's two-host conversation ('brief' is its single-voice summary). Keep it short.
-          const job = await createPodcast(uid, { kind: 'chapter', title: episode.title, text, engine: doc.engine, style: 'deep-dive', length: 'short' }, { cfg: cfg ? { ...cfg, deadline: deadline - 1000, maxWait: 20000 } : null, now });
+          const job = await createPodcast(uid, { kind: 'chapter', title: episode.title, text, engine: doc.engine, style: 'deep-dive', length: 'short' }, { cfg: cfg ? { ...cfg, deadline: deadline - 1000, maxWait: 20000 } : null, now, meta: episodeMeta(episode) });
           run.episodes.push({ jobId: job.id, title: episode.title, siteIds: episode.sites.map(site => site.id) });
           for (const site of episode.sites) {
             const ids = episode.posts.filter(p => site.posts.includes(p)).map(p => p.id);
@@ -223,7 +242,7 @@ export async function todayEpisodes(uid, now = Date.now()) {
     await rememberPodcast(row, job);
     if (uid !== 'owner' && terminalStatus(job.status)) await releaseSlot(uid, row.id);
     if (job.status === 'failed') await refundFailedPodcast(uid, row.id, row.createdAt);
-    return { ...job, createdAt: new Date(row.createdAt).toISOString() };
+    return { ...job, createdAt: new Date(row.createdAt).toISOString(), ...(row.meta ? { sites: row.meta.sites, stories: row.meta.stories } : {}) };
   }));
   const queue = await podcastQueue(cfg);
   return list.filter(Boolean).map(job => withQueue(job, queue));

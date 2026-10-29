@@ -2,7 +2,7 @@ import { json, fail, onlyPost, readJson, sameOrigin, softLimit, clientKey } from
 import { withCors } from '../lib/cors.mjs';
 import { requireAccess } from '../lib/access.mjs';
 import { subStore, subError, unavailable } from '../lib/subs.mjs';
-import { createPodcast, studioConfig, studioJson, publicJob, validJobId, terminalStatus, signAudio, releaseSlot, deletePodcastRow, rememberPodcast, lastKnownPodcast, podcastQueue, withQueue } from '../lib/podcast.mjs';
+import { createPodcast, studioConfig, studioJson, publicJob, validJobId, terminalStatus, signAudio, releaseSlot, deletePodcastRow, rememberPodcast, lastKnownPodcast, podcastQueue, withQueue, withMeta } from '../lib/podcast.mjs';
 
 async function indexedJobs(uid, owner, cursor = '', limit = 100) {
   const s = subStore(), jobs = [];
@@ -63,7 +63,7 @@ const handler = async (req, context) => {
             const job = publicJob(await studioJson(cfg, `/${row.id}`, row.userId), row.id);
             if (terminalStatus(job.status) && row.userId !== 'owner') await releaseSlot(row.userId, row.id);
             await rememberPodcast(row, job);
-            jobs[i] = job;
+            jobs[i] = { ...job, ...withMeta(row) };
           } catch (e) {
             if (e?.response?.status === 404) { await deletePodcastRow(row); continue; } // not visible to this user in the studio: hide it
             jobs[i] = lastKnownPodcast(row);

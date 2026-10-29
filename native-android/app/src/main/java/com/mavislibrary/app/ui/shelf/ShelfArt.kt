@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -56,18 +57,26 @@ private val Grain = Color(0xFF3B2312)
 private val Gilt = Color(0xFFD9B96A)
 private val BookShape = RoundedCornerShape(topStart = 2.dp, bottomStart = 2.dp, topEnd = 4.dp, bottomEnd = 4.dp)
 
+/** Stable, well-spread hash: neighbouring keys like "gutenberg:1" and "gutenberg:2" land far apart. */
+internal fun spread(key: String): Int {
+    var h = key.hashCode()
+    h = (h xor (h ushr 16)) * 0x45d9f3b
+    h = (h xor (h ushr 16)) * 0x45d9f3b
+    return h xor (h ushr 16)
+}
+
 /** Stable 0..359 hue from a key, so a book or site keeps its colour. */
-internal fun hueOf(key: String) = Math.floorMod(key.hashCode(), 360).toFloat()
+internal fun hueOf(key: String) = Math.floorMod(spread(key), 360).toFloat()
 
 /** Books aren't all the same height; the key decides, so a book is always the same size. */
-internal fun bookHeight(key: String): Dp = (128 + Math.floorMod(key.hashCode() / 7, 21)).dp
+internal fun bookHeight(key: String): Dp = (128 + Math.floorMod(spread(key) / 360, 21)).dp
 
 /** Warm back wall of one shelf bay, with the shade from the shelf above and the side uprights. */
 @Composable
 internal fun ShelfBay(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     Box(modifier.fillMaxWidth().height(WALL_HEIGHT).drawBehind {
         drawRect(Brush.verticalGradient(listOf(WallTop, WallBottom)))
-        drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .45f), Color.Transparent), endY = 22.dp.toPx()))
+        drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .6f), Color.Black.copy(alpha = .2f), Color.Transparent), endY = 30.dp.toPx()))
         drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .28f)), startY = size.height - 26.dp.toPx()))
     }) {
         content()
@@ -85,7 +94,7 @@ private fun Upright(modifier: Modifier, flip: Boolean = false) {
     })
 }
 
-/** The plank books stand on: lit top face, grained front edge with a brass label plate, and its shadow. */
+/** The plank books stand on: lit top face and a grained front edge with a brass label plate. Its shadow falls on the bay below. */
 @Composable
 internal fun ShelfPlank(id: String, label: String) {
     Column(Modifier.fillMaxWidth()) {
@@ -114,7 +123,6 @@ internal fun ShelfPlank(id: String, label: String) {
         }, contentAlignment = Alignment.CenterStart) {
             BrassPlate(label, Modifier.padding(start = SHELF_EDGE + 10.dp))
         }
-        Box(Modifier.fillMaxWidth().height(12.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .38f), Color.Transparent))))
     }
 }
 
@@ -161,7 +169,7 @@ internal fun ShelfBook(book: Book, onClick: () -> Unit, onLongClick: (() -> Unit
     ) {
         ClothCover(book.key) {
             Text(book.title, color = Color(0xFFF3E7CF), textAlign = TextAlign.Center, maxLines = 5, overflow = TextOverflow.Ellipsis,
-                style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, lineHeight = 16.sp))
+                style = titleStyle(book.title))
             Spacer(Modifier.height(6.dp))
             Text(book.authorLine, color = Gilt, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 10.sp, lineHeight = 12.sp))
@@ -195,6 +203,13 @@ internal fun SiteShelfBook(site: SiteBook, onClick: () -> Unit) {
         }
         if (site.unread > 0) Ribbon(if (site.unread > 99) "99+" else "${site.unread}", Modifier.align(Alignment.TopEnd).padding(end = 8.dp))
     }
+}
+
+/** Long single words (Frankenstein) get a smaller size so they don't break mid-word on a narrow cover. */
+private fun titleStyle(title: String): TextStyle {
+    val long = (title.split(' ').maxOfOrNull { it.length } ?: 0) > 9
+    return TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = if (long) 11.sp else 13.sp,
+        lineHeight = if (long) 14.sp else 16.sp, hyphens = Hyphens.Auto)
 }
 
 internal fun faviconUrl(siteUrl: String): String? = runCatching {
@@ -248,7 +263,7 @@ private fun ClothCover(key: String, content: @Composable ColumnScope.() -> Unit)
                     drawLine(Gilt.copy(alpha = .75f), Offset(inset, y), Offset(size.width - inset / 2, y), w)
                 }
             }
-            .padding(start = 14.dp, end = 8.dp, top = 20.dp, bottom = 20.dp),
+            .padding(start = 12.dp, end = 6.dp, top = 20.dp, bottom = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         content = content,

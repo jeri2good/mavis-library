@@ -229,7 +229,7 @@ export function lastKnownPodcast(row) {
 // Briefing context saved at creation: which sites and stories an episode covers, plus when it was made.
 export function withMeta(row) {
   const out = Number.isFinite(row?.createdAt) ? { createdAt: new Date(row.createdAt).toISOString() } : {};
-  if (row?.meta) { out.sites = row.meta.sites; out.stories = row.meta.stories; }
+  if (row?.meta) { out.sites = row.meta.sites; out.stories = row.meta.stories; if (row.title) out.title = row.title; }
   return out;
 }
 const inQueue = job => ['queued', 'sourcing', 'writing', 'generating'].includes(job.status);

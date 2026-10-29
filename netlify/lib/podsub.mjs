@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { subStore, problem, getSub } from './subs.mjs';
 import { readForUpdate, writeIfUnchanged, getUser } from './accounts.mjs';
 import { isOwnerEmail } from './access.mjs';
-import { createPodcast, podcastUsage, studioConfig, studioJson, publicJob, terminalStatus, releaseSlot, refundFailedPodcast, deletePodcastRow, rememberPodcast, lastKnownPodcast, podcastQueue, withQueue } from './podcast.mjs';
+import { createPodcast, podcastUsage, studioConfig, studioJson, publicJob, terminalStatus, releaseSlot, refundFailedPodcast, deletePodcastRow, rememberPodcast, lastKnownPodcast, podcastQueue, withQueue, withMeta } from './podcast.mjs';
 import { fetchFeed, feedUrl } from './podsub-feed.mjs';
 import { fetchPage, pageLinks, fetchArticle } from './podsub-page.mjs';
 import { DAYS, nextRunAt, localDate } from './podsub-time.mjs';
@@ -242,7 +242,7 @@ export async function todayEpisodes(uid, now = Date.now()) {
     await rememberPodcast(row, job);
     if (uid !== 'owner' && terminalStatus(job.status)) await releaseSlot(uid, row.id);
     if (job.status === 'failed') await refundFailedPodcast(uid, row.id, row.createdAt);
-    return { ...job, createdAt: new Date(row.createdAt).toISOString(), ...(row.meta ? { sites: row.meta.sites, stories: row.meta.stories } : {}) };
+    return { ...job, createdAt: new Date(row.createdAt).toISOString(), ...withMeta(row) };
   }));
   const queue = await podcastQueue(cfg);
   return list.filter(Boolean).map(job => withQueue(job, queue));

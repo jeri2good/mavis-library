@@ -36,6 +36,9 @@ assert.equal(meta.stories[3].site, 'IGN');
 assert.deepEqual(withMeta({ createdAt: at }), { createdAt: new Date(at).toISOString() });
 const row = { id: 'x', createdAt: at, title: t, status: 'ready', meta };
 assert.deepEqual(withMeta(row).sites, ['Future Tools', 'IGN']);
+// The saved briefing title wins over the studio's copy (which may be the old "Daily briefing").
+assert.equal(withMeta(row).title, t);
+assert.equal(withMeta({ createdAt: at, title: 'No meta' }).title, undefined);
 const last = lastKnownPodcast({ ...row, lastKnown: { id: 'x', status: 'ready', createdAt: 'bogus' } });
 assert.equal(last.createdAt, new Date(at).toISOString());
 assert.equal(last.stories.length, 4);

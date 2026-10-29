@@ -20,6 +20,10 @@ fun defaultRecordFilter(shelves: Map<PodcastShelf, List<Episode>>) =
 fun records(filter: RecordFilter, shelves: Map<PodcastShelf, List<Episode>>): List<Episode> =
     filter.shelf?.let { shelves[it].orEmpty() } ?: shelves.values.flatten().sortedByDescending { it.job.createdAt }
 
+/** The crate's other records for the Up next list: the ones after [centred] first, then the ones before it, with their pager index. */
+fun upNextRows(crate: List<Episode>, centred: Int): List<IndexedValue<Episode>> =
+    crate.withIndex().let { all -> all.drop(centred + 1) + all.take(centred.coerceIn(0, crate.size)) }
+
 /** Episodes this listener can see from [address] (or has downloaded), not past clean-up, newest first. */
 fun visiblePodcasts(all: List<SavedPodcast>, identity: String?, address: String, cleanupDays: Int): List<SavedPodcast> =
     all.filter { (identity == "owner" || identity != null && it.accountId == identity) && (it.studio == address || it.localFile != null) && !podcastExpired(it.job, cleanupDays) }

@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -140,7 +141,7 @@ fun RecordSelector(
             }
             val job = centred.job
             Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(episodeHeadline(job), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, maxLines = 2,
+                Text(episodeHeadline(job), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("record_headline"))
                 when (centred.shelf) {
                     PodcastShelf.MAKING -> {
@@ -180,6 +181,47 @@ fun RecordSelector(
                     }
                 }
             }
+            val rest = upNextRows(crate, pager.currentPage)
+            if (rest.isNotEmpty()) Column(Modifier.fillMaxWidth().testTag("record_up_next")) {
+                Text("Up next", Modifier.padding(start = 4.dp, bottom = 2.dp).semantics { heading() }, style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                rest.forEach { (index, episode) -> UpNextRow(episode) { scope.launch { pager.animateScrollToPage(index) } } }
+            }
+        }
+    }
+}
+
+/** One compact Up next row: a small record in the episode's label colour, its headline, then date and length. Tap selects it. */
+@Composable
+private fun UpNextRow(episode: Episode, onSelect: () -> Unit) {
+    val job = episode.job
+    val headline = episodeHeadline(job)
+    val detail = listOf(
+        episodeWhen(job),
+        when (episode.shelf) {
+            PodcastShelf.MAKING -> stageLabel(job)
+            PodcastShelf.FAILED -> "Couldn't be made"
+            else -> job.durationSec?.let(::minutesLabel).orEmpty()
+        },
+    ).filter(String::isNotEmpty).joinToString(" · ")
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(8.dp))
+            .clickable(role = Role.Button, onClickLabel = "Select", onClick = onSelect)
+            .semantics(mergeDescendants = true) {}
+            .padding(horizontal = 4.dp, vertical = 6.dp)
+            .testTag("record_next_${job.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        val hue = recordHue(episode)
+        Box(Modifier.size(32.dp).clip(CircleShape).background(Color(0xFF111111)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(13.dp).clip(CircleShape).background(if (episode.shelf == PodcastShelf.FAILED) Color(0xFF8C8882) else Color.hsv(hue, .45f, .85f)))
+            Box(Modifier.size(3.dp).clip(CircleShape).background(Color(0xFF0D0D0D)))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(headline, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
         }
     }
 }

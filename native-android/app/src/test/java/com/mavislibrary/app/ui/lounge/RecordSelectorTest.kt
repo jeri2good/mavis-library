@@ -2,6 +2,7 @@ package com.mavislibrary.app.ui.lounge
 
 import android.net.Uri
 import androidx.compose.ui.test.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.mavislibrary.app.data.podcast.PodcastJob
 import com.mavislibrary.app.data.podcast.SavedPodcast
@@ -121,7 +122,42 @@ class RecordSelectorTest {
         assertEquals("n3", menuFor)
     }
 
+    @Test fun upNextListsTheRestOfTheChipAndTapSelects() {
+        assertEquals(listOf("n2"), upNextRows(records(RecordFilter.NEW, shelves), 0).map { it.value.job.id })
+        val all = records(RecordFilter.ALL, shelves)
+        assertEquals("after the centred one, then the ones before it", listOf(3 to "n3", 4 to "n2", 5 to "p1", 0 to "f6", 1 to "m5"),
+            upNextRows(all, 2).map { it.index to it.value.job.id })
+        assertTrue(upNextRows(all.take(1), 0).isEmpty())
+
+        show()
+        compose.onNodeWithTag("record_chip_all").performClick()
+        compose.onNodeWithTag("record_next_f6").assertDoesNotExist()
+        compose.onNodeWithTag("record_next_n2").assertTextContains("Episode n2").assertTextContains("14 min", substring = true)
+        compose.onNodeWithTag("record_next_m5").assertTextContains("Writing the script · 40%", substring = true)
+        compose.onNodeWithTag("record_next_n2").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("record_headline").assertTextEquals("Episode n2")
+        compose.onNodeWithTag("record_next_n2").assertDoesNotExist()
+        compose.onNodeWithTag("record_next_f6").assertExists()
+    }
+
+    @Test fun briefingHeadlineAndSubtitleHaveNoStrayCharacters() {
+        val now = java.time.Instant.parse("2026-10-29T12:00:00Z")
+        val job = PodcastJob("b1", "ready", title = "Thu, Oct 29 · Google Expands AI Mode Ads + 2 more", kind = "briefing", style = "deep-dive",
+            durationSec = 600, createdAt = "2026-10-29T06:00:00Z", sites = listOf("Future Tools"))
+        val episode = Episode(SavedPodcast(job, "studio", accountId = "me"), null)
+        assertEquals("Google Expands AI Mode Ads + 2 more", com.mavislibrary.app.ui.podcast.episodeHeadline(job))
+        assertEquals("Today 6:00 AM · Future Tools · 10 min · Deep dive", episodeDetails(episode, java.time.ZoneOffset.UTC, now))
+        compose.setContent {
+            RecordSelector(gallery(listOf(episode.saved), emptyMap()), nowPlaying = null, playing = false, enabled = true, onPlay = { _, _ -> }, onToggle = {}, onDetails = {})
+        }
+        compose.onNodeWithTag("record_headline").assertTextEquals("Google Expands AI Mode Ads + 2 more")
+        compose.onNodeWithTag("record_subtitle").assertTextEquals(episodeDetails(episode))
+        assertFalse(episodeDetails(episode).contains("Toolsa"))
+    }
+
     private fun show(onPlay: (Episode, List<Episode>) -> Unit = { _, _ -> }, onDetails: (Episode) -> Unit = {}) = compose.setContent {
-        RecordSelector(shelves, nowPlaying = null, playing = false, enabled = true, onPlay = onPlay, onToggle = {}, onDetails = onDetails)
+        RecordSelector(shelves, nowPlaying = null, playing = false, enabled = true, onPlay = onPlay, onToggle = {}, onDetails = onDetails,
+            modifier = androidx.compose.ui.Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()))
     }
 }

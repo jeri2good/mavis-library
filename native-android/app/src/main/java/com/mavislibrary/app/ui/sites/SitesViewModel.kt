@@ -42,8 +42,12 @@ data class SitesUiState(
     val inFlightRequests: Set<String> = emptySet(),
     val queuedStatus: Map<String, String> = emptyMap(),
     val siteRules: Map<String, SiteRule> = emptyMap(),
+    /** Read article ids per site id. */
+    val read: Map<String, Set<String>> = emptyMap(),
 ) {
     fun newCount(source: FeedSource) = posts[source.id].orEmpty().count { (it.published ?: 0) > source.seenSince }
+    fun isRead(siteId: String, story: FeedStory) = story.item.id in read[siteId].orEmpty()
+    fun unreadCount(source: FeedSource) = posts[source.id].orEmpty().unread(read[source.id].orEmpty()).size
 }
 
 /** Followed sites, their latest posts, and magazine shelf actions. [reschedule] applies a changed briefing schedule. */
@@ -55,6 +59,7 @@ class SitesViewModel(
     private val podsub: PodsubRepository? = null,
     private val podcastApi: PodcastService? = null,
     private val reader: ReaderService? = null,
+    private val readState: ReadStateStore? = null,
     private val reschedule: suspend () -> Unit = {},
 ) : ViewModel() {
     private val _state = MutableStateFlow(SitesUiState())
@@ -69,6 +74,7 @@ class SitesViewModel(
                 sources.filter { it.enabled && it.id !in _state.value.posts && it.id !in _state.value.loading }.forEach(::load)
             }
         }
+        readState?.let { r -> viewModelScope.launch { r.read.collect { read -> _state.update { it.copy(read = read) } } } }
         viewModelScope.launch { briefing.settings.collect { b -> _state.update { it.copy(briefing = b) } } }
         viewModelScope.launch { briefing.status.collect { b -> _state.update { it.copy(status = b) } } }
         viewModelScope.launch { briefing.pending.collect { p -> _state.update { it.copy(pending = p.size) } } }
@@ -247,6 +253,9 @@ class SitesViewModel(
         val found = _state.value.feedResult as? DiscoveryResult.Found ?: return
         val source = _state.value.preview?.source ?: "feed"
         act { store.add(found, source); closeAddSite() }
+    }
+    fun markAllRead(siteId: String) = act {
+        readState?.markRead(siteId, _state.value.posts[siteId].orEmpty().map { it.item.id }.reversed())
     }
     fun rename(id: String, name: String) = act { store.rename(id, name) }
     fun setEnabled(id: String, enabled: Boolean) = act { store.setEnabled(id, enabled) }

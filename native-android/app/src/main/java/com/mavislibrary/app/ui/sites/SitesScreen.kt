@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -69,6 +70,7 @@ fun SitesScreen(
                 podsub = container.podsubRepository,
                 podcastApi = container.podcastApi(),
                 reader = container.readerApi(),
+                readState = container.readState,
             ) {
                 BriefingScheduler.sync(appContext)
             }
@@ -122,6 +124,7 @@ fun SitesScreen(
                     onSetTop = { count -> vm.setTopCount(source.id, count) },
                     onSetDelivery = { delivery -> vm.setDelivery(source.id, delivery) },
                     onUnfollow = { removing = source },
+                    onMarkAllRead = { vm.markAllRead(source.id) },
                 )
             }
 
@@ -204,8 +207,9 @@ private fun SiteMagazineTile(
     onSetTop: (Int) -> Unit,
     onSetDelivery: (String) -> Unit,
     onUnfollow: () -> Unit,
+    onMarkAllRead: () -> Unit,
 ) {
-    val newCount = state.newCount(source)
+    val unread = state.unreadCount(source)
     val rule = state.siteRules[source.id]
     val isOff = rule?.mode == "off" || source.podcast == SitePodcast.OFF
     val currentTop = if (isOff) 0 else (rule?.count ?: source.topCount)
@@ -227,9 +231,9 @@ private fun SiteMagazineTile(
                     .background(tileColor(source.name))
                     .padding(8.dp)
             ) {
-                if (newCount > 0) {
-                    Box(Modifier.align(Alignment.TopStart)) {
-                        NewPill(if (newCount == 1) "1 new" else "$newCount new")
+                if (unread > 0) {
+                    Box(Modifier.align(Alignment.TopStart).testTag("unread_${source.id}")) {
+                        NewPill("$unread unread")
                     }
                 }
                 Surface(
@@ -272,6 +276,12 @@ private fun SiteMagazineTile(
                         DropdownMenuItem(
                             text = { Text("Separate" + if (currentDelivery == "separate") " ✓" else "") },
                             onClick = { menuOpen = false; onSetDelivery("separate") },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Mark all read") },
+                            enabled = unread > 0,
+                            onClick = { menuOpen = false; onMarkAllRead() },
                         )
                         HorizontalDivider()
                         DropdownMenuItem(
@@ -388,6 +398,7 @@ fun SiteScreen(
                 podsub = container.podsubRepository,
                 podcastApi = container.podcastApi(),
                 reader = container.readerApi(),
+                readState = container.readState,
             ) {
                 BriefingScheduler.sync(appContext)
             }
@@ -423,6 +434,20 @@ fun SiteScreen(
                 Column(Modifier.weight(1f)) {
                     Text(source.name, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(host(source.siteUrl), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                var siteMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { siteMenu = true }, modifier = Modifier.testTag("site_page_menu")) {
+                        Icon(Icons.Outlined.MoreVert, contentDescription = "Options for ${source.name}")
+                    }
+                    DropdownMenu(expanded = siteMenu, onDismissRequest = { siteMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Mark all read") },
+                            enabled = state.unreadCount(source) > 0,
+                            onClick = { siteMenu = false; vm.markAllRead(source.id) },
+                            modifier = Modifier.testTag("mark_all_read"),
+                        )
+                    }
                 }
             }
         }
@@ -486,7 +511,7 @@ fun SiteScreen(
                     val isInFlight = story.item.id in state.inFlightRequests
                     val queuedStatus = state.queuedStatus[story.item.id]
 
-                    Card(Modifier.fillMaxWidth().testTag("story_${story.item.id}")) {
+                    Card(Modifier.fillMaxWidth().alpha(if (state.isRead(source.id, story)) 0.55f else 1f).testTag("story_${story.item.id}")) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(

@@ -56,16 +56,21 @@ export function pinnedDispatcher(address, family) {
 }
 // Some publishers (IGN, Cloudflare-fronted feeds) 403 requests that carry no browser user-agent.
 export const FEED_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 MavisLibrary/0.2';
-export async function fetchFeed(url, { fetcher = fetch, resolve = lookup, timeout = 6000 } = {}) {
+export async function fetchFeed(url, opts = {}) {
+  const { html, url: finalUrl } = await safeFetch(url, opts);
+  return parseFeed(html, finalUrl);
+}
+export async function safeFetch(url, { fetcher = fetch, resolve = lookup, timeout = 6000, httpsOnly = false, accept = 'application/rss+xml, application/atom+xml, application/xml, text/xml' } = {}) {
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), Math.min(timeout, 6000));
   const aborted = new Promise((_, reject) => ctl.signal.addEventListener('abort', () => reject(new Error('Feed timeout')), { once: true }));
   try {
     return await Promise.race([aborted, (async () => {
       for (let redirects = 0; redirects < 4; redirects++) {
         const u = feedUrl(url), host = u.hostname.replace(/^\[|\]$/g, '');
+        if (httpsOnly && u.protocol !== 'https:') throw new Error('HTTPS required');
         const addresses = isIP(host) ? [{ address: host, family: isIP(host) }] : await resolve(host, { all: true });
         if (ctl.signal.aborted || !addresses.length || addresses.some(a => !publicAddress(a.address))) throw new Error('Unsafe feed address');
-        const r = await fetcher(u.href, { signal: ctl.signal, redirect: 'manual', credentials: 'omit', headers: { 'user-agent': FEED_UA, accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml', 'accept-encoding': 'identity' }, dispatcher: pinnedDispatcher(addresses[0].address, addresses[0].family) });
+        const r = await fetcher(u.href, { signal: ctl.signal, redirect: 'manual', credentials: 'omit', headers: { 'user-agent': FEED_UA, accept, 'accept-encoding': 'identity' }, dispatcher: pinnedDispatcher(addresses[0].address, addresses[0].family) });
         if ([301, 302, 303, 307, 308].includes(r.status)) {
           await r.body?.cancel();
           url = new URL(r.headers.get('location'), u).href;
@@ -82,7 +87,7 @@ export async function fetchFeed(url, { fetcher = fetch, resolve = lookup, timeou
           if (size > 2 * 1024 * 1024) { await reader.cancel(); throw new Error('Feed too large'); }
           chunks.push(value);
         }
-        return parseFeed(Buffer.concat(chunks).toString('utf8'), u.href);
+        return { html: Buffer.concat(chunks).toString('utf8'), url: u.href };
       }
       throw new Error('Too many redirects');
     })()]);

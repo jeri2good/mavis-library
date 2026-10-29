@@ -1,5 +1,6 @@
 package com.mavislibrary.app.ui.sites
 
+import com.mavislibrary.app.data.reader.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mavislibrary.app.data.briefing.Briefing
@@ -7,6 +8,7 @@ import com.mavislibrary.app.data.briefing.BriefingSettings
 import com.mavislibrary.app.data.briefing.BriefingStatus
 import com.mavislibrary.app.data.briefing.BriefingStore
 import com.mavislibrary.app.data.feeds.*
+import com.mavislibrary.app.data.podcast.PodcastJob
 import com.mavislibrary.app.data.podcast.PodcastRequest
 import com.mavislibrary.app.data.podcast.PodcastService
 import com.mavislibrary.app.data.podsub.PodsubRepository
@@ -31,6 +33,7 @@ data class SitesUiState(
     val siteInput: String = "",
     val findingFeed: Boolean = false,
     val feedResult: DiscoveryResult? = null,
+    val preview: SitePreview? = null,
     val error: String? = null,
     val briefing: BriefingSettings = BriefingSettings(),
     val status: BriefingStatus? = null,
@@ -40,8 +43,19 @@ data class SitesUiState(
     val inFlightRequests: Set<String> = emptySet(),
     val queuedStatus: Map<String, String> = emptyMap(),
     val siteRules: Map<String, SiteRule> = emptyMap(),
+    /** Read article ids per site id. */
+    val read: Map<String, Set<String>> = emptyMap(),
+    /** Today's ready subscription episodes for the Up next strip. */
+    val upNext: List<PodcastJob> = emptyList(),
 ) {
+    /** Unread stories across enabled followed sites, newest first. */
+    fun allUnread(): List<Pair<FeedSource, FeedStory>> = sources.filter { it.enabled }.flatMap { s ->
+        posts[s.id].orEmpty().unread(read[s.id].orEmpty()).map { s to it }
+    }.distinctBy { it.second.item.url }.sortedByDescending { it.second.published ?: Long.MIN_VALUE }
+
     fun newCount(source: FeedSource) = posts[source.id].orEmpty().count { (it.published ?: 0) > source.seenSince }
+    fun isRead(siteId: String, story: FeedStory) = story.item.id in read[siteId].orEmpty()
+    fun unreadCount(source: FeedSource) = posts[source.id].orEmpty().unread(read[source.id].orEmpty()).size
 }
 
 /** Followed sites, their latest posts, and magazine shelf actions. [reschedule] applies a changed briefing schedule. */
@@ -52,6 +66,8 @@ class SitesViewModel(
     private val briefing: BriefingStore,
     private val podsub: PodsubRepository? = null,
     private val podcastApi: PodcastService? = null,
+    private val reader: ReaderService? = null,
+    private val readState: ReadStateStore? = null,
     private val reschedule: suspend () -> Unit = {},
 ) : ViewModel() {
     private val _state = MutableStateFlow(SitesUiState())
@@ -66,6 +82,7 @@ class SitesViewModel(
                 sources.filter { it.enabled && it.id !in _state.value.posts && it.id !in _state.value.loading }.forEach(::load)
             }
         }
+        readState?.let { r -> viewModelScope.launch { r.read.collect { read -> _state.update { it.copy(read = read) } } } }
         viewModelScope.launch { briefing.settings.collect { b -> _state.update { it.copy(briefing = b) } } }
         viewModelScope.launch { briefing.status.collect { b -> _state.update { it.copy(status = b) } } }
         viewModelScope.launch { briefing.pending.collect { p -> _state.update { it.copy(pending = p.size) } } }
@@ -77,6 +94,7 @@ class SitesViewModel(
                     _state.update { it.copy(siteRules = res.sites.associateBy { r -> r.id }) }
                 }
             }
+            viewModelScope.launch { runCatching { p.today() }.onSuccess { jobs -> _state.update { it.copy(upNext = jobs.filter { j -> j.status == "ready" }) } } }
         }
     }
 
@@ -225,24 +243,28 @@ class SitesViewModel(
     fun openAddSite() = _state.update { it.copy(addOpen = true, error = null) }
     fun closeAddSite() {
         discoveryJob?.cancel()
-        _state.update { it.copy(addOpen = false, findingFeed = false, feedResult = null, siteInput = "", error = null) }
+        _state.update { it.copy(addOpen = false, findingFeed = false, feedResult = null, preview = null, siteInput = "", error = null) }
     }
     fun siteInput(value: String) {
         discoveryJob?.cancel()
-        _state.update { it.copy(siteInput = value, findingFeed = false, feedResult = null, error = null) }
+        _state.update { it.copy(siteInput = value, findingFeed = false, feedResult = null, preview = null, error = null) }
     }
     fun findFeed() {
         discoveryJob?.cancel()
         val input = _state.value.siteInput
-        _state.update { it.copy(findingFeed = true, feedResult = null, error = null) }
+        _state.update { it.copy(findingFeed = true, feedResult = null, preview = null, error = null) }
         discoveryJob = viewModelScope.launch {
-            val result = discovery.discover(input)
-            _state.update { it.copy(findingFeed = false, feedResult = result) }
+            val result = discoverSite(input, discovery, reader)
+            _state.update { it.copy(findingFeed = false, feedResult = result.result, preview = result.preview) }
         }
     }
     fun addFeed() {
         val found = _state.value.feedResult as? DiscoveryResult.Found ?: return
-        act { store.add(found); closeAddSite() }
+        val source = _state.value.preview?.source ?: "feed"
+        act { store.add(found, source); closeAddSite() }
+    }
+    fun markAllRead(siteId: String) = act {
+        readState?.markRead(siteId, _state.value.posts[siteId].orEmpty().map { it.item.id }.reversed())
     }
     fun rename(id: String, name: String) = act { store.rename(id, name) }
     fun setEnabled(id: String, enabled: Boolean) = act { store.setEnabled(id, enabled) }

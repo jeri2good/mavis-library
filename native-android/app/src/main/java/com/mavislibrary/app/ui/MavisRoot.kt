@@ -211,6 +211,31 @@ fun MavisRoot(
             nav.navigate("article") { launchSingleTop = true }
         }
     }
+    var readerTarget by remember { mutableStateOf<com.mavislibrary.app.ui.reader.ReaderTarget?>(null) }
+    val openReader: (com.mavislibrary.app.ui.reader.ReaderTarget) -> Unit = { target ->
+        if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) {
+            readerTarget = target
+            nav.navigate("reader") { launchSingleTop = true }
+        }
+    }
+    // Same path the Lounge's subscription section uses: save each episode to the library, then queue gateway/local audio.
+    val playEpisodes: (List<com.mavislibrary.app.data.podcast.PodcastJob>) -> Unit = { ready ->
+        scope.launch {
+            try {
+                if (!com.mavislibrary.app.data.podcast.loungeRouteAllowed(kidsPrefs.state.first().enabled)) return@launch
+                val studio = com.mavislibrary.app.BuildConfig.API_BASE
+                val identity = container.podcastAccountId()
+                val api = container.podcastApi()
+                val queue = ready.map { job ->
+                    val saved = com.mavislibrary.app.data.podcast.SavedPodcast(job, studio, accountId = identity)
+                    container.podcastSettings.save(saved)
+                    saved to (container.audioFiles.podcastLocal(studio, job.id)?.let(android.net.Uri::fromFile) ?: android.net.Uri.parse(api.audioUrl(job.id)))
+                }
+                if (queue.isNotEmpty()) { onFirstAudio(); playback.playPodcasts(queue, null) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { snackbar.showSnackbar(e.message ?: "Couldn't play that episode. Try again.") }
+        }
+    }
     // "Podcast ready" notifications open the Lounge, with Listen behind it for Back.
     LaunchedEffect(widgetRequest, loadedKids.enabled) {
         if (widgetDestination == com.mavislibrary.app.MainActivity.LOUNGE && !loadedKids.enabled) {
@@ -247,7 +272,7 @@ fun MavisRoot(
                 NavigationBar {
                     Tab.entries.forEach { tab ->
                         NavigationBarItem(
-                            selected = current?.hierarchy?.any { it.route == tab.route } == true || tab == Tab.SITES && current?.route == "site/{id}",
+                            selected = current?.hierarchy?.any { it.route == tab.route } == true || tab == Tab.SITES && current?.route in setOf("site/{id}", "sites/new"),
                             onClick = {
                                 nav.navigate(tab.route) {
                                     popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -341,11 +366,21 @@ fun MavisRoot(
                         onOpenLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) },
                         onSettings = { goTab(Tab.SETTINGS.route) },
                         onAskNotifications = onFirstAudio,
+                        onPlayEpisodes = playEpisodes,
+                        onOpenAllNew = { nav.navigate("sites/new") { launchSingleTop = true } },
                     )
                 }
                 composable("site/{id}") { route ->
                     com.mavislibrary.app.ui.sites.SiteScreen(container, route.arguments?.getString("id").orEmpty(),
-                        onBack = { nav.popBackStack() }, onPodcast = openLounge, onOpenArticle = openArticle)
+                        onBack = { nav.popBackStack() }, onPodcast = openLounge, onOpenReader = openReader)
+                }
+                composable("sites/new") {
+                    com.mavislibrary.app.ui.sites.AllNewScreen(container, onBack = { nav.popBackStack() }, onOpenReader = openReader)
+                }
+                composable("reader") {
+                    readerTarget?.takeIf { com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled) }?.let {
+                        com.mavislibrary.app.ui.reader.ReaderScreen(container, it, onBack = { nav.popBackStack() }, onPodcast = openLounge, onOpenOriginal = openArticle)
+                    } ?: LaunchedEffect(Unit) { nav.popBackStack() }
                 }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice, onLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) }) }
                 composable("article") {

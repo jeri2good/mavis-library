@@ -23,6 +23,7 @@ data class FeedSource(
     val id: String, val name: String, val feedUrl: String, val siteUrl: String, val addedAt: Long, val enabled: Boolean = true,
     val podcast: String = SitePodcast.BRIEFING, val viewedAt: Long = 0,
     val topCount: Int = 1,
+    val source: String = "feed",
 ) {
     val seenSince get() = maxOf(addedAt, viewedAt)
 }
@@ -33,14 +34,15 @@ class FeedStore(private val store: DataStore<Preferences>, private val clock: ()
     private fun decode(value: String?) = value?.let { runCatching { json.decodeFromString<List<FeedSource>>(it) }.getOrNull() }.orEmpty()
     val sources = store.data.map { decode(it[key]) }
 
-    suspend fun add(found: DiscoveryResult.Found): FeedSource {
+    suspend fun add(found: DiscoveryResult.Found, source: String = "feed"): FeedSource {
+        require(source in setOf("feed", "page"))
         val feedUrl = UrlPolicy.normalize(found.feedUrl)
         val siteUrl = UrlPolicy.normalize(found.siteUrl)
         var result: FeedSource? = null
         store.edit { prefs ->
             val old = decode(prefs[key])
             val existing = old.find { it.feedUrl == feedUrl }
-            result = existing?.copy(enabled = true) ?: FeedSource(FeedParser.stableId(feedUrl), found.title.take(80), feedUrl, siteUrl, clock())
+            result = existing?.copy(enabled = true, source = source) ?: FeedSource(FeedParser.stableId(feedUrl), found.title.take(80), feedUrl, siteUrl, clock(), source = source)
             require(existing != null || old.size < 20) { "You can add up to 20 sites. Remove one to add another." }
             prefs[key] = json.encodeToString(if (existing != null) old.map { if (it.id == existing.id) result!! else it } else old + result!!)
         }

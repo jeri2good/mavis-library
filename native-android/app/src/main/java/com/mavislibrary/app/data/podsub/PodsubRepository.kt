@@ -40,11 +40,11 @@ class PodsubRepository(private val api: PodsubService, private val migration: Mi
         val removed = prior.orEmpty().toSet() - localIds.toSet()
         val remaining = base.sites.filterNot { it.id in removed }.sortedBy { it.priority }
         val mapped = remaining.map { rule -> followed.find { it.id == rule.id }?.let {
-            rule.copy(name = it.name, feedUrl = it.feedUrl, siteUrl = it.siteUrl)
+            rule.copy(name = it.name, feedUrl = it.feedUrl, siteUrl = it.siteUrl, source = it.source)
         } ?: rule }
         val additions = followed.filter { site -> mapped.none { it.id == site.id } }.map { site ->
             // New follows always start as Top 1 / Briefing. Legacy preferences apply only during migration.
-            if (prior == null) initial.sites.first { it.id == site.id } else SiteRule(site.id, site.name, site.feedUrl, site.siteUrl)
+            if (prior == null) initial.sites.first { it.id == site.id } else SiteRule(site.id, site.name, site.feedUrl, site.siteUrl, source = site.source)
         }
         val next = base.copy(sites = (mapped + additions).mapIndexed { index, site -> site.copy(priority = index) }).validated()
         val result = if (prior == null || remote == null || next != remote.document()) api.put(next).let {

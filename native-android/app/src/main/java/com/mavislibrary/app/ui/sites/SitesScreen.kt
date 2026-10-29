@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -17,10 +18,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -38,6 +41,8 @@ import com.mavislibrary.app.data.feeds.FeedSource
 import com.mavislibrary.app.data.feeds.FeedStory
 import com.mavislibrary.app.data.feeds.SitePodcast
 import com.mavislibrary.app.data.podcast.PodcastDraft
+import com.mavislibrary.app.data.podcast.PodcastJob
+import com.mavislibrary.app.ui.reader.ReaderTarget
 import com.mavislibrary.app.work.BriefingScheduler
 import java.net.URI
 import java.time.Instant
@@ -55,6 +60,8 @@ fun SitesScreen(
     onOpenLounge: () -> Unit,
     onSettings: () -> Unit,
     onAskNotifications: () -> Unit,
+    onPlayEpisodes: (List<PodcastJob>) -> Unit = {},
+    onOpenAllNew: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -67,6 +74,8 @@ fun SitesScreen(
                 container.briefingStore,
                 podsub = container.podsubRepository,
                 podcastApi = container.podcastApi(),
+                reader = container.readerApi(),
+                readState = container.readState,
             ) {
                 BriefingScheduler.sync(appContext)
             }
@@ -103,6 +112,12 @@ fun SitesScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (state.upNext.isNotEmpty() || state.sources.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    UpNextStrip(state.upNext, state.allUnread().size, onPlayEpisodes, onOpenAllNew)
+                }
+            }
+
             // Big + Add site card first
             item {
                 AddSiteCard(onClick = vm::openAddSite)
@@ -120,6 +135,7 @@ fun SitesScreen(
                     onSetTop = { count -> vm.setTopCount(source.id, count) },
                     onSetDelivery = { delivery -> vm.setDelivery(source.id, delivery) },
                     onUnfollow = { removing = source },
+                    onMarkAllRead = { vm.markAllRead(source.id) },
                 )
             }
 
@@ -152,6 +168,73 @@ fun SitesScreen(
             confirmButton = { TextButton(onClick = { vm.remove(source.id); removing = null }) { Text("Unfollow") } },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep") } },
         )
+    }
+}
+
+/** Today's ready briefing episodes plus a shortcut to every unread article. */
+@Composable
+private fun UpNextStrip(episodes: List<PodcastJob>, unread: Int, onPlay: (List<PodcastJob>) -> Unit, onOpenAllNew: () -> Unit) {
+    Column(Modifier.fillMaxWidth().testTag("up_next"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Up next", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            AssistChip(onClick = onOpenAllNew, label = { Text("All new · $unread") }, modifier = Modifier.testTag("all_new_chip"))
+        }
+        if (episodes.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(episodes, key = { it.id }) { job ->
+                Card(Modifier.width(220.dp).testTag("up_next_${job.id}"),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(job.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            job.durationSec?.let { Text("${maxOf(1, it / 60)} min", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                        FilledTonalIconButton(onClick = { onPlay(listOf(job)) }, modifier = Modifier.testTag("play_up_next_${job.id}")) {
+                            Icon(Icons.Outlined.PlayArrow, contentDescription = "Play ${job.title}")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Unread articles from every followed site, newest first. */
+@Composable
+fun AllNewScreen(container: AppContainer, onBack: () -> Unit, onOpenReader: (ReaderTarget) -> Unit) {
+    val vm: SitesViewModel = viewModel(factory = viewModelFactory {
+        initializer {
+            SitesViewModel(container.feedStore, container.feedDiscovery, container.feedRepository, container.briefingStore,
+                reader = container.readerApi(), readState = container.readState)
+        }
+    })
+    val state by vm.state.collectAsStateWithLifecycle()
+    val unread = state.allUnread()
+    LazyColumn(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("all_new"),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back to Sites") }
+                Text("All new · ${unread.size}", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            }
+        }
+        if (state.loading.isNotEmpty() && unread.isEmpty()) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+        else if (unread.isEmpty()) item { Text("You're all caught up.") }
+        items(unread, key = { (s, story) -> "${s.id}/${story.item.id}" }) { (source, story) ->
+            Card(onClick = { onOpenReader(ReaderTarget(story.item.title, story.item.url, source.name, source.id, story.item.id)) },
+                modifier = Modifier.fillMaxWidth().testTag("all_new_${story.item.id}")) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(source.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        story.published?.let { Text(day(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                    Text(story.item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
     }
 }
 
@@ -202,8 +285,9 @@ private fun SiteMagazineTile(
     onSetTop: (Int) -> Unit,
     onSetDelivery: (String) -> Unit,
     onUnfollow: () -> Unit,
+    onMarkAllRead: () -> Unit,
 ) {
-    val newCount = state.newCount(source)
+    val unread = state.unreadCount(source)
     val rule = state.siteRules[source.id]
     val isOff = rule?.mode == "off" || source.podcast == SitePodcast.OFF
     val currentTop = if (isOff) 0 else (rule?.count ?: source.topCount)
@@ -225,9 +309,9 @@ private fun SiteMagazineTile(
                     .background(tileColor(source.name))
                     .padding(8.dp)
             ) {
-                if (newCount > 0) {
-                    Box(Modifier.align(Alignment.TopStart)) {
-                        NewPill(if (newCount == 1) "1 new" else "$newCount new")
+                if (unread > 0) {
+                    Box(Modifier.align(Alignment.TopStart).testTag("unread_${source.id}")) {
+                        NewPill("$unread unread")
                     }
                 }
                 Surface(
@@ -270,6 +354,12 @@ private fun SiteMagazineTile(
                         DropdownMenuItem(
                             text = { Text("Separate" + if (currentDelivery == "separate") " ✓" else "") },
                             onClick = { menuOpen = false; onSetDelivery("separate") },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Mark all read") },
+                            enabled = unread > 0,
+                            onClick = { menuOpen = false; onMarkAllRead() },
                         )
                         HorizontalDivider()
                         DropdownMenuItem(
@@ -325,7 +415,7 @@ private fun AddSiteDialog(state: SitesUiState, vm: SitesViewModel) {
         title = { Text("Follow a site") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Paste the site's address. Your phone checks the site directly for new posts.")
+                Text("Paste the site's address. Mavis finds its feed or watches the page for new posts.")
                 OutlinedTextField(
                     state.siteInput,
                     vm::siteInput,
@@ -345,7 +435,8 @@ private fun AddSiteDialog(state: SitesUiState, vm: SitesViewModel) {
                 when (val result = state.feedResult) {
                     is DiscoveryResult.Found -> Card {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Found: ${result.title}", style = MaterialTheme.typography.titleSmall)
+                            Text(if (state.preview?.source == "page") "No feed here — Mavis will watch this page" else "Found: ${result.title}", style = MaterialTheme.typography.titleSmall)
+                            state.preview?.posts?.take(3)?.forEach { Text(it.title, style = MaterialTheme.typography.bodyMedium) }
                             Text("${result.items} recent posts" + (result.newest?.let { " · newest ${day(it)}" } ?: ""))
                         }
                     }
@@ -371,7 +462,7 @@ fun SiteScreen(
     id: String,
     onBack: () -> Unit,
     onPodcast: (PodcastDraft) -> Unit,
-    onOpenArticle: (PodcastDraft) -> Unit,
+    onOpenReader: (ReaderTarget) -> Unit,
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -384,6 +475,8 @@ fun SiteScreen(
                 container.briefingStore,
                 podsub = container.podsubRepository,
                 podcastApi = container.podcastApi(),
+                reader = container.readerApi(),
+                readState = container.readState,
             ) {
                 BriefingScheduler.sync(appContext)
             }
@@ -419,6 +512,20 @@ fun SiteScreen(
                 Column(Modifier.weight(1f)) {
                     Text(source.name, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(host(source.siteUrl), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                var siteMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { siteMenu = true }, modifier = Modifier.testTag("site_page_menu")) {
+                        Icon(Icons.Outlined.MoreVert, contentDescription = "Options for ${source.name}")
+                    }
+                    DropdownMenu(expanded = siteMenu, onDismissRequest = { siteMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Mark all read") },
+                            enabled = state.unreadCount(source) > 0,
+                            onClick = { siteMenu = false; vm.markAllRead(source.id) },
+                            modifier = Modifier.testTag("mark_all_read"),
+                        )
+                    }
                 }
             }
         }
@@ -482,7 +589,7 @@ fun SiteScreen(
                     val isInFlight = story.item.id in state.inFlightRequests
                     val queuedStatus = state.queuedStatus[story.item.id]
 
-                    Card(Modifier.fillMaxWidth().testTag("story_${story.item.id}")) {
+                    Card(Modifier.fillMaxWidth().alpha(if (state.isRead(source.id, story)) 0.55f else 1f).testTag("story_${story.item.id}")) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(
@@ -503,7 +610,7 @@ fun SiteScreen(
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(
-                                    onClick = { onOpenArticle(PodcastDraft.article(story.item.title, story.item.url)) },
+                                    onClick = { onOpenReader(ReaderTarget(story.item.title, story.item.url, source.name, source.id, story.item.id)) },
                                     modifier = Modifier.testTag("read_story_${story.item.id}"),
                                 ) {
                                     Text("Read")

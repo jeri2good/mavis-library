@@ -69,7 +69,7 @@ class AppContainer(private val app: Application) {
     val feedStore by lazy { com.mavislibrary.app.data.feeds.FeedStore(app.settingsDataStore) }
     private val feedFetcher by lazy { com.mavislibrary.app.data.feeds.DeviceFeedFetcher() }
     val feedDiscovery by lazy { com.mavislibrary.app.data.feeds.FeedDiscovery(feedFetcher) }
-    val feedRepository by lazy { com.mavislibrary.app.data.feeds.FeedRepository(feedFetcher, connectivity::isOnline) }
+    val feedRepository by lazy { com.mavislibrary.app.data.feeds.FeedRepository(feedFetcher, connectivity::isOnline, reader = readerApi()) }
     val secureStore: SecureStore by lazy { SecureStore(app.secureDataStore, KeystoreCipher()) }
     val accountsApi by lazy { com.mavislibrary.app.data.api.AccountsApi(BuildConfig.API_BASE,
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) },
@@ -90,6 +90,9 @@ class AppContainer(private val app: Application) {
         owner = { secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE) },
         adult = { !app.kidsPrefs().state.first().enabled },
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) })
+    fun readerApi() = com.mavislibrary.app.data.reader.ReaderApi(podcastApi())
+    val readerPrefs by lazy { com.mavislibrary.app.data.reader.ReaderPrefs(app.settingsDataStore) }
+    val readState by lazy { com.mavislibrary.app.data.reader.ReadStateStore(app.settingsDataStore) }
     fun podcastRepository() = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(), podcastSettings, BuildConfig.API_BASE, ::podcastAccountId)
     val briefingStore by lazy { com.mavislibrary.app.data.briefing.BriefingStore(app.settingsDataStore) }
     val podsubRepository by lazy { com.mavislibrary.app.data.podsub.PodsubRepository(
@@ -124,7 +127,7 @@ class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Fac
                 container.secureStore.has(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE),
                 kidsPrefs().state) { sites, uid, owner, kids ->
                 // Reading/viewed timestamps do not change subscription rules.
-                listOf(sites.map { listOf(it.id, it.name, it.feedUrl, it.siteUrl) }, uid, owner, kids.enabled)
+                listOf(sites.map { listOf(it.id, it.name, it.feedUrl, it.siteUrl, it.source) }, uid, owner, kids.enabled)
             }.distinctUntilChanged().collect { com.mavislibrary.app.work.BriefingScheduler.syncSoon(this@MavisApp) }
         }
         com.mavislibrary.app.update.UpdateScheduler.schedule(this)

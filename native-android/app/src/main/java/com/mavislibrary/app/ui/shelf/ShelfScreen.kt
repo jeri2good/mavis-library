@@ -65,7 +65,7 @@ internal fun ShelfContent(
     LazyColumn(Modifier.fillMaxSize().testTag("shelf_grid"), contentPadding = PaddingValues(bottom = 16.dp)) {
         item(key = "header") {
             Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 8.dp)) {
-                Text("Your shelf", style = MaterialTheme.typography.headlineMedium)
+                Text("Your shelf", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
                 TextButton(onClick = onOpenWebShelf, modifier = Modifier.testTag("open_web_shelf"), contentPadding = PaddingValues(horizontal = 0.dp)) {
                     Text("Open web shelf (collections, import, quotes)", style = MaterialTheme.typography.labelMedium)
                 }

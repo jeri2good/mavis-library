@@ -83,5 +83,14 @@ class ShelfScreenTest {
         assertTrue("scrolling back past the first book keeps going", moved.left > last.left)
     }
 
-    private fun book(id: Int) = Book("gutenberg:$id", BookSource.GUTENBERG, "$id", "Book $id", listOf("Author"), null, emptyList(), null, listOf("en"), null, null)
+    @Test fun eachBookShowsItsOwnAuthors() {
+        show(ShelfUiState(loading = false, books = listOf(book(1, listOf("Jane Austen")), book(2, listOf("Herman Melville")), book(3, listOf("Karl Marx", "Friedrich Engels")))))
+        compose.onAllNodesWithTag("shelf_book_gutenberg:1").onFirst().assertContentDescriptionEquals("Book 1, Jane Austen")
+        compose.onAllNodesWithTag("shelf_book_gutenberg:2").onFirst().assertContentDescriptionEquals("Book 2, Herman Melville")
+        compose.onAllNodesWithTag("shelf_book_gutenberg:3").onFirst().assertContentDescriptionEquals("Book 3, Karl Marx, Friedrich Engels")
+        compose.onAllNodesWithText("Herman Melville", useUnmergedTree = true).onFirst().assertExists()
+    }
+
+    private fun book(id: Int, authors: List<String> = listOf("Author")) =
+        Book("gutenberg:$id", BookSource.GUTENBERG, "$id", "Book $id", authors, null, emptyList(), null, listOf("en"), null, null)
 }

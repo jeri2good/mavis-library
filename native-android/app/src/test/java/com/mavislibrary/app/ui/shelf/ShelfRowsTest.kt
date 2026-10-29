@@ -99,6 +99,40 @@ class ShelfRowsTest {
         (1..50).forEach { assertTrue(bookHeight("gutenberg:$it").value in 128f..148f) }
     }
 
+    @Test fun coverlessBooksAndSitesGetVariedLeatherPerKey() {
+        assertTrue("8+ leather tones", Leather.entries.size >= 8)
+        assertEquals(leatherOf("gutenberg:84"), leatherOf("gutenberg:84"))
+        val books = (1..12).map { leatherOf("gutenberg:$it") }
+        assertTrue("neighbouring keys spread over the palette: $books", books.toSet().size >= 6)
+        assertTrue("never three of a kind in a row", books.windowed(3).none { it.toSet().size == 1 })
+        val sites = listOf("s1", "s2", "s3", "s4", "s5", "s6").map(::leatherOf)
+        assertTrue("sites vary too: $sites", sites.toSet().size >= 3)
+        assertEquals(Leather.entries.toSet(), (1..400).map { leatherOf("openlibrary:OL${it}W") }.toSet())
+    }
+
+    /** Fake measure: every character is 0.6 × the font size wide. */
+    private val mono = { s: String, size: Float -> s.length * size * .6f }
+
+    @Test fun coverTitlesWrapByWordAndShrinkToFit() {
+        assertEquals(FittedText(listOf("Frankenstein"), 9f), fitText("Frankenstein", 70f, 4, listOf(14f, 13f, 12f, 11f, 10f, 9f), mono))
+        assertEquals(FittedText(listOf("Pride and", "Prejudice"), 12f), fitText("Pride and Prejudice", 70f, 4, listOf(14f, 13f, 12f, 11f, 10f, 9f), mono))
+        listOf("The Adventures of Sherlock Holmes", "Alice's Adventures in Wonderland", "Mary Wollstonecraft Shelley", "A Tale of Two Cities").forEach { title ->
+            val fitted = fitText(title, 80f, 4, listOf(14f, 13f, 12f, 11f, 10f, 9f), mono)
+            assertEquals("whole words only: $fitted", title, fitted.lines.joinToString(" "))
+            assertTrue(fitted.lines.size <= 4)
+            fitted.lines.forEach { assertTrue("$it fits", mono(it, fitted.sizeSp) <= 80f) }
+        }
+    }
+
+    @Test fun coverTitlesEllipsizeOnlyAsALastResort() {
+        val word = fitText("Supercalifragilisticexpialidocious", 70f, 4, listOf(10f, 9f), mono)
+        assertEquals(9f, word.sizeSp)
+        assertTrue(word.lines.single().endsWith("…"))
+        assertTrue(mono(word.lines.single(), 9f) <= 70f)
+        assertEquals(FittedText(listOf("a", "b…"), 9f), fitText("a b c d e f g h", 12f, 2, listOf(10f, 9f), mono))
+        assertTrue(fitText("  ", 70f, 2, listOf(10f, 9f), mono).lines.isEmpty())
+    }
+
     private fun story(id: String) = FeedStory(TechItem(id = id, title = id, url = "https://s1.example/$id", source = "s1"), 1L)
     private fun site(id: String, name: String) = FeedSource(id, name, "https://$id.example/feed", "https://$id.example", 0L)
     private fun book(id: Int) = Book("gutenberg:$id", BookSource.GUTENBERG, "$id", "Book $id", listOf("Author"), null, emptyList(), null, listOf("en"), null, null)

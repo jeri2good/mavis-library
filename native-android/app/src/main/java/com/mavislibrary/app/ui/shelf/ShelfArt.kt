@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,17 +24,17 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,6 +68,23 @@ internal fun spread(key: String): Int {
 
 /** Stable 0..359 hue from a key, so a book or site keeps its colour. */
 internal fun hueOf(key: String) = Math.floorMod(spread(key), 360).toFloat()
+
+/** Leather bindings for books without a cover (and site books): lit top colour, shaded bottom colour. */
+internal enum class Leather(val top: Color, val bottom: Color) {
+    OXBLOOD(Color(0xFF6E2026), Color(0xFF3A0E12)),
+    NAVY(Color(0xFF263A5E), Color(0xFF111C30)),
+    FOREST(Color(0xFF2A4E35), Color(0xFF13281A)),
+    MUSTARD(Color(0xFF9C7526), Color(0xFF574011)),
+    TEAL(Color(0xFF22595B), Color(0xFF0F3133)),
+    BROWN(Color(0xFF6E4829), Color(0xFF3A2413)),
+    PLUM(Color(0xFF5C2B50), Color(0xFF32152B)),
+    CHARCOAL(Color(0xFF424244), Color(0xFF1C1C1E)),
+    TAN(Color(0xFF8C6743), Color(0xFF4F371E)),
+    SLATE(Color(0xFF3A5570), Color(0xFF1B2B3B)),
+}
+
+/** The binding a key always gets. */
+internal fun leatherOf(key: String) = Leather.entries[Math.floorMod(spread(key), Leather.entries.size)]
 
 /** Books aren't all the same height; the key decides, so a book is always the same size. */
 internal fun bookHeight(key: String): Dp = (128 + Math.floorMod(spread(key) / 360, 21)).dp
@@ -168,11 +186,9 @@ internal fun ShelfBook(book: Book, onClick: () -> Unit, onLongClick: (() -> Unit
         modifier = Modifier.testTag("shelf_book_${book.key}"),
     ) {
         ClothCover(book.key) {
-            Text(book.title, color = Color(0xFFF3E7CF), textAlign = TextAlign.Center, maxLines = 5, overflow = TextOverflow.Ellipsis,
-                style = titleStyle(book.title))
+            FitText(book.title, TitleStyle, Cream, maxLines = 4, sizes = TITLE_SIZES)
             Spacer(Modifier.height(6.dp))
-            Text(book.authorLine, color = Gilt, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 10.sp, lineHeight = 12.sp))
+            FitText(book.authorLine, AuthorStyle, Gilt, maxLines = 2, sizes = AUTHOR_SIZES)
         }
         if (book.coverUrl != null) AsyncImage(book.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
     }
@@ -198,18 +214,63 @@ internal fun SiteShelfBook(site: SiteBook, onClick: () -> Unit) {
                 else SubcomposeAsyncImage(icon, contentDescription = null, modifier = Modifier.size(22.dp), loading = { letter() }, error = { letter() })
             }
             Spacer(Modifier.height(8.dp))
-            Text(site.name, color = Color(0xFFF3E7CF), textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, lineHeight = 16.sp))
+            FitText(site.name, TitleStyle, Cream, maxLines = 3, sizes = TITLE_SIZES)
         }
         if (site.unread > 0) Ribbon(if (site.unread > 99) "99+" else "${site.unread}", Modifier.align(Alignment.TopEnd).padding(end = 8.dp))
     }
 }
 
-/** Long single words (Frankenstein) get a smaller size so they don't break mid-word on a narrow cover. */
-private fun titleStyle(title: String): TextStyle {
-    val long = (title.split(' ').maxOfOrNull { it.length } ?: 0) > 9
-    return TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = if (long) 11.sp else 13.sp,
-        lineHeight = if (long) 14.sp else 16.sp, hyphens = Hyphens.Auto)
+private val Cream = Color(0xFFF3E7CF)
+private val TitleStyle = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold)
+private val AuthorStyle = TextStyle(fontFamily = FontFamily.Serif)
+private val TITLE_SIZES = listOf(14f, 13f, 12f, 11f, 10f, 9f)
+private val AUTHOR_SIZES = listOf(10f, 9f, 8f)
+/** Text width on a cover: the book minus ClothCover's side padding. */
+private val COVER_TEXT_WIDTH = BOOK_WIDTH - 18.dp
+
+/** Cover text lines and the size they fit at. */
+internal data class FittedText(val lines: List<String>, val sizeSp: Float)
+
+/**
+ * Wraps [text] at spaces only (never mid-word), at the largest of [sizes] where every word fits [maxWidth] and the
+ * result is at most [maxLines]. Only when even the smallest size can't fit does it cut words or the last line with "…".
+ */
+internal fun fitText(text: String, maxWidth: Float, maxLines: Int, sizes: List<Float>, width: (String, Float) -> Float): FittedText {
+    val words = text.trim().split(Regex("\\s+")).filter(String::isNotEmpty)
+    fun clip(s: String, size: Float): String {
+        if (width(s, size) <= maxWidth) return s
+        var cut = s
+        while (cut.isNotEmpty() && width("${cut.trimEnd()}…", size) > maxWidth) cut = cut.dropLast(1)
+        return "${cut.trimEnd()}…"
+    }
+    fun wrap(words: List<String>, size: Float): List<String> = buildList {
+        var line = ""
+        words.forEach { word ->
+            val joined = if (line.isEmpty()) word else "$line $word"
+            if (line.isEmpty() || width(joined, size) <= maxWidth) line = joined else { add(line); line = word }
+        }
+        if (line.isNotEmpty()) add(line)
+    }
+    sizes.forEach { size ->
+        if (words.all { width(it, size) <= maxWidth }) wrap(words, size).takeIf { it.size <= maxLines }?.let { return FittedText(it, size) }
+    }
+    val size = sizes.last()
+    val lines = wrap(words.map { clip(it, size) }, size)
+    if (lines.size <= maxLines) return FittedText(lines, size)
+    val kept = lines.take(maxLines)
+    return FittedText(kept.dropLast(1) + clip("${kept.last()} ${lines[maxLines]}", size).let { if (it.endsWith("…")) it else "$it…" }, size)
+}
+
+/** Cover text fitted by [fitText]; the lines are laid out exactly as measured. */
+@Composable
+private fun FitText(text: String, style: TextStyle, color: Color, maxLines: Int, sizes: List<Float>) {
+    val measurer = rememberTextMeasurer(cacheSize = 16)
+    val maxWidth = with(LocalDensity.current) { COVER_TEXT_WIDTH.toPx() }
+    val fitted = remember(text, maxWidth) {
+        fitText(text, maxWidth, maxLines, sizes) { s, size -> measurer.measure(s, style.copy(fontSize = size.sp), softWrap = false, maxLines = 1).size.width.toFloat() }
+    }
+    Text(fitted.lines.joinToString("\n"), color = color, textAlign = TextAlign.Center, softWrap = false, maxLines = maxLines,
+        style = style.copy(fontSize = fitted.sizeSp.sp, lineHeight = (fitted.sizeSp * 1.22f).sp))
 }
 
 internal fun faviconUrl(siteUrl: String): String? = runCatching {
@@ -254,9 +315,9 @@ private fun BookBody(
 
 @Composable
 private fun ClothCover(key: String, content: @Composable ColumnScope.() -> Unit) {
-    val hue = hueOf(key)
+    val leather = leatherOf(key)
     Column(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.hsv(hue, .45f, .46f), Color.hsv(hue, .55f, .27f))))
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(leather.top, leather.bottom)))
             .drawBehind {
                 val inset = 10.dp.toPx(); val w = 1.dp.toPx()
                 listOf(inset, inset + 3.dp.toPx(), size.height - inset, size.height - inset - 3.dp.toPx()).forEach { y ->

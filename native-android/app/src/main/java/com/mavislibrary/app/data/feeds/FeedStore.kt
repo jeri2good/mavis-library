@@ -23,6 +23,7 @@ data class FeedSource(
     val id: String, val name: String, val feedUrl: String, val siteUrl: String, val addedAt: Long, val enabled: Boolean = true,
     val podcast: String = SitePodcast.BRIEFING, val viewedAt: Long = 0,
     val topCount: Int = 1,
+    val source: String = "feed",
 ) {
     val seenSince get() = maxOf(addedAt, viewedAt)
 }

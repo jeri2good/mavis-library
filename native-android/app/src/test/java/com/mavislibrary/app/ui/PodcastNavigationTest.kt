@@ -35,9 +35,7 @@ class PodcastNavigationTest {
         waitFor("tab_sites"); compose.onNodeWithTag("tab_sites").performClick(); waitFor("sites")
         compose.onNodeWithText("Podcast subscriptions in Lounge").assertExists()
         compose.onNodeWithTag("briefing_now").assertDoesNotExist()
-        compose.onNodeWithTag("sites").performScrollToNode(hasText("Try World of AI"))
-        compose.onNodeWithText("Try World of AI").assertExists()
-        compose.onNodeWithTag("sites").performScrollToNode(hasTestTag("follow_site"))
+        compose.onNodeWithTag("add_site_card").assertExists()
         compose.onNodeWithTag("follow_site").performClick()
         compose.onNodeWithTag("site_address").assertExists()
     }

@@ -1,0 +1,2 @@
+- Read house context, three recent checkpoints, full shared contract, and existing Android feed/subscription/article/auth flows; verified reader-app branch and bundled web assets; backed up app/src to /tmp/reader-app-backup/src.
+- Feature 1: memory-safe testDebugUnitTest + assembleDebug passed; corrected source contract fixture and stale Sites navigation assertion; fake account transport passed.

@@ -124,7 +124,7 @@ class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Fac
                 container.secureStore.has(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE),
                 kidsPrefs().state) { sites, uid, owner, kids ->
                 // Reading/viewed timestamps do not change subscription rules.
-                listOf(sites.map { listOf(it.id, it.name, it.feedUrl, it.siteUrl) }, uid, owner, kids.enabled)
+                listOf(sites.map { listOf(it.id, it.name, it.feedUrl, it.siteUrl, it.source) }, uid, owner, kids.enabled)
             }.distinctUntilChanged().collect { com.mavislibrary.app.work.BriefingScheduler.syncSoon(this@MavisApp) }
         }
         com.mavislibrary.app.update.UpdateScheduler.schedule(this)

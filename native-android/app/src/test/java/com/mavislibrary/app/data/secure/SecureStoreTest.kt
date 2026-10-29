@@ -109,6 +109,66 @@ class SecureStoreTest {
         assertEquals("fixture-owner", store.read(Secret.OWNER_ACCESS_CODE))
     }
 
+    private var fixtures = 0
+    private lateinit var resetData: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>
+    private fun TestScope.resetFixture(code: Int, body: String): Triple<com.mavislibrary.app.data.api.AccountRepository, SecureStore, MutableList<okhttp3.Request>> {
+        val name = "reset${fixtures++}.preferences_pb"
+        resetData = PreferenceDataStoreFactory.create(scope = backgroundScope) { tmp.root.resolve(name) }
+        val store = SecureStore(resetData, JvmGcmCipher(), JvmBase64)
+        val seen = mutableListOf<okhttp3.Request>()
+        val api = com.mavislibrary.app.data.api.AccountsApi("https://site.example.org", execute = {
+            seen += it
+            com.mavislibrary.app.data.podcast.fakeResponse(it, body, code)
+        }, token = { store.read(Secret.ACCOUNT_TOKEN) })
+        return Triple(com.mavislibrary.app.data.api.AccountRepository(api, store) { true }, store, seen)
+    }
+
+    @Test
+    fun forgotPasswordSavesSessionLikeSignInAndReturnsNewCodeOnly() = runTest(UnconfinedTestDispatcher()) {
+        val (repo, store, seen) = resetFixture(200, """{"token":"reset-session","user":{"id":"user1","email":"member@example.org"},"recoveryCode":"fresh-recovery"}""")
+        assertEquals("fresh-recovery", repo.resetPassword(" member@example.org ", "old-recovery", "new-fixture-pass", "new-fixture-pass"))
+        assertEquals("/api/account/recover", seen.single().url.encodedPath)
+        assertNull(seen.single().header("Authorization"))
+        val body = okio.Buffer().apply { seen.single().body!!.writeTo(this) }.readUtf8()
+        assertEquals("""{"email":"member@example.org","password":"new-fixture-pass","recoveryCode":"old-recovery"}""", body)
+        assertEquals("reset-session", store.read(Secret.ACCOUNT_TOKEN))
+        assertEquals("user1", store.read(Secret.ACCOUNT_USER_ID))
+        assertTrue(repo.signedIn.first())
+        // Only the token and user id are stored; the recovery codes and password are never persisted.
+        assertEquals(2, resetData.data.first().asMap().size)
+        val raw = resetData.data.first().asMap().values.joinToString()
+        assertFalse(raw.contains("recovery") || raw.contains("new-fixture-pass"))
+    }
+
+    @Test
+    fun forgotPasswordMismatchShowsServerMessageAndSavesNothing() = runTest(UnconfinedTestDispatcher()) {
+        val (repo, store, _) = resetFixture(401, """{"error":"mismatch","message":"Email or recovery code is incorrect."}""")
+        val error = runCatching { repo.resetPassword("member@example.org", "wrong", "new-fixture-pass", "new-fixture-pass") }.exceptionOrNull()
+        assertEquals("Email or recovery code is incorrect.", error?.message)
+        assertEquals(401, (error as com.mavislibrary.app.data.api.ApiException).status)
+        assertNull(store.read(Secret.ACCOUNT_TOKEN))
+        val (bare, _, _) = resetFixture(401, "")
+        assertEquals("That email and recovery code don't match.", runCatching { bare.resetPassword("a@b.org", "x", "y", "y") }.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun forgotPasswordWeakPasswordShowsServerExplanation() = runTest(UnconfinedTestDispatcher()) {
+        val (repo, store, _) = resetFixture(400, """{"error":"weak_password","message":"Use at least 10 characters."}""")
+        val error = runCatching { repo.resetPassword("member@example.org", "old-recovery", "short", "short") }.exceptionOrNull() as com.mavislibrary.app.data.api.ApiException
+        assertEquals("weak_password", error.code)
+        assertEquals("Use at least 10 characters.", error.message)
+        assertNull(store.read(Secret.ACCOUNT_TOKEN))
+    }
+
+    @Test
+    fun forgotPasswordConfirmMismatchNeverSends() = runTest(UnconfinedTestDispatcher()) {
+        val (repo, store, seen) = resetFixture(200, """{"token":"t","user":{"id":"u","email":"e@x.org"},"recoveryCode":"c"}""")
+        assertEquals("Passwords don't match.", runCatching { repo.resetPassword("member@example.org", "old", "new-fixture-pass", "new-fixture-pasz") }.exceptionOrNull()?.message)
+        assertTrue(runCatching { repo.resetPassword("member@example.org", " ", "p", "p") }.isFailure)
+        assertTrue(seen.isEmpty())
+        assertNull(store.read(Secret.ACCOUNT_TOKEN))
+    }
+
     @Test
     fun refusedEncryptionStoresNothing() = runTest(UnconfinedTestDispatcher()) {
         val ds = dataStore()

@@ -45,9 +45,14 @@ class PodcastNavigationTest {
         compose.onNodeWithTag("account_email").assertExists()
         compose.onNodeWithText("Create account").performScrollTo().performClick()
         compose.onNodeWithTag("account_submit").assertIsNotEnabled()
-        compose.onNodeWithText("Forgot password").performScrollTo().performClick()
+        compose.onNodeWithTag("account_mode_signin").performScrollTo().performClick()
+        compose.onNodeWithText("Forgot password?").performScrollTo().performClick()
         compose.onNodeWithTag("account_recovery").assertExists()
         compose.onNodeWithText("New password").assertExists()
+        compose.onNodeWithTag("account_confirm").assertExists()
+        compose.onNodeWithText("Reset password").assertExists()
+        compose.onNodeWithText("No recovery code? Ask the owner to reset your password.").assertExists()
+        compose.onNodeWithTag("account_submit").assertIsNotEnabled()
         compose.onNodeWithTag("owner_approvals").assertDoesNotExist()
     }
     @Test fun httpsShareRequiresSignInAndKidsNeverReachLounge() {

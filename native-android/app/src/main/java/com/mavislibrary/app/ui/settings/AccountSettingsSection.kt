@@ -1,5 +1,11 @@
 package com.mavislibrary.app.ui.settings
 
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.os.PersistableBundle
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -32,8 +38,10 @@ fun AccountSettingsSection(container: AppContainer, hasOwnerCode: Boolean) {
     var mode by remember { mutableStateOf("signin") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var recovery by remember { mutableStateOf<String?>(null) }
+    var recovered by remember { mutableStateOf(false) }
     var user by remember { mutableStateOf<AccountUser?>(null) }
     var status by remember { mutableStateOf<SubscriptionStatus?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -67,25 +75,31 @@ fun AccountSettingsSection(container: AppContainer, hasOwnerCode: Boolean) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(enabled = !busy, onClick = { refresh++ }) { Text("Refresh account") }
                 TextButton(enabled = !busy, onClick = { act {
-                    container.accounts.signOut(); user = null; status = null; recovery = null; email = ""; password = ""; code = ""
+                    container.accounts.signOut(); user = null; status = null; recovery = null; email = ""; password = ""; confirm = ""; code = ""; mode = "signin"
                     message = "Signed out on this device. Owner access is unchanged."
                 } }) { Text("Sign out") }
             }
         } else {
+            val recover = mode == "recover"
             Text(when (mode) { "signup" -> "Create an account. Save the recovery code shown once afterward—there is no reset email."; "recover" -> "Use your saved recovery code and choose a new password. Your old code will be replaced."; else -> "Sign in for subscriber AI features and Podcast Lounge." })
             OutlinedTextField(email, { email = it.take(254) }, label = { Text("Email") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false), modifier = Modifier.fillMaxWidth().testTag("account_email"))
-            if (mode == "recover") OutlinedTextField(code, { code = it.take(200) }, label = { Text("Recovery code") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().testTag("account_recovery"))
-            OutlinedTextField(password, { password = it.take(1024) }, label = { Text(if (mode == "recover") "New password" else "Password") }, singleLine = true,
+            if (recover) OutlinedTextField(code, { code = it.take(200) }, label = { Text("Recovery code") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false), modifier = Modifier.fillMaxWidth().testTag("account_recovery"))
+            OutlinedTextField(password, { password = it.take(1024) }, label = { Text(if (recover) "New password" else "Password") }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false), modifier = Modifier.fillMaxWidth().testTag("account_password"))
-            Button(enabled = !busy && email.isNotBlank() && password.isNotBlank() && (mode != "recover" || code.isNotBlank()), onClick = { act {
-                recovery = container.accounts.authenticate(mode, email, password, code)
-                password = ""; code = ""; refresh++
+            if (recover) OutlinedTextField(confirm, { confirm = it.take(1024) }, label = { Text("Confirm new password") }, singleLine = true,
+                isError = confirm.isNotEmpty() && confirm != password, supportingText = if (confirm.isNotEmpty() && confirm != password) { { Text("Passwords don't match.") } } else null,
+                visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false), modifier = Modifier.fillMaxWidth().testTag("account_confirm"))
+            Button(enabled = !busy && email.isNotBlank() && password.isNotBlank() && (!recover || code.isNotBlank() && confirm.isNotBlank()), onClick = { act {
+                if (recover) { recovery = container.accounts.resetPassword(email, code, password, confirm); recovered = true }
+                else { recovery = container.accounts.authenticate(mode, email, password, code); recovered = false }
+                password = ""; confirm = ""; code = ""; refresh++
             } }, modifier = Modifier.testTag("account_submit")) { Text(if (busy) "Working…" else when (mode) { "signup" -> "Create account"; "recover" -> "Reset password"; else -> "Sign in" }) }
+            if (recover) Text("No recovery code? Ask the owner to reset your password.", style = MaterialTheme.typography.bodySmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("signin" to "Sign in", "signup" to "Create account", "recover" to "Forgot password").filter { it.first != mode }.forEach { (action, label) ->
-                    TextButton(enabled = !busy, onClick = { mode = action; password = ""; code = ""; message = null }) { Text(label) }
+                when (mode) { "signin" -> listOf("recover" to "Forgot password?", "signup" to "Create account"); "signup" -> listOf("signin" to "Sign in"); else -> listOf("signin" to "Back to sign in") }.forEach { (action, label) ->
+                    TextButton(enabled = !busy, onClick = { mode = action; password = ""; confirm = ""; code = ""; message = null }, modifier = Modifier.testTag("account_mode_$action")) { Text(label) }
                 }
             }
         }
@@ -117,10 +131,18 @@ fun AccountSettingsSection(container: AppContainer, hasOwnerCode: Boolean) {
     if (hasOwnerCode) OwnerApprovalsSection(container)
     recovery?.let { value ->
         AlertDialog(onDismissRequest = {}, properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn, dismissOnBackPress = false, dismissOnClickOutside = false), title = { Text("Save your recovery code") }, text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Shown once. Write it down privately. It replaces any previous code and is the only way to reset a forgotten password.")
+            Text(if (recovered) "Save this. Your old recovery code no longer works." else "Shown once. Write it down privately. It replaces any previous code and is the only way to reset a forgotten password.")
             Text(value, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("new_recovery_code"))
-        } }, confirmButton = { TextButton(onClick = { recovery = null }) { Text("I've saved it") } })
+        } }, dismissButton = { TextButton(onClick = { copySensitive(context, value) }, modifier = Modifier.testTag("copy_recovery_code")) { Text("Copy") } },
+            confirmButton = { TextButton(onClick = { recovery = null; recovered = false }) { Text("I've saved it") } })
     }
+}
+
+/** Clipboard only (never app storage); flagged sensitive so Android 13+ hides it from the clipboard preview. */
+private fun copySensitive(context: Context, value: String) {
+    val clip = ClipData.newPlainText("Recovery code", value)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
+    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(clip)
 }
 
 @OptIn(ExperimentalLayoutApi::class)

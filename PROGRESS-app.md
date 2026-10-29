@@ -2,3 +2,4 @@
 - Feature 1: memory-safe testDebugUnitTest + assembleDebug passed; corrected source contract fixture and stale Sites navigation assertion; fake account transport passed.
 - Feature 2: authenticated preview fallback and three-headline page card; fake local-feed/page/422 cases passed with full unit suite and APK assembly.
 - Feature 3 (Devin takeover): reviewed Codex's uncommitted page-source edits (cache key by source, authenticated /api/podsub/page via PodcastApi gateway, PageTest); memory-safe build + full unit suite green.
+- Feature 4: native Reader (ReaderScreen/ReaderViewModel, /api/podsub/article via PodcastApi gateway, Coil hero, serif body, Aa sheet S/M/L/XL + Light/Sepia/Dark in DataStore, Listen/Share/Original/Back, auto WebView fallback with 'Showing original page', kids gate); ReaderTest added; green (one earlier run hit a Robolectric ShareAndroidTest font-copy flake that passed on rerun).

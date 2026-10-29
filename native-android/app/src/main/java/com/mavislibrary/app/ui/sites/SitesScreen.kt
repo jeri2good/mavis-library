@@ -38,6 +38,7 @@ import com.mavislibrary.app.data.feeds.FeedSource
 import com.mavislibrary.app.data.feeds.FeedStory
 import com.mavislibrary.app.data.feeds.SitePodcast
 import com.mavislibrary.app.data.podcast.PodcastDraft
+import com.mavislibrary.app.ui.reader.ReaderTarget
 import com.mavislibrary.app.work.BriefingScheduler
 import java.net.URI
 import java.time.Instant
@@ -373,7 +374,7 @@ fun SiteScreen(
     id: String,
     onBack: () -> Unit,
     onPodcast: (PodcastDraft) -> Unit,
-    onOpenArticle: (PodcastDraft) -> Unit,
+    onOpenReader: (ReaderTarget) -> Unit,
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -506,7 +507,7 @@ fun SiteScreen(
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(
-                                    onClick = { onOpenArticle(PodcastDraft.article(story.item.title, story.item.url)) },
+                                    onClick = { onOpenReader(ReaderTarget(story.item.title, story.item.url, source.name, source.id, story.item.id)) },
                                     modifier = Modifier.testTag("read_story_${story.item.id}"),
                                 ) {
                                     Text("Read")

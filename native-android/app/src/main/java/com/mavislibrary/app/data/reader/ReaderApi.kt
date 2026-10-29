@@ -20,12 +20,27 @@ import java.net.URLEncoder
 }
 @Serializable data class PagePost(val id: String, val title: String, val link: String, val publishedAt: Long)
 @Serializable data class PagePosts(val posts: List<PagePost>)
+@Serializable data class ReaderArticle(val title: String = "", val byline: String? = null, val siteName: String? = null,
+    val image: String? = null, val text: String, val words: Int = 0, val readMin: Int = 1, val url: String = "") {
+    fun validated(requested: String): ReaderArticle {
+        require(text.isNotBlank()) { "Article unavailable" }
+        return copy(url = runCatching { UrlPolicy.normalize(url) }.getOrElse { requested },
+            image = image?.takeIf { it.startsWith("https://") }, readMin = readMin.coerceAtLeast(1))
+    }
+    val paragraphs get() = text.split(Regex("\n\\s*\n")).map(String::trim).filter(String::isNotEmpty)
+}
 interface ReaderService {
     suspend fun preview(url: String): SitePreview
     suspend fun page(url: String): List<PagePost> = error("Page loading unavailable")
+    suspend fun article(url: String): ReaderArticle = error("Article unavailable")
 }
 /** Reuses the podcast gateway's adult gate, HTTP client and account/owner headers. */
 class ReaderApi(private val gateway: PodcastApi) : ReaderService {
+    override suspend fun article(url: String): ReaderArticle {
+        val normalized = UrlPolicy.normalize(url)
+        return podcastJson.decodeFromString<ReaderArticle>(
+            gateway.request("/api/podsub/article?url=" + URLEncoder.encode(normalized, "UTF-8"))).validated(normalized)
+    }
     override suspend fun page(url: String) = podcastJson.decodeFromString<PagePosts>(
         gateway.request("/api/podsub/page?url=" + URLEncoder.encode(UrlPolicy.normalize(url), "UTF-8"))).posts.take(30).map {
             it.copy(link = UrlPolicy.normalize(it.link))

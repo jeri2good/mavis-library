@@ -211,6 +211,13 @@ fun MavisRoot(
             nav.navigate("article") { launchSingleTop = true }
         }
     }
+    var readerTarget by remember { mutableStateOf<com.mavislibrary.app.ui.reader.ReaderTarget?>(null) }
+    val openReader: (com.mavislibrary.app.ui.reader.ReaderTarget) -> Unit = { target ->
+        if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) {
+            readerTarget = target
+            nav.navigate("reader") { launchSingleTop = true }
+        }
+    }
     // "Podcast ready" notifications open the Lounge, with Listen behind it for Back.
     LaunchedEffect(widgetRequest, loadedKids.enabled) {
         if (widgetDestination == com.mavislibrary.app.MainActivity.LOUNGE && !loadedKids.enabled) {
@@ -345,7 +352,12 @@ fun MavisRoot(
                 }
                 composable("site/{id}") { route ->
                     com.mavislibrary.app.ui.sites.SiteScreen(container, route.arguments?.getString("id").orEmpty(),
-                        onBack = { nav.popBackStack() }, onPodcast = openLounge, onOpenArticle = openArticle)
+                        onBack = { nav.popBackStack() }, onPodcast = openLounge, onOpenReader = openReader)
+                }
+                composable("reader") {
+                    readerTarget?.takeIf { com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled) }?.let {
+                        com.mavislibrary.app.ui.reader.ReaderScreen(container, it, onBack = { nav.popBackStack() }, onPodcast = openLounge, onOpenOriginal = openArticle)
+                    } ?: LaunchedEffect(Unit) { nav.popBackStack() }
                 }
                 composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice, onLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) }) }
                 composable("article") {

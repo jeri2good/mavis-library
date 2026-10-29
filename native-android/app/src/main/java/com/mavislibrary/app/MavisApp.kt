@@ -91,6 +91,8 @@ class AppContainer(private val app: Application) {
         adult = { !app.kidsPrefs().state.first().enabled },
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) })
     fun readerApi() = com.mavislibrary.app.data.reader.ReaderApi(podcastApi())
+    val readerPrefs by lazy { com.mavislibrary.app.data.reader.ReaderPrefs(app.settingsDataStore) }
+    val readState by lazy { com.mavislibrary.app.data.reader.ReadStateStore(app.settingsDataStore) }
     fun podcastRepository() = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(), podcastSettings, BuildConfig.API_BASE, ::podcastAccountId)
     val briefingStore by lazy { com.mavislibrary.app.data.briefing.BriefingStore(app.settingsDataStore) }
     val podsubRepository by lazy { com.mavislibrary.app.data.podsub.PodsubRepository(

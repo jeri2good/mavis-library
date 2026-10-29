@@ -114,3 +114,48 @@ New or updated tests (19 new; the base was 390):
 - **Favicon**: the Sites tab has no favicon loading. The shelf requests `https://<host>/favicon.ico` directly from the site, and the letter shows if that fails.
 - **Listen overflow**: the menu only links to the Lounge. Delete and download stay in the Lounge because they need the studio repository there.
 - **Being made "dusty"**: these records are translucent with a progress arc. The dust speckle is only drawn on failed records.
+
+---
+
+# BRIEF-080b follow-up (Hermes review of /tmp/shelf.png and /tmp/records.png)
+
+Commits:
+- `2284820`: Shelf, items 1 to 4 and 7.
+- `294b43f`: Records, items 1, 5 and 6.
+
+Full build command from the brief (`testDebugUnitTest assembleDebug`, memory-limited flags): **415 tests, 0 failed, 0 skipped. BUILD SUCCESSFUL.** `app-debug.apk` was built. That is 409 before plus 6 new tests. `ShareAndroidTest` was not touched and passed on the first run.
+
+Both PNGs were re-rendered to `/tmp/shelf.png` and `/tmp/records.png`. I used a temporary Robolectric native-graphics test inside the app's real `MavisTheme(Look.MIDNIGHT)` and `Surface`, then deleted it; it is not committed.
+
+**What I found first.** I re-rendered the code at `d300bdf` before changing anything:
+- The original PNGs were made by a harness that didn't wrap the screens in `MavisTheme`, and it had its own fake data.
+- Items 1 and 5 are caused by that harness, not by the app. Inside the real theme the headers were already cream, and the same strings showed no stray "a".
+- Item 3 was already in the code but had never been checked in a render.
+- Item 2 was partly fixed by `9720c03`, which spread the hues so colours were no longer all the same purple. The brief asks for a leather palette, so I made that change anyway.
+
+1. **Dark headers.** The black text came from the old render having no theme: `Text` fell back to black `LocalContentColor`. In the app, `Scaffold` provides `onBackground`. "Your shelf" (ShelfScreen) and the record headline (RecordSelector) now set `MaterialTheme.colorScheme.onSurface` explicitly, so they don't depend on a parent. Up next rows also use onSurface and onSurfaceVariant.
+2. **Leather tones.** New `Leather` enum with 10 tones: oxblood, navy, forest, mustard, teal, brown, plum, charcoal, tan and slate. `leatherOf(key)` picks a tone with the well-spread hash. `ClothCover` uses it, so books without covers and site books both get it. Test: ≥8 tones, the same key always gets the same tone, gutenberg:1–12 use ≥6 tones with never three alike in a row, sites vary, and all 10 tones are used.
+3. **Covers.** `ShelfBook` already draws the real cover (Coil `AsyncImage`, Crop) over the cloth. The spine edge, lighting and drop shadow are drawn on top of it.
+   - Verified in the new render: "The Odyssey" uses a local fake cover image (`file://` PNG) and stands on the plank with its spine edge.
+   - Why the cover never showed before: Robolectric can't run Android's `ImageDecoder`, so the harness's Coil loader uses `imageDecoderEnabled(false)` (BitmapFactory). That was a test-only problem; the app code is unchanged.
+4. **Mid-word breaks.** New pure `fitText()` in ShelfArt, drawn by `FitText` using `rememberTextMeasurer`.
+   - It tries 14→9sp for titles and 10→8sp for authors, wrapping only at spaces. It uses the largest size where every word fits on one line and the result fits in max lines (4 for titles, 2 for authors, 3 for site names).
+   - Only when the smallest size still doesn't fit does it cut the word or the last line with "…".
+   - The lines are drawn exactly as measured (`softWrap = false`), so Android can't break them again. The old `Hyphens.Auto` guess is gone.
+   - In the render: "Frankenstein" is on one line, and "Moby / Dick" and "Pride and / Prejudice" wrap at spaces. "Mary Wollstonecraft S…" is the last-resort ellipsis: the author needs 3 lines at 8sp and only 2 are allowed.
+   - Tests use a fake fixed-width measure: shrink-to-fit sizes, whole words only, and last-resort ellipsis for one long word and for too many lines.
+5. **Stray "a".** Not reproducible.
+   - `episodeHeadline`, `episodeSources` and `episodeDetails` never append anything, and the server's `briefingTitle` only adds " + N more" or "…".
+   - Rendering exactly "Thu, Oct 29 · Google Expands AI Mode Ads + 2 more" with sites ["Future Tools"], themed and unthemed, shows no "a".
+   - The old harness is deleted, so I can't prove its cause. Most likely it added the fake episode id ("a") to its fake title and site strings to keep them unique.
+   - Regression test `briefingHeadlineAndSubtitleHaveNoStrayCharacters` pins the exact headline ("Google Expands AI Mode Ads + 2 more") and subtitle ("Today 6:00 AM · Future Tools · 10 min · Deep dive"), both from the helpers and as rendered in `record_headline` and `record_subtitle`.
+6. **Empty bottom half.** There is now an "Up next" heading and compact rows under the Play button (`record_up_next`, `record_next_<id>`).
+   - Each row has a small record in the episode's label colour, the headline on one line, then date · length. Being-made episodes show the stage instead of the length, and failed ones show "Couldn't be made".
+   - Each row is a ≥52dp target with a "Select" click label. Tapping a row animates the crate to that record.
+   - Order: the episodes after the centred one first, then those before it (`upNextRows`). The list follows the selected chip.
+   - Tests: the helper's order and indexes; tapping n2 makes it the centred record and removes it from the list; the stage and length are shown.
+7. **Authors.** `ShelfBook` uses each book's own `authorLine` (`authors.joinToString(", ")`) for both the cover and the content description. "Jane Austen" everywhere was only the old harness's fake data. The new render has real per-book authors. New test `eachBookShowsItsOwnAuthors` covers single and multiple authors.
+
+Notes:
+- Two different keys can share a tone (10 tones). For example, Moby Dick and Frankenstein are both plum in the render. That is expected with a fixed palette.
+- The render still can't show drop shadows (a renderer limit). I haven't checked it on a phone; Hermes owns that.

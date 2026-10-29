@@ -22,6 +22,7 @@ object SitePodcast {
 data class FeedSource(
     val id: String, val name: String, val feedUrl: String, val siteUrl: String, val addedAt: Long, val enabled: Boolean = true,
     val podcast: String = SitePodcast.BRIEFING, val viewedAt: Long = 0,
+    val topCount: Int = 1,
 ) {
     val seenSince get() = maxOf(addedAt, viewedAt)
 }
@@ -53,6 +54,10 @@ class FeedStore(private val store: DataStore<Preferences>, private val clock: ()
     suspend fun setPodcast(id: String, mode: String) {
         require(mode in SitePodcast.all) { "Choose how this site becomes podcasts." }
         change { all -> all.map { if (it.id == id) it.copy(podcast = mode) else it } }
+    }
+    suspend fun setTopCount(id: String, count: Int) {
+        require(count in 0..5) { "Choose Top N between 1 and 5 (or 0 for Off)." }
+        change { all -> all.map { if (it.id == id) it.copy(topCount = count) else it } }
     }
     suspend fun markViewed(id: String) = clock().let { now -> change { all -> all.map { if (it.id == id) it.copy(viewedAt = now) else it } } }
     suspend fun remove(id: String) = change { all -> all.filterNot { it.id == id } }

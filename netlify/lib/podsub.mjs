@@ -4,6 +4,7 @@ import { readForUpdate, writeIfUnchanged, getUser } from './accounts.mjs';
 import { isOwnerEmail } from './access.mjs';
 import { createPodcast, podcastUsage, studioConfig, studioJson, publicJob, terminalStatus, releaseSlot, refundFailedPodcast, deletePodcastRow, rememberPodcast, lastKnownPodcast, podcastQueue, withQueue } from './podcast.mjs';
 import { fetchFeed, feedUrl } from './podsub-feed.mjs';
+import { fetchPage, pageLinks, fetchArticle } from './podsub-page.mjs';
 import { DAYS, nextRunAt, localDate } from './podsub-time.mjs';
 import { env } from './shared.mjs';
 
@@ -15,7 +16,8 @@ export function validatePodsub(b) {
   if (!object(b, ['version', 'sites', 'schedule', 'engine', 'rank', 'keepDays', 'notify']) || b.version !== 1 || !Array.isArray(b.sites) || b.sites.length > 12) bad();
   const ids = new Set();
   for (const site of b.sites) {
-    if (!object(site, ['id', 'name', 'feedUrl', 'siteUrl', 'mode', 'count', 'delivery', 'priority'])
+    if (!object(site, ['id', 'name', 'feedUrl', 'siteUrl', 'mode', 'count', 'delivery', 'priority', 'source'])
+      || (site.source !== undefined && !['feed', 'page'].includes(site.source))
       || !str(site.id, 100) || !/^[\w-]+$/.test(site.id) || ids.has(site.id) || !str(site.name, 200)
       || !['off', 'top'].includes(site.mode) || !['briefing', 'separate'].includes(site.delivery) || !Number.isSafeInteger(site.priority)
       || (site.mode === 'top' && (!Number.isInteger(site.count) || site.count < 1 || site.count > 5))
@@ -30,7 +32,7 @@ export function validatePodsub(b) {
     || (b.keepDays !== undefined && (!Number.isInteger(b.keepDays) || b.keepDays < 1 || b.keepDays > 30))
     || !object(b.notify, ['telegram']) || typeof b.notify.telegram !== 'boolean') bad();
   try { new Intl.DateTimeFormat('en', { timeZone: s.timezone }).format(); } catch { bad(); }
-  return structuredClone({ ...b, keepDays: b.keepDays ?? 7 });
+  return structuredClone({ ...b, sites: b.sites.map(site => ({ ...site, source: site.source ?? 'feed' })), keepDays: b.keepDays ?? 7 });
 }
 export function defaultPodsub() {
   return { version: 1, sites: [], schedule: { enabled: false, readyBy: '08:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'], timezone: 'UTC' }, engine: 'auto', rank: 'newest', keepDays: 7, notify: { telegram: false }, nextRunAt: null, updatedAt: null };
@@ -106,7 +108,7 @@ async function notify(uid, doc, run, now, deadline) {
   } catch { /* Optional notification failure never fails generation. */ }
 }
 export const RETRY_MS = 5 * 60000;
-export async function runSubscription(uid, { now = Date.now(), dueKey, deadline = Date.now() + 24000, feed = fetchFeed, cfg = studioConfig(), checkAccess = eligible } = {}) {
+export async function runSubscription(uid, { now = Date.now(), dueKey, deadline = Date.now() + 24000, feed = fetchFeed, page = fetchPage, article = fetchArticle, cfg = studioConfig(), checkAccess = eligible } = {}) {
   const token = await acquireLock(uid);
   if (!token) throw problem(409, 'podsub_busy', 'A podcast subscription operation is already running.');
   const s = subStore();
@@ -121,11 +123,30 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
       const enabled = doc.sites.filter(site => site.mode === 'top').sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
       const sites = await Promise.all(enabled.map(async site => {
         try {
-          const [posts, record] = await Promise.all([feed(site.feedUrl, { timeout: Math.max(1, Math.min(6000, deadline - Date.now())) }), s.get(`podsub-seen/${uid}/${site.id}`, { type: 'json' })]);
+          const [posts, record] = await Promise.all([(site.source === 'page' ? page(site.feedUrl, { timeout: Math.max(1, Math.min(6000, deadline - Date.now())) }).then(p => pageLinks(p.html, p.url)) : feed(site.feedUrl, { timeout: Math.max(1, Math.min(6000, deadline - Date.now())) })), s.get(`podsub-seen/${uid}/${site.id}`, { type: 'json' })]);
           const seen = record?.seen || [];
           // No relevance ranker configured: important deliberately falls back to newest.
           return { ...site, seen, posts: posts.sort((a, b) => b.publishedAt - a.publishedAt).slice(0, site.count).filter(p => !seen.includes(p.id)) };
         } catch { skip(site.id, 'feed_failed'); return { ...site, posts: [] }; }
+      }));
+      // Four workers share the run budget. Preserve 1.5 seconds for job admission.
+      const enrich = sites.flatMap(site => site.posts.filter(p => (site.source === 'page' || (p.text || '').length < 1500) && /^https:\/\//i.test(p.link || '')));
+      let cursor = 0;
+      await Promise.all(Array.from({ length: Math.min(4, enrich.length) }, async () => {
+        while (cursor < enrich.length) {
+          const timeout = Math.min(4000, deadline - Date.now() - 1500);
+          if (timeout <= 0) return;
+          const post = enrich[cursor++];
+          let timer;
+          try {
+            const full = await Promise.race([
+              Promise.resolve().then(() => article(post.link, { timeout })),
+              new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Article timeout')), timeout); }),
+            ]);
+            if (typeof full?.text === 'string' && full.text.length > (post.text || '').length) post.text = full.text;
+          } catch { /* A teaser is still useful when the original is unavailable. */ }
+          finally { clearTimeout(timer); }
+        }
       }));
       const planned = episodesFor(sites);
       for (const episode of planned) {

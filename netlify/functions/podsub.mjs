@@ -3,6 +3,7 @@ import { withCors } from '../lib/cors.mjs';
 import { requireAccess } from '../lib/access.mjs';
 import { subStore, unavailable } from '../lib/subs.mjs';
 import { podcastUsage } from '../lib/podcast.mjs';
+import { pageUrl, fetchPage, pageLinks, fetchArticle, previewSite } from '../lib/podsub-page.mjs';
 import { defaultPodsub, savePodsub, runs, runSubscription, limitRunNow, todayEpisodes, validUid } from '../lib/podsub.mjs';
 
 const handler = async req => {
@@ -12,6 +13,20 @@ const handler = async req => {
   const uid = access.owner ? 'owner' : access.user.id;
   const action = new URL(req.url).pathname.replace(/^\/api\/podsub\/?/, '');
   try {
+    if (['preview', 'article', 'page'].includes(action)) {
+      if (req.method !== 'GET') return fail(405, 'method_not_allowed', 'Use GET.');
+      let url;
+      try { url = pageUrl(new URL(req.url).searchParams.get('url')).href; }
+      catch { return fail(400, 'bad_request', 'Use a valid public HTTPS URL.'); }
+      try {
+        if (action === 'preview') return json(await previewSite(url));
+        if (action === 'article') return json({ ...await fetchArticle(url), url }, { cache: 'private, max-age=3600' });
+        const page = await fetchPage(url);
+        const posts = pageLinks(page.html, page.url).map(({ id, title, link, publishedAt }) => ({ id, title, link, publishedAt }));
+        if (!posts.length) return json({ code: 'no_articles' }, { status: 422 });
+        return json({ posts });
+      } catch { return json({ code: action === 'article' ? 'article_unavailable' : 'no_articles' }, { status: 422 }); }
+    }
     if (!action) {
       if (req.method === 'GET') {
         const doc = await subStore().get(`podsub/${uid}`, { type: 'json' }) || defaultPodsub();

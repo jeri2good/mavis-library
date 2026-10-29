@@ -49,6 +49,8 @@ const site = (id, more = {}) => ({ id, name: id, feedUrl: `https://example.com/$
 const doc = (sites = [], more = {}) => ({ version: 1, sites, schedule: { enabled: true, readyBy: '08:00', days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], timezone: 'America/New_York' }, engine: 'notebooklm', rank: 'newest', keepDays: 7, notify: { telegram: false }, ...more });
 const post = (id, time = 1) => ({ id, title: id, text: `Content for ${id}`, link: `https://example.com/${id}`, publishedAt: time });
 const deps = { feed: async () => [post('one')], checkAccess: async () => true };
+// Article enrichment is offline in legacy run fixtures as well as the new cases.
+deps.article = async () => { throw new Error('Fake article unavailable'); };
 const run = (uid, more = {}) => runSubscription(uid, { ...deps, ...more });
 const setup = async d => { const uid = randomUUID(); await savePodsub(uid, d); return uid; };
 const test = async (name, fn) => { await fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -57,6 +59,69 @@ const request = async (action = '', method = 'GET', body, token, owner = true, o
   return { status: res.status, body: res.status === 204 ? null : await res.json(), headers: res.headers };
 };
 try {
+  const readerUids = [];
+  await test('source accepts feed/page, defaults old documents to feed, and rejects unknown keys', () => {
+    for (const source of ['feed', 'page']) assert.equal(validatePodsub(doc([site('source', { source })])).sites[0].source, source);
+    assert.equal(validatePodsub(doc([site('legacy')])).sites[0].source, 'feed');
+    assert.throws(() => validatePodsub(doc([site('bad', { source: 'other' })])));
+    assert.throws(() => validatePodsub(doc([site('bad', { surprise: true })])));
+  });
+  await test('reader endpoints require access, validate URLs, return typed 422s and never touch quota', async () => {
+    const saved = globalThis.fetch, before = calls.length;
+    let html = '<article><h1>Reader title</h1><p>Full reader body with useful words.</p></article>';
+    globalThis.fetch = async (url, opts) => String(url).startsWith('https://93.184.216.34') ? new Response(html) : saved(url, opts);
+    try {
+      const quota = await podcastUsage('owner');
+      for (const action of ['preview', 'article', 'page']) {
+        assert.equal((await request(`${action}?url=https://93.184.216.34/story`, 'GET', undefined, null, false)).status, 401);
+        assert.equal((await request(`${action}?url=http://93.184.216.34/story`)).status, 400);
+        assert.equal((await request(`${action}?url=https://127.0.0.1/story`)).status, 400);
+        assert.equal((await request(action)).status, 400);
+        assert.equal((await request(`${action}?url=https://93.184.216.34/story`, 'POST')).status, 405);
+        assert.equal((await request(`${action}?url=https://93.184.216.34/story`, 'GET', undefined, null, true, 'https://evil.com')).status, 403);
+      }
+      const article = await request('article?url=https://93.184.216.34/story');
+      assert.equal(article.status, 200); assert.equal(article.body.title, 'Reader title'); assert.equal(article.body.url, 'https://93.184.216.34/story'); assert.equal(article.headers.get('cache-control'), 'private, max-age=3600');
+      html = '<main>' + [1, 2, 3].map(i => `<a href="/story-${i}">Story headline ${i}</a>`).join('') + '</main>';
+      const page = await request('page?url=https://93.184.216.34/news'); assert.equal(page.status, 200); assert.equal(page.body.posts.length, 3); assert.deepEqual(Object.keys(page.body.posts[0]).sort(), ['id', 'link', 'publishedAt', 'title']);
+      const preview = await request('preview?url=https://93.184.216.34/news'); assert.equal(preview.status, 200); assert.equal(preview.body.source, 'page');
+      html = '<html>No articles</html>';
+      for (const action of ['preview', 'article', 'page']) { const out = await request(`${action}?url=https://93.184.216.34/empty`); assert.equal(out.status, 422); assert.equal(out.body.code, action === 'article' ? 'article_unavailable' : 'no_articles'); }
+      assert.equal(calls.length, before); assert.equal((await podcastUsage('owner')).used, quota.used);
+    } finally { globalThis.fetch = saved; }
+  });
+  await test('runs upgrade a 200-character teaser, keep failed or shorter results, and skip long/non-HTTPS posts', async () => {
+    const uid = await setup(doc([site('enrich', { count: 5, delivery: 'briefing' })]));
+    readerUids.push(uid);
+    const teaser = 't'.repeat(200), fetched = [];
+    const out = await run(uid, { feed: async () => [
+      { ...post('upgrade', 5), text: teaser }, { ...post('failed', 4), text: teaser },
+      { ...post('shorter', 3), text: teaser }, { ...post('long', 2), text: 'l'.repeat(1500) },
+      { ...post('http', 1), text: teaser, link: 'http://example.com/http' },
+    ], article: async (url, opts) => { fetched.push(url); assert.ok(opts.timeout <= 4000); if (url.endsWith('/failed')) throw new Error('offline'); return { text: url.endsWith('/shorter') ? 'small' : 'FULL '.repeat(600) }; } });
+    assert.equal(out.status, 'ok'); assert.equal(out.episodes.length, 1); assert.equal(fetched.length, 3);
+    const text = calls.find(c => c.uid === uid).body.text;
+    assert.match(text, /FULL FULL/); assert.ok(text.includes(teaser)); assert.ok(!text.includes('small'));
+  });
+  await test('page subscriptions fetch full text with at most four workers and preserve page order', async () => {
+    const uid = await setup(doc([site('page-source', { source: 'page', count: 5, delivery: 'briefing' })]));
+    readerUids.push(uid);
+    let active = 0, peak = 0, fetched = 0;
+    const out = await run(uid, { feed: () => assert.fail('page must not use feed'), page: async () => ({ url: 'https://example.com/news', html: '<main>' + Array.from({ length: 5 }, (_, i) => `<a href="/page-${i}">Page story ${i}</a>`).join('') + '</main>' }), article: async url => { active++; peak = Math.max(peak, active); fetched++; await new Promise(r => setTimeout(r, 10)); active--; return { text: `Full prose for ${url}` }; } });
+    assert.equal(out.status, 'ok'); assert.equal(fetched, 5); assert.equal(peak, 4);
+    const text = calls.find(c => c.uid === uid).body.text; assert.match(text, /Full prose/); assert.ok(text.indexOf('page-0') < text.indexOf('page-4'));
+  });
+  await test('article enrichment respects the run deadline even for a stalled dependency', async () => {
+    const uid = await setup(doc([site('deadline')])); let fetched = 0;
+    readerUids.push(uid);
+    const start = Date.now();
+    const out = await run(uid, { deadline: Date.now() + 1600, article: (_url, opts) => { fetched++; assert.ok(opts.timeout <= 100); return new Promise(() => {}); } });
+    assert.equal(fetched, 1); assert.ok(Date.now() - start < 1400); assert.ok(['ok', 'partial', 'failed'].includes(out.status));
+    const other = await setup(doc([site('expired')]));
+    await run(other, { deadline: Date.now() - 1, article: () => assert.fail('No article after deadline') });
+  });
+  // New run fixtures must not alter the legacy global queue-position fixture.
+  for (const uid of readerUids) for (const key of await keys(`pod/${uid}/`)) await subStore().delete(key);
   await test('strict subscription validation rejects malformed and server-owned fields', async () => {
     const invalid = [null, [], {}, { ...doc(), version: 2 }, { ...doc(), nextRunAt: null }, { ...doc(), updatedAt: '' }, { ...doc(), engine: 'local' }, { ...doc(), rank: 'random' }, { ...doc(), keepDays: 31 }, { ...doc(), notify: { telegram: 1 } }, { ...doc(), schedule: { ...doc().schedule, timezone: 'Mars' } }, { ...doc(), schedule: { ...doc().schedule, days: [] } }, { ...doc(), schedule: { ...doc().schedule, readyBy: '24:00' } }, { ...doc(), schedule: { ...doc().schedule, readyBy: ['08:00'] } }, { ...doc(), schedule: { ...doc().schedule, timezone: '+01:00' } }, doc([site('a', { count: 0 })]), doc([site('../a')]), doc([site('a'), site('a')]), doc([site('a', { feedUrl: 'http://127.0.0.1' })]), doc(Array.from({ length: 13 }, (_, i) => site('s' + i)))];
     for (const b of invalid) assert.throws(() => validatePodsub(b));

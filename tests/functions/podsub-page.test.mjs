@@ -66,6 +66,11 @@ try {
     const page = await previewSite(base, { resolve, fetcher: async () => new Response(roundup) }); assert.equal(page.source, 'page'); assert.equal(page.posts.length, 8);
     await assert.rejects(previewSite(base, { resolve, fetcher: async () => new Response('<main><a href="/one">Only one article</a></main>') }), /No articles/);
   });
+  await test('optional JSON-LD metadata works without articleBody and malformed list entries are ignored', () => {
+    const html = '<script type="application/ld+json">{"@type":"NewsArticle","author":{"name":"Prose writer"},"datePublished":"2026-10-28"}</script><article><p>Article prose.</p></article>';
+    const article = extractArticle(html, base); assert.equal(article.byline, 'Prose writer'); assert.equal(article.publishedAt, '2026-10-28');
+    assert.deepEqual(pageLinks('<script type="application/ld+json">{"@type":"ItemList","itemListElement":[null,4]}</script>', base), []);
+  });
   await test('legacy fetchFeed still accepts public HTTP and retains parsing behavior', async () => {
     assert.equal((await fetchFeed('http://publisher.example.com/rss', { resolve, fetcher: async () => new Response(rss) })).length, 4);
   });

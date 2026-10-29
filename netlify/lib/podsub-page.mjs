@@ -90,7 +90,8 @@ export function pageLinks(html, baseUrl) {
   const add = (url, title) => candidates.push({ url, title });
   for (const data of jsonData(root)) {
     const types = [].concat(data['@type'] || []);
-    if (types.includes('ItemList')) for (const entry of data.itemListElement || []) {
+    if (types.includes('ItemList')) for (const entry of [].concat(data.itemListElement || [])) {
+      if (!entry || typeof entry !== 'object') continue;
       const item = entry.item || entry;
       add(typeof item === 'string' ? item : item.url || item['@id'], item.name || item.headline || entry.name);
     }
@@ -121,9 +122,11 @@ export function pageLinks(html, baseUrl) {
   return posts;
 }
 export function extractArticle(html, url) {
-  const root = document(html), data = jsonData(root).find(d => typeof d.articleBody === 'string');
+  const root = document(html), metadata = jsonData(root);
+  const bodyData = metadata.find(d => typeof d.articleBody === 'string');
+  const data = bodyData || metadata.find(d => [].concat(d['@type'] || []).some(t => /Article$/.test(t)));
   let text = '';
-  if (data) text = tidy(content(document(data.articleBody), true));
+  if (bodyData) text = tidy(content(document(bodyData.articleBody), true));
   if (!text) {
     const articles = nodes(root, n => n.tag === 'article' && !noisy(n));
     const containers = articles.length ? articles : nodes(root, n => ['div', 'section', 'main', 'body', ''].includes(n.tag) && !noisy(n));

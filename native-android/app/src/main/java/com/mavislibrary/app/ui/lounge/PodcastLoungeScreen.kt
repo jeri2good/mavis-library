@@ -36,13 +36,16 @@ import com.mavislibrary.app.data.model.Book
 import com.mavislibrary.app.data.model.BookSource
 import com.mavislibrary.app.data.podcast.*
 import com.mavislibrary.app.data.share.*
+import com.mavislibrary.app.ui.podcast.EpisodeDetailsSheet
+import com.mavislibrary.app.ui.podcast.episodeHeadline
+import com.mavislibrary.app.ui.reader.ReaderTarget
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.catch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onBack: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null) {
+fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onBack: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null, onOpenReader: ((ReaderTarget) -> Unit)? = null) {
     val context = LocalContext.current
     val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
     if (!loungeRouteAllowed(kids?.enabled)) return
@@ -100,6 +103,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val active = remember(loaded.address) { mutableMapOf<String, Job>() }
     var delete by remember { mutableStateOf<SavedPodcast?>(null) }
     var reading by remember { mutableStateOf<SavedPodcast?>(null) }
+    var details by remember { mutableStateOf<Pair<PodcastJob, () -> Unit>?>(null) }
     var sharedConfirm by remember(initial) { mutableStateOf(initial?.confirmShare == true) }
     val jobs = all.filter { (identity == "owner" || identity != null && it.accountId == identity) && (it.studio == loaded.address || it.localFile != null) && !podcastExpired(it.job, loaded.cleanupDays) }.sortedByDescending { it.job.createdAt }
     val shelves = gallery(jobs, positions)
@@ -166,6 +170,14 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
         val resume = container.resumePositionStore.load(episode.saved.resumeKey)?.takeIf { episode.shelf == PodcastShelf.CONTINUE }
         if (allowed()) { onFirstPlay(); playback.playPodcasts(queue, resume) }
     }
+    fun playToday(ready: List<PodcastJob>) = act {
+        val queue = ready.map { job ->
+            val saved = SavedPodcast(job, loaded.address, accountId = identity)
+            container.podcastSettings.save(saved)
+            saved to (uriOf(saved) ?: error("Audio unavailable"))
+        }
+        if (queue.isNotEmpty() && allowed()) { onFirstPlay(); playback.playPodcasts(queue, null) }
+    }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("podcast_lounge"), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
@@ -186,14 +198,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
             }
         }
         item {
-            PodsubSection(subscriptionState, subscription) { ready -> act {
-                val queue = ready.map { job ->
-                    val saved = SavedPodcast(job, loaded.address, accountId = identity)
-                    container.podcastSettings.save(saved)
-                    saved to (uriOf(saved) ?: error("Audio unavailable"))
-                }
-                if (queue.isNotEmpty() && allowed()) { onFirstPlay(); playback.playPodcasts(queue, null) }
-            } }
+            PodsubSection(subscriptionState, subscription, onDetails = { job -> details = job to { playToday(listOf(job)) } }, onPlay = ::playToday)
         }
         if (jobs.isEmpty()) item {
             Text("Your podcasts will appear here. Make one with New podcast, or set a subscription schedule above.",
@@ -212,6 +217,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                 EpisodeRow(
                     episode, busy, loaded.address, pollingMessages[episode.job.id],
                     onPlay = { play(episode) },
+                    onDetails = { details = episode.job to { play(episode) } },
                     onDownload = { act {
                         val file = container.audioFiles.downloadPodcast(api, episode.job.id)
                         container.podcastSettings.save(episode.saved.copy(localFile = file.absolutePath)); notice = "Saved for offline listening."
@@ -277,6 +283,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
             if (!accessReady) Text("Waiting for your studio to connect.", style = MaterialTheme.typography.bodySmall)
         }
     }
+    details?.let { (job, playIt) -> EpisodeDetailsSheet(job, onDismiss = { details = null }, onPlay = playIt, onOpenReader = onOpenReader) }
     reading?.let { saved ->
         AlertDialog(onDismissRequest = { reading = null }, title = { Text(saved.job.title) }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -300,18 +307,19 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
 @Composable
 internal fun EpisodeRow(
     episode: Episode, busy: Boolean, studio: String, polling: String?,
-    onPlay: () -> Unit, onDownload: () -> Unit, onRetry: (() -> Unit)?, onRead: () -> Unit, onDelete: () -> Unit,
+    onPlay: () -> Unit, onDetails: () -> Unit, onDownload: () -> Unit, onRetry: (() -> Unit)?, onRead: () -> Unit, onDelete: () -> Unit,
 ) {
     val job = episode.job
     val ready = job.status == "ready"
+    val headline = episodeHeadline(job)
     var menu by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(enabled = ready && !busy, onClick = onPlay).padding(vertical = 8.dp).testTag("episode_${job.id}"),
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(enabled = ready, onClick = onDetails).padding(vertical = 8.dp).testTag("episode_${job.id}"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PodcastThumb(job.title)
+        PodcastThumb(headline)
         Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(job.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(headline, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             when (episode.shelf) {
                 PodcastShelf.MAKING -> {
                     Text(stageLabel(job), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)

@@ -3,10 +3,10 @@ package com.mavislibrary.app.ui.lounge
 import com.mavislibrary.app.data.podcast.PodcastJob
 import com.mavislibrary.app.data.podcast.SavedPodcast
 import com.mavislibrary.app.data.podcast.podcastStyles
+import com.mavislibrary.app.ui.podcast.episodeSources
+import com.mavislibrary.app.ui.podcast.episodeWhen
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /** Gallery sections, in the order they are shown. */
 enum class PodcastShelf(val label: String) {
@@ -59,15 +59,15 @@ fun stageLabel(job: PodcastJob): String {
     return if (!job.terminal && job.progress >= 1) "$step · ${job.progress.toInt()}%" else step
 }
 
-private val DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
-
 fun minutesLabel(seconds: Int) = if (seconds < 60) "$seconds sec" else "${(seconds + 30) / 60} min"
 
-fun episodeDetails(episode: Episode, zone: ZoneId = ZoneId.systemDefault()): String {
+/** When · sources · length (or time left) · style · Downloaded, matching the Up next cards. */
+fun episodeDetails(episode: Episode, zone: ZoneId = ZoneId.systemDefault(), now: Instant = Instant.now()): String {
     val job = episode.job
     val left = job.durationSec?.takeIf { episode.shelf == PodcastShelf.CONTINUE }?.let { it - ((episode.positionMs ?: 0) / 1000).toInt() }
     return listOfNotNull(
-        runCatching { DAY.format(Instant.parse(job.createdAt).atZone(zone)) }.getOrNull(),
+        episodeWhen(job, now, zone).takeIf(String::isNotEmpty),
+        episodeSources(job).takeIf(String::isNotEmpty),
         left?.let { "${minutesLabel(it.coerceAtLeast(0))} left" } ?: job.durationSec?.let(::minutesLabel),
         podcastStyles[job.style],
         "Downloaded".takeIf { episode.saved.localFile != null },

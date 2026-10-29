@@ -85,6 +85,14 @@ class PodcastSettingsTest {
         assertTrue(runCatching { settings.setCleanupDays(-1) }.isFailure)
         assertTrue(runCatching { settings.setDefaults("invalid", "short", "auto") }.isFailure)
     }
+    @Test fun statusUpdatesWithoutStoriesKeepTheSavedStoryList() = runTest(UnconfinedTestDispatcher()) {
+        val settings = PodcastSettings(store("settings"), SecureStore(store("secure"), cipher, codec))
+        val base = podcastFixtures()[4]
+        settings.save(SavedPodcast(base.copy(sites = listOf("IGN"), stories = listOf(PodcastStory("Zelda", "IGN"))), "studio"))
+        settings.save(SavedPodcast(base.copy(durationSec = 400), "studio"))
+        val job = settings.library.first().single().job
+        assertEquals(400, job.durationSec); assertEquals(listOf("IGN"), job.sites); assertEquals("Zelda", job.stories.single().title)
+    }
     @Test fun cachedJobsKeepOfflineFileAndRetryRequestAcrossPollAndListUpdates() = runTest(UnconfinedTestDispatcher()) {
         val settings = PodcastSettings(store("settings"), SecureStore(store("secure"), cipher, codec))
         val saved = SavedPodcast(podcastFixtures().first(), "studio", "private.mp3", PodcastRequest("topic", "Topic", query = "Space"))

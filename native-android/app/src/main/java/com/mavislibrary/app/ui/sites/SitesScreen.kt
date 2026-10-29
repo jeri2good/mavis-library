@@ -42,6 +42,9 @@ import com.mavislibrary.app.data.feeds.FeedStory
 import com.mavislibrary.app.data.feeds.SitePodcast
 import com.mavislibrary.app.data.podcast.PodcastDraft
 import com.mavislibrary.app.data.podcast.PodcastJob
+import com.mavislibrary.app.ui.podcast.EpisodeDetailsSheet
+import com.mavislibrary.app.ui.podcast.episodeHeadline
+import com.mavislibrary.app.ui.podcast.episodeSubtitle
 import com.mavislibrary.app.ui.reader.ReaderTarget
 import com.mavislibrary.app.work.BriefingScheduler
 import java.net.URI
@@ -62,6 +65,7 @@ fun SitesScreen(
     onAskNotifications: () -> Unit,
     onPlayEpisodes: (List<PodcastJob>) -> Unit = {},
     onOpenAllNew: () -> Unit = {},
+    onOpenReader: ((ReaderTarget) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -114,7 +118,7 @@ fun SitesScreen(
         ) {
             if (state.upNext.isNotEmpty() || state.sources.isNotEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    UpNextStrip(state.upNext, state.allUnread().size, onPlayEpisodes, onOpenAllNew)
+                    UpNextStrip(state.upNext, state.allUnread().size, onPlayEpisodes, onOpenAllNew, onOpenReader)
                 }
             }
 
@@ -171,9 +175,13 @@ fun SitesScreen(
     }
 }
 
-/** Today's ready briefing episodes plus a shortcut to every unread article. */
+/** Today's ready briefing episodes plus a shortcut to every unread article. Tapping a card opens what the episode covers. */
 @Composable
-private fun UpNextStrip(episodes: List<PodcastJob>, unread: Int, onPlay: (List<PodcastJob>) -> Unit, onOpenAllNew: () -> Unit) {
+internal fun UpNextStrip(
+    episodes: List<PodcastJob>, unread: Int, onPlay: (List<PodcastJob>) -> Unit, onOpenAllNew: () -> Unit,
+    onOpenReader: ((ReaderTarget) -> Unit)? = null, now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault(),
+) {
+    var details by remember { mutableStateOf<PodcastJob?>(null) }
     Column(Modifier.fillMaxWidth().testTag("up_next"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Up next", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -181,21 +189,27 @@ private fun UpNextStrip(episodes: List<PodcastJob>, unread: Int, onPlay: (List<P
         }
         if (episodes.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(episodes, key = { it.id }) { job ->
-                Card(Modifier.width(220.dp).testTag("up_next_${job.id}"),
+                val headline = episodeHeadline(job)
+                Card(onClick = { details = job }, modifier = Modifier.width(272.dp).testTag("up_next_${job.id}"),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(job.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            job.durationSec?.let { Text("${maxOf(1, it / 60)} min", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(headline, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("up_next_headline_${job.id}"))
+                            episodeSubtitle(job, now, zone).takeIf(String::isNotEmpty)?.let {
+                                Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("up_next_subtitle_${job.id}"))
+                            }
                         }
                         FilledTonalIconButton(onClick = { onPlay(listOf(job)) }, modifier = Modifier.testTag("play_up_next_${job.id}")) {
-                            Icon(Icons.Outlined.PlayArrow, contentDescription = "Play ${job.title}")
+                            Icon(Icons.Outlined.PlayArrow, contentDescription = "Play $headline")
                         }
                     }
                 }
             }
         }
     }
+    details?.let { job -> EpisodeDetailsSheet(job, onDismiss = { details = null }, onPlay = { onPlay(listOf(job)) }, onOpenReader = onOpenReader) }
 }
 
 /** Unread articles from every followed site, newest first. */

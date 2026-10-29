@@ -46,12 +46,15 @@ fun loungeRouteAllowed(kidsMode: Boolean?) = kidsMode != null && adultRoutesAllo
 
 @Serializable data class PodcastCreated(val id: String, val status: String, val queuePosition: Int? = null, val etaMin: Int? = null)
 @Serializable data class PodcastSource(val title: String, val url: String? = null)
+/** An article a briefing episode covers, in the order the hosts discuss them. */
+@Serializable data class PodcastStory(val title: String, val site: String = "", val link: String? = null)
 @Serializable data class PodcastJob(
     val id: String, val status: String, val progress: Double = 0.0, val stage: String = "",
     val engine: String = "", val title: String, val kind: String, val style: String,
     val durationSec: Int? = null, val createdAt: String = "", val error: String? = null,
     val transcript: String? = null, val sources: List<PodcastSource> = emptyList(),
     val queuePosition: Int? = null, val etaMin: Int? = null,
+    val sites: List<String> = emptyList(), val stories: List<PodcastStory> = emptyList(),
 ) {
     val terminal get() = status in setOf("ready", "failed")
     val engineLabel get() = when (engine) { "notebooklm" -> "Made with NotebookLM"; "local" -> "Made with local voices"; else -> "Engine not reported yet" }

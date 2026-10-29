@@ -34,8 +34,11 @@ class PodcastGalleryTest {
         assertEquals("Waiting its turn", stageLabel(saved("x", "queued").job))
         assertEquals("Ready", stageLabel(saved("x").job))
         val utc = ZoneId.of("UTC")
-        assertEquals("Oct 20 · 14 min · Deep dive · Downloaded", episodeDetails(Episode(saved("x", local = "/f.mp3"), null), utc))
-        assertEquals("Oct 20 · 12 min left · Deep dive", episodeDetails(Episode(saved("x"), 120_000), utc))
+        val now = java.time.Instant.parse("2026-10-29T12:00:00Z")
+        assertEquals("Tue, Oct 20 · 14 min · Deep dive · Downloaded", episodeDetails(Episode(saved("x", local = "/f.mp3"), null), utc, now))
+        assertEquals("Tue, Oct 20 · 12 min left · Deep dive", episodeDetails(Episode(saved("x"), 120_000), utc, now))
+        val briefing = saved("b").let { it.copy(job = it.job.copy(createdAt = "2026-10-29T06:44:00Z", sites = listOf("Future Tools", "IGN"))) }
+        assertEquals("Today 6:44 AM · Future Tools · IGN · 14 min · Deep dive", episodeDetails(Episode(briefing, null), utc, now))
         assertEquals(0.5f, Episode(saved("x"), 420_000).heard!!, 0.001f)
         assertEquals("45 sec", minutesLabel(45))
     }

@@ -1,19 +1,23 @@
 package com.mavislibrary.app.ui.lounge
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.mavislibrary.app.data.podcast.PodcastJob
 import com.mavislibrary.app.data.podsub.*
+import com.mavislibrary.app.ui.podcast.episodeHeadline
+import com.mavislibrary.app.ui.podcast.episodeSubtitle
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun PodsubSection(state: PodsubUiState, vm: PodsubViewModel, onPlay: (List<PodcastJob>) -> Unit) {
+fun PodsubSection(state: PodsubUiState, vm: PodsubViewModel, onDetails: (PodcastJob) -> Unit = {}, onPlay: (List<PodcastJob>) -> Unit) {
     var showTime by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     val doc = state.document
@@ -27,10 +31,10 @@ fun PodsubSection(state: PodsubUiState, vm: PodsubViewModel, onPlay: (List<Podca
         Button(onClick = { onPlay(ready) }, enabled = ready.isNotEmpty()) { Text("Play all (${ready.size})") }
         if (state.episodes.isEmpty()) Text("No episodes today.")
         state.episodes.forEach { job ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().clickable { onDetails(job) }, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(job.title, style = MaterialTheme.typography.titleSmall)
-                    Text(stageLabel(job), style = MaterialTheme.typography.bodySmall)
+                    Text(episodeHeadline(job), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(if (job.status == "ready") episodeSubtitle(job).ifEmpty { stageLabel(job) } else stageLabel(job), style = MaterialTheme.typography.bodySmall)
                 }
                 if (job.status == "ready") TextButton(onClick = { onPlay(listOf(job)) }) { Text("Play") }
             }

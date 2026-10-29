@@ -45,7 +45,7 @@ import kotlin.random.Random
 
 internal val BOOK_WIDTH = 92.dp
 internal val BOOK_SPACING = 10.dp
-internal val WALL_HEIGHT = 172.dp
+internal val WALL_HEIGHT = 184.dp
 internal val SHELF_EDGE = 12.dp
 internal val WallText = Color(0xFFEADBC8)
 
@@ -89,15 +89,16 @@ internal fun leatherOf(key: String) = Leather.entries[Math.floorMod(spread(key),
 /** Books aren't all the same height; the key decides, so a book is always the same size. */
 internal fun bookHeight(key: String): Dp = (128 + Math.floorMod(spread(key) / 360, 21)).dp
 
-/** Warm back wall of one shelf bay, with the shade from the shelf above and the side uprights. */
+/** Warm back wall of one shelf bay, with its brass category plate at top-left above the books, shade from above, and side uprights. */
 @Composable
-internal fun ShelfBay(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+internal fun ShelfBay(id: String, label: String, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     Box(modifier.fillMaxWidth().height(WALL_HEIGHT).drawBehind {
         drawRect(Brush.verticalGradient(listOf(WallTop, WallBottom)))
-        drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .6f), Color.Black.copy(alpha = .2f), Color.Transparent), endY = 30.dp.toPx()))
+        drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .52f), Color.Black.copy(alpha = .18f), Color.Transparent), endY = 24.dp.toPx()))
         drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .28f)), startY = size.height - 26.dp.toPx()))
     }) {
-        content()
+        BrassPlate(label, Modifier.align(Alignment.TopStart).padding(start = SHELF_EDGE + 8.dp, top = 9.dp).testTag("shelf_plate_$id"))
+        Box(Modifier.fillMaxSize().padding(top = 32.dp), content = content)
         Upright(Modifier.align(Alignment.CenterStart))
         Upright(Modifier.align(Alignment.CenterEnd), flip = true)
     }
@@ -112,16 +113,16 @@ private fun Upright(modifier: Modifier, flip: Boolean = false) {
     })
 }
 
-/** The plank books stand on: lit top face and a grained front edge with a brass label plate. Its shadow falls on the bay below. */
+/** The plank books stand on: lit top face and a grained front edge. Its shadow falls on the bay below. */
 @Composable
-internal fun ShelfPlank(id: String, label: String) {
-    Column(Modifier.fillMaxWidth()) {
+internal fun ShelfPlank(id: String) {
+    Column(Modifier.fillMaxWidth().testTag("shelf_plank_$id")) {
         Box(Modifier.fillMaxWidth().height(8.dp).background(Brush.verticalGradient(listOf(Color(0xFF6B4426), WoodLight, Color(0xFFC89463)))))
-        Box(Modifier.fillMaxWidth().height(24.dp).drawWithCache {
+        Box(Modifier.fillMaxWidth().height(18.dp).drawWithCache {
             val random = Random(id.hashCode())
-            val lines = List(9) {
+            val lines = List(8) {
                 val y = random.nextFloat() * size.height
-                val amp = 1f + random.nextFloat() * 2.5f
+                val amp = 1f + random.nextFloat() * 2.2f
                 val wave = 40f + random.nextFloat() * 120f
                 val phase = random.nextFloat() * 6f
                 val path = Path().apply {
@@ -138,9 +139,7 @@ internal fun ShelfPlank(id: String, label: String) {
                 lines.forEach { (path, alpha) -> drawPath(path, Grain.copy(alpha = alpha), style = stroke) }
                 drawLine(Color.White.copy(alpha = .18f), Offset(0f, .5f), Offset(size.width, .5f), 1.dp.toPx())
             }
-        }, contentAlignment = Alignment.CenterStart) {
-            BrassPlate(label, Modifier.padding(start = SHELF_EDGE + 10.dp))
-        }
+        })
     }
 }
 
@@ -216,7 +215,10 @@ internal fun SiteShelfBook(site: SiteBook, onClick: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             FitText(site.name, TitleStyle, Cream, maxLines = 3, sizes = TITLE_SIZES)
         }
-        if (site.unread > 0) Ribbon(if (site.unread > 99) "99+" else "${site.unread}", Modifier.align(Alignment.TopEnd).padding(end = 8.dp))
+        if (site.unread > 0) Ribbon(
+            if (site.unread > 99) "99+" else "${site.unread}",
+            Modifier.align(Alignment.TopEnd).padding(end = 8.dp).testTag("shelf_site_unread_${site.id}"),
+        )
     }
 }
 
@@ -287,7 +289,8 @@ private val RibbonShape = GenericShape { size, _ ->
 private fun Ribbon(text: String, modifier: Modifier = Modifier) {
     Box(modifier.width(24.dp).height(38.dp).shadow(2.dp, RibbonShape).background(Brush.verticalGradient(listOf(Color(0xFFC62828), Color(0xFF8E1B1B))), RibbonShape),
         contentAlignment = Alignment.TopCenter) {
-        Text(text, Modifier.padding(top = 4.dp), color = Color.White, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 10.sp))
+        Text(text, Modifier.padding(top = 4.dp), color = Color.White, maxLines = 1, softWrap = false,
+            style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 10.sp))
     }
 }
 

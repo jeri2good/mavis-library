@@ -43,7 +43,21 @@ private val Context.settingsDataStore by preferencesDataStore(name = "settings")
 private val Context.secureDataStore by preferencesDataStore(name = "secure_store")
 
 /** Hand-wired dependencies (small app; no DI framework needed yet). */
-class AppContainer(private val app: Application) {
+class AppContainer internal constructor(
+    private val app: Application,
+    customFeedFetcher: com.mavislibrary.app.data.feeds.FeedFetcher? = null,
+    private val onlineOverride: (() -> Boolean)? = null,
+    private val podcastTransport: (suspend (okhttp3.Request) -> okhttp3.Response)? = null,
+    customApiHttp: OkHttpClient? = null,
+    customCipher: com.mavislibrary.app.data.secure.SecretCipher? = null,
+    private val customSettingsDataStore: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>? = null,
+    private val customSecureDataStore: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>? = null,
+) {
+    constructor(app: Application) : this(app, null, null, null, null, null, null, null)
+
+    private val settingsPrefs get() = customSettingsDataStore ?: app.settingsDataStore
+    private val securePrefs get() = customSecureDataStore ?: app.secureDataStore
+
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val okHttp: OkHttpClient by lazy {
@@ -56,7 +70,7 @@ class AppContainer(private val app: Application) {
 
     /** Only requests to our own backend carry the app's source header. */
     private val apiHttp: OkHttpClient by lazy {
-        okHttp.newBuilder()
+        customApiHttp ?: okHttp.newBuilder()
             .addInterceptor { chain ->
                 chain.proceed(chain.request().newBuilder().header("x-mavis-source", "android-native").build())
             }
@@ -65,44 +79,44 @@ class AppContainer(private val app: Application) {
 
     val database: MavisDatabase by lazy { MavisDatabase.create(app) }
     val connectivity: ConnectivityMonitor by lazy { ConnectivityMonitor(app, scope) }
-    val settings: SettingsStore by lazy { SettingsStore(app.settingsDataStore) }
-    val feedStore by lazy { com.mavislibrary.app.data.feeds.FeedStore(app.settingsDataStore) }
-    private val feedFetcher by lazy { com.mavislibrary.app.data.feeds.DeviceFeedFetcher() }
+    val settings: SettingsStore by lazy { SettingsStore(settingsPrefs) }
+    val feedStore by lazy { com.mavislibrary.app.data.feeds.FeedStore(settingsPrefs) }
+    private val feedFetcher by lazy { customFeedFetcher ?: com.mavislibrary.app.data.feeds.DeviceFeedFetcher() }
     val feedDiscovery by lazy { com.mavislibrary.app.data.feeds.FeedDiscovery(feedFetcher) }
-    val feedRepository by lazy { com.mavislibrary.app.data.feeds.FeedRepository(feedFetcher, connectivity::isOnline, reader = readerApi()) }
-    val secureStore: SecureStore by lazy { SecureStore(app.secureDataStore, KeystoreCipher()) }
+    val feedRepository by lazy { com.mavislibrary.app.data.feeds.FeedRepository(feedFetcher, onlineOverride ?: connectivity::isOnline, reader = readerApi()) }
+    val secureStore: SecureStore by lazy { SecureStore(securePrefs, customCipher ?: KeystoreCipher()) }
     val accountsApi by lazy { com.mavislibrary.app.data.api.AccountsApi(BuildConfig.API_BASE,
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) },
         owner = { secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE) }) }
     val accounts by lazy { com.mavislibrary.app.data.api.AccountRepository(accountsApi, secureStore) { !app.kidsPrefs().state.first().enabled } }
     val api: MavisApi by lazy { MavisApi(apiHttp, BuildConfig.API_BASE) }
     val searchRepository: SearchRepository by lazy {
-        SearchRepository(CachedFetcher(api, RoomResponseCache(database.cachedResponses()), connectivity::isOnline))
+        SearchRepository(CachedFetcher(api, RoomResponseCache(database.cachedResponses()), onlineOverride ?: connectivity::isOnline))
     }
     val shelfRepository: ShelfRepository by lazy { ShelfRepository(database.shelf()) }
     val resumePositionStore: ResumePositionStore by lazy { ResumePositionStore(database.audioResume()) }
     val audiobookRepository: AudiobookRepository by lazy { AudiobookRepository(api) }
     val audioFiles: AudioFileStore by lazy { AudioFileStore(app.filesDir, okHttp) }
-    val podcastSettings by lazy { com.mavislibrary.app.data.podcast.PodcastSettings(app.settingsDataStore, secureStore) }
+    val podcastSettings by lazy { com.mavislibrary.app.data.podcast.PodcastSettings(settingsPrefs, secureStore) }
     suspend fun podcastAccountId(): String? = if (secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE).isNullOrBlank())
         secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_USER_ID) else "owner"
-    fun podcastApi() = com.mavislibrary.app.data.podcast.PodcastApi(BuildConfig.API_BASE,
+    fun podcastApi() = com.mavislibrary.app.data.podcast.PodcastApi(BuildConfig.API_BASE, execute = podcastTransport,
         owner = { secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE) },
         adult = { !app.kidsPrefs().state.first().enabled },
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) })
     fun readerApi() = com.mavislibrary.app.data.reader.ReaderApi(podcastApi())
-    val readerPrefs by lazy { com.mavislibrary.app.data.reader.ReaderPrefs(app.settingsDataStore) }
-    val readState by lazy { com.mavislibrary.app.data.reader.ReadStateStore(app.settingsDataStore) }
+    val readerPrefs by lazy { com.mavislibrary.app.data.reader.ReaderPrefs(settingsPrefs) }
+    val readState by lazy { com.mavislibrary.app.data.reader.ReadStateStore(settingsPrefs) }
     fun podcastRepository() = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(), podcastSettings, BuildConfig.API_BASE, ::podcastAccountId)
-    val briefingStore by lazy { com.mavislibrary.app.data.briefing.BriefingStore(app.settingsDataStore) }
+    val briefingStore by lazy { com.mavislibrary.app.data.briefing.BriefingStore(settingsPrefs) }
     val podsubRepository by lazy { com.mavislibrary.app.data.podsub.PodsubRepository(
         com.mavislibrary.app.data.podsub.PodsubApi(podcastApi()),
-        com.mavislibrary.app.data.podsub.PodsubStore(app.settingsDataStore), ::podcastAccountId,
+        com.mavislibrary.app.data.podsub.PodsubStore(settingsPrefs), ::podcastAccountId,
         { feedStore.sources.first() }, { briefingStore.settings.first() }) }
     /** No HTTP cache: update checks must see the newest release, and APKs are too big to cache. */
     private val updateHttp by lazy { okHttp.newBuilder().cache(null).readTimeout(60, TimeUnit.SECONDS).build() }
     val updateChecker by lazy { com.mavislibrary.app.update.UpdateChecker(updateHttp, BuildConfig.UPDATE_MANIFEST_URL, BuildConfig.VERSION_CODE) }
-    val updateNotices by lazy { com.mavislibrary.app.update.UpdateNotices(app.settingsDataStore) }
+    val updateNotices by lazy { com.mavislibrary.app.update.UpdateNotices(settingsPrefs) }
     val appUpdater by lazy {
         com.mavislibrary.app.update.AppUpdater(
             updateChecker, com.mavislibrary.app.update.UpdateDownloader(updateHttp, app.cacheDir.resolve("updates")), scope,

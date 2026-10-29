@@ -1,31 +1,65 @@
 package com.mavislibrary.app.ui.shelf
 
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.ViewModelStore
 import com.mavislibrary.app.data.api.ShelfDef
 import com.mavislibrary.app.data.api.TechItem
+import com.mavislibrary.app.data.briefing.BriefingSettings
+import com.mavislibrary.app.data.feeds.DiscoveryResult
+import com.mavislibrary.app.data.feeds.FeedFetcher
+import com.mavislibrary.app.data.feeds.FeedRepository
+import com.mavislibrary.app.data.feeds.FeedResponse
 import com.mavislibrary.app.data.feeds.FeedSource
+import com.mavislibrary.app.data.feeds.FeedStore
 import com.mavislibrary.app.data.feeds.FeedStory
 import com.mavislibrary.app.data.model.Book
 import com.mavislibrary.app.data.model.BookSource
-import com.mavislibrary.app.data.repo.CuratedCatalog
-import com.mavislibrary.app.data.repo.Loaded
-import com.mavislibrary.app.data.repo.Origin
-import com.mavislibrary.app.data.repo.SavedShelf
+import com.mavislibrary.app.data.podcast.PodcastApi
+import com.mavislibrary.app.data.podsub.MigrationState
+import com.mavislibrary.app.data.podsub.PodsubApi
+import com.mavislibrary.app.data.podsub.PodsubRepository
+import com.mavislibrary.app.data.podsub.toFeedSource
+import com.mavislibrary.app.data.reader.ReadStateStore
+import com.mavislibrary.app.data.reader.ReaderApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.time.ZoneId
+
+import com.mavislibrary.app.data.repo.CuratedCatalog
+import com.mavislibrary.app.data.repo.Loaded
+import com.mavislibrary.app.data.repo.Origin
+import com.mavislibrary.app.data.repo.SavedShelf
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class ShelfViewModelTest {
+    @get:Rule val temp = TemporaryFolder()
     private val dispatcher = StandardTestDispatcher()
     private val store = ViewModelStore()
     private val shelf = FakeShelf()
@@ -113,6 +147,92 @@ class ShelfViewModelTest {
         advanceUntilIdle()
         assertEquals(0, vm.state.value.sites.first().unread)
         assertEquals("reads don't refetch", listOf("on"), sites.loaded)
+    }
+
+    @Test fun realFeedStoreMirrorsServerSitesAndRetriesWhenOwnerUnlocks() = runTest(dispatcher) {
+        val data = PreferenceDataStoreFactory.create(scope = backgroundScope) { temp.root.resolve("shelf_sites.preferences_pb") }
+        val feedStore = FeedStore(data) { 1_000L }
+        val readState = ReadStateStore(data)
+        val local = feedStore.add(DiscoveryResult.Found("https://local.example/rss", "Local Tech", 2, null, "https://local.example"))
+        var ownerCode: String? = null
+        var online = false
+        val rss = "<rss><channel><title>Feed</title>" +
+            "<item><guid>s1</guid><title>First</title><link>https://example.org/1</link></item>" +
+            "<item><guid>s2</guid><title>Second</title><link>https://example.org/2</link></item>" +
+            "</channel></rss>"
+        val podcastApi = PodcastApi("https://gateway.example", execute = { req: Request ->
+            val body = when (req.url.encodedPath) {
+                "/api/podsub" -> """{"version":1,"sites":[
+                    {"id":"srv","name":"Future Tools","feedUrl":"https://ft.example/rss","siteUrl":"https://ft.example/","mode":"top","count":1,"delivery":"briefing","priority":0,"source":"feed"},
+                    {"id":"pg","name":"AI Watch","feedUrl":"https://ai.example/news","siteUrl":"https://ai.example/","mode":"top","count":1,"delivery":"briefing","priority":1,"source":"page"}
+                ],"updatedAt":"saved"}"""
+                "/api/podsub/page" -> """{"posts":[{"id":"p1","title":"Page Post","link":"https://ai.example/p1","publishedAt":9}]}"""
+                else -> "{}"
+            }
+            Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(body.toResponseBody("application/json".toMediaType())).build()
+        }, owner = { ownerCode }, token = { null })
+        val podsub = PodsubRepository(
+            PodsubApi(podcastApi),
+            object : MigrationState {
+                var saved: List<String>? = null
+                override suspend fun followed(account: String) = saved
+                override suspend fun complete(account: String, ids: List<String>) { saved = ids }
+            },
+            { if (ownerCode != null) "owner" else null },
+            { feedStore.sources.first() },
+            { BriefingSettings() },
+            { ZoneId.of("UTC") },
+        )
+        val feedRepo = FeedRepository(FeedFetcher { FeedResponse(it, 200, rss) }, { online }, reader = ReaderApi(podcastApi))
+        val shelfSites = object : ShelfSites {
+            override val sources = feedStore.sources
+            override val read = readState.read
+            override suspend fun stories(source: FeedSource) = feedRepo.load(listOf(source)).stories
+            override suspend fun mirror() {
+                try { feedStore.addMissing(podsub.serverSites().map { it.toFeedSource() }) }
+                catch (e: CancellationException) { throw e } catch (_: Exception) {}
+            }
+        }
+        val vm = ShelfViewModel(shelf, catalog, sites = shelfSites).also { store.put("shelf_real", it) }
+        vm.onScreenShown() // initial composition call (skipped because init already started)
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (vm.state.value.sites.isEmpty()) { advanceUntilIdle(); delay(10) } } }
+        advanceUntilIdle()
+        // While offline and without owner code, only the local site exists with 0 loaded stories.
+        assertEquals(listOf(SiteBook(local.id, "Local Tech", "https://local.example/", 0)), vm.state.value.sites)
+
+        // Now network comes online and owner code is entered; returning to Shelf triggers onScreenShown -> syncSites.
+        online = true
+        ownerCode = "owner-secret"
+        vm.onScreenShown()
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) {
+                while (vm.state.value.sites.size < 3 || vm.state.value.sites.any { it.unread == 0 }) {
+                    advanceUntilIdle()
+                    delay(10)
+                }
+            }
+        }
+        advanceUntilIdle()
+        assertEquals(
+            listOf(
+                SiteBook(local.id, "Local Tech", "https://local.example/", 2),
+                SiteBook("srv", "Future Tools", "https://ft.example/", 2),
+                SiteBook("pg", "AI Watch", "https://ai.example/", 1),
+            ),
+            vm.state.value.sites,
+        )
+        val firstStoryId = vm.state.value.sitePosts.getValue("srv").first().item.id
+        readState.markRead("srv", listOf(firstStoryId))
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) {
+                while (vm.state.value.sites.first { it.id == "srv" }.unread != 1) {
+                    advanceUntilIdle()
+                    delay(10)
+                }
+            }
+        }
+        assertEquals(1, vm.state.value.sites.first { it.id == "srv" }.unread)
     }
 
     private class FakeSites : ShelfSites {

@@ -13,7 +13,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -40,11 +39,12 @@ data class ShelfUiState(
     val sites get() = siteBooks(siteSources, sitePosts, siteRead)
 }
 
-/** Followed sites for the Sites shelf. [stories] is the cached feed load the Sites tab uses. */
+/** Followed sites for the Sites shelf. [stories] is the cached feed load the Sites tab uses; [mirror] pulls server briefing sites into FeedStore. */
 interface ShelfSites {
     val sources: Flow<List<FeedSource>>
     val read: Flow<Map<String, Set<String>>>
     suspend fun stories(source: FeedSource): List<FeedStory>
+    suspend fun mirror() = Unit
 }
 
 class ShelfViewModel(
@@ -56,6 +56,9 @@ class ShelfViewModel(
     private val _state = MutableStateFlow(ShelfUiState())
     val state = _state.asStateFlow()
     private var popularJob: Job? = null
+    private var mirrorJob: Job? = null
+    private val loadingSites = mutableSetOf<String>()
+    private var screenVisits = 0
 
     init {
         viewModelScope.launch {
@@ -75,19 +78,56 @@ class ShelfViewModel(
             catch (e: CancellationException) { throw e } catch (_: Exception) {}
         }
         sites?.let { s ->
-            val loading = mutableSetOf<String>()
+            viewModelScope.launch {
+                try { s.read.collect { read -> _state.update { it.copy(siteRead = read) } } }
+                catch (e: CancellationException) { throw e } catch (_: Exception) {}
+            }
             viewModelScope.launch {
                 try {
-                    combine(s.sources, s.read) { sources, read -> sources to read }.collect { (sources, read) ->
-                        _state.update { it.copy(siteSources = sources, siteRead = read) }
-                        sources.filter { it.enabled && it.id !in _state.value.sitePosts && loading.add(it.id) }.forEach { source ->
-                            launch {
-                                val stories = try { s.stories(source) } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
-                                _state.update { it.copy(sitePosts = it.sitePosts + (source.id to stories)) }
-                            }
-                        }
+                    s.sources.collect { sources ->
+                        val ids = sources.map { it.id }.toSet()
+                        _state.update { st -> st.copy(siteSources = sources, sitePosts = st.sitePosts.filterKeys { it in ids }) }
+                        loadSiteStories(sources, refresh = false)
                     }
                 } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+            }
+            mirrorSites()
+        }
+    }
+
+    /** Called when ShelfScreen enters composition or credentials/connectivity change; skips the initial call since init already synced. */
+    fun onScreenShown() {
+        if (screenVisits++ > 0) syncSites()
+    }
+
+    /** Mirrors server briefing sites into FeedStore and refreshes stories (cached in FeedRepository for 15 min, or retried if missing/failed). */
+    fun syncSites() {
+        if (sites == null) return
+        mirrorSites()
+        loadSiteStories(_state.value.siteSources, refresh = true)
+    }
+
+    private fun mirrorSites() {
+        val s = sites ?: return
+        if (mirrorJob?.isActive == true) return
+        mirrorJob = viewModelScope.launch {
+            try { s.mirror() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+        }
+    }
+
+    private fun loadSiteStories(sources: List<FeedSource>, refresh: Boolean) {
+        val s = sites ?: return
+        sources.filter { it.enabled && it.id !in loadingSites && (refresh || it.id !in _state.value.sitePosts) }.forEach { source ->
+            loadingSites += source.id
+            viewModelScope.launch {
+                try {
+                    val stories = try { s.stories(source) } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
+                    _state.update { st ->
+                        if (st.siteSources.any { it.id == source.id }) st.copy(sitePosts = st.sitePosts + (source.id to stories)) else st
+                    }
+                } finally {
+                    loadingSites -= source.id
+                }
             }
         }
     }

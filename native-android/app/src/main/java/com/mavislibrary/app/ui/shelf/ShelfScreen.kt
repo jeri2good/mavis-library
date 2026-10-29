@@ -20,7 +20,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.mavislibrary.app.AppContainer
 import com.mavislibrary.app.data.feeds.FeedSource
 import com.mavislibrary.app.data.model.Book
+import com.mavislibrary.app.data.podsub.toFeedSource
+import com.mavislibrary.app.data.secure.Secret
 import com.mavislibrary.app.data.stats.statsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 
 @Composable
@@ -42,10 +45,18 @@ fun ShelfScreen(
                 override val sources = container.feedStore.sources
                 override val read = container.readState.read
                 override suspend fun stories(source: FeedSource) = container.feedRepository.load(listOf(source)).stories
+                override suspend fun mirror() {
+                    try { container.feedStore.addMissing(container.podsubRepository.serverSites().map { it.toFeedSource() }) }
+                    catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                }
             }
             ShelfViewModel(container.shelfRepository, container.searchRepository, activity, sites)
         }
     })
+    val online by container.connectivity.online.collectAsStateWithLifecycle()
+    val accountId by container.secureStore.observe(Secret.ACCOUNT_USER_ID).collectAsStateWithLifecycle(initialValue = null)
+    val hasOwner by container.secureStore.has(Secret.OWNER_ACCESS_CODE).collectAsStateWithLifecycle(initialValue = false)
+    LaunchedEffect(vm, online, accountId, hasOwner) { vm.onScreenShown() }
     val state by vm.state.collectAsStateWithLifecycle()
     ShelfContent(state, onOpenBook, onOpenWebShelf, onScan, onPodcast, onOpenSite, onRemove = vm::remove, onRetryPopular = vm::loadPopular)
 }
@@ -76,8 +87,8 @@ internal fun ShelfContent(
             if (row is ShelfRow.Popular && row === rows.firstOrNull { it is ShelfRow.Popular }) popularStatus(state, onRetryPopular)
             item(key = "row-${row.id}", contentType = "shelf") {
                 Column(Modifier.fillMaxWidth().testTag("shelf_row_${row.id}")) {
-                    ShelfBay { RowContents(row, onOpenBook, onScan, onPodcast, onOpenSite, onRemove) }
-                    ShelfPlank(row.id, row.label)
+                    ShelfBay(row.id, row.label) { RowContents(row, onOpenBook, onScan, onPodcast, onOpenSite, onRemove) }
+                    ShelfPlank(row.id)
                 }
             }
         }

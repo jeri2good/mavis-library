@@ -327,7 +327,8 @@ fun MavisRoot(
                     ShelfScreen(container, onOpenBook = openBook, onPodcast = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft.book(it)) }, onOpenWebShelf = {
                         webHost?.openLater("#/shelf")
                         nav.navigate(ROUTE_WEB_SHELF) { launchSingleTop = true }
-                    }, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null)
+                    }, onScan = if (scanRouteAllowed(loadedKids.enabled, canScan)) ({ nav.navigate(ROUTE_SCAN) }) else null,
+                        onOpenSite = { id -> nav.navigate("site/$id") { launchSingleTop = true } })
                         }
                     }
                 }

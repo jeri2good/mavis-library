@@ -32,6 +32,10 @@ class ResumePositionStore(
     suspend fun latest(): ResumePosition? = dao.latest()?.toModel()
     /** Saved listening positions of podcasts, by resume key. */
     fun podcastPositions(): Flow<Map<String, Long>> = dao.withPrefix("podcast:").map { rows -> rows.associate { it.bookKey to it.positionMs } }
+    /** When each audiobook was last listened to (started ones only), by book key. */
+    fun bookActivity(): Flow<Map<String, Long>> = dao.withPrefix("").map { rows ->
+        rows.filter { !it.bookKey.startsWith("podcast:") && it.positionMs > 0 }.associate { it.bookKey to it.updatedAt }
+    }
 
     private fun AudioResumeEntity.toModel() = ResumePosition(bookKey, chapterIndex, positionMs, speed)
 }

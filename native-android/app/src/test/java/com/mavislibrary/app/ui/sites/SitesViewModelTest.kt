@@ -29,7 +29,7 @@ import java.time.ZoneId
 private class FakePodsubService : PodsubService {
     var response = SubscriptionResponse(
         version = 1,
-        sites = listOf(SiteRule("blog", "Blog", "https://blog.com/feed", "https://blog.com/", mode = "top", count = 1, delivery = "briefing", priority = 0)),
+        sites = listOf(SiteRule("blog", "Blog", "https://blog.com/", "https://blog.com/", mode = "top", count = 1, delivery = "briefing", priority = 0)),
         updatedAt = "init",
     )
     var puts = 0

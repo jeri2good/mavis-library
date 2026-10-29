@@ -48,6 +48,23 @@ class FeedStore(private val store: DataStore<Preferences>, private val clock: ()
         }
         return result!!
     }
+    /** Adds sites whose normalized feed URL is not followed yet. Never removes or rewrites existing sites. Returns how many were added. */
+    suspend fun addMissing(incoming: List<FeedSource>): Int {
+        var added = 0
+        store.edit { prefs ->
+            val old = decode(prefs[key])
+            val urls = old.map { runCatching { UrlPolicy.normalize(it.feedUrl) }.getOrDefault(it.feedUrl) }.toMutableSet()
+            val ids = old.map { it.id }.toMutableSet()
+            val fresh = incoming.mapNotNull { site -> runCatching {
+                val feedUrl = UrlPolicy.normalize(site.feedUrl)
+                site.copy(name = site.name.trim().ifEmpty { feedUrl }.take(80), feedUrl = feedUrl,
+                    siteUrl = runCatching { UrlPolicy.normalize(site.siteUrl) }.getOrDefault(feedUrl), addedAt = clock())
+            }.getOrNull() }.filter { it.source in setOf("feed", "page") && urls.add(it.feedUrl) && ids.add(it.id) }.take((20 - old.size).coerceAtLeast(0))
+            added = fresh.size
+            if (fresh.isNotEmpty()) prefs[key] = json.encodeToString(old + fresh)
+        }
+        return added
+    }
     suspend fun rename(id: String, name: String) {
         require(name.trim().isNotEmpty()) { "Enter a name." }
         change { all -> all.map { if (it.id == id) it.copy(name = name.trim().take(80)) else it } }

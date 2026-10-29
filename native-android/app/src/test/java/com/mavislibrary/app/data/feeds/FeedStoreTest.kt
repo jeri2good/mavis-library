@@ -35,6 +35,24 @@ class FeedStoreTest {
         assertTrue(runCatching { store.rename(one.id, " ") }.isFailure)
     }
 
+    @Test fun addMissingNormalizesSkipsKnownUrlsKeepsSourceAndRespectsLimit() = runTest {
+        val data = PreferenceDataStoreFactory.create(scope = backgroundScope) { temp.root.resolve("missing.preferences_pb") }
+        val store = FeedStore(data) { 7L }
+        val mine = store.add(found(1))
+        fun remote(id: String, url: String, source: String = "feed") = FeedSource(id, "Remote $id", url, "https://example.com/", 0, source = source)
+        assertEquals(2, store.addMissing(listOf(remote("dup", " https://example.com/1.xml "), remote("x", "example.com/x.xml"),
+            remote("p", "https://example.com/news", "page"), remote("bad", "ftp://example.com/feed"))))
+        val all = store.sources.first()
+        assertEquals(listOf(mine.id, "x", "p"), all.map { it.id })
+        assertEquals("Site 1", all.first().name)
+        assertEquals("https://example.com/x.xml", all[1].feedUrl)
+        assertEquals(7L, all[1].addedAt)
+        assertEquals("page", all[2].source)
+        assertEquals(0, store.addMissing(listOf(remote("x", "https://example.com/x.xml"))))
+        assertEquals(17, store.addMissing((1..30).map { remote("r$it", "https://example.com/r$it.xml") }))
+        assertEquals(20, store.sources.first().size)
+    }
+
     @Test fun podcastModeViewedTimeAndOlderSavedSites() = runTest {
         val data = PreferenceDataStoreFactory.create(scope = backgroundScope) { temp.root.resolve("modes.preferences_pb") }
         data.edit { it[stringPreferencesKey("my_tech_sites_v1")] = """[{"id":"a","name":"Old","feedUrl":"https://example.com/a.xml","siteUrl":"https://example.com/","addedAt":5}]""" }

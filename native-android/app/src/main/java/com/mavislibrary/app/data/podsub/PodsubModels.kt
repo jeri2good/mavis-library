@@ -48,6 +48,11 @@ fun migrateSubscription(sites: List<FeedSource>, old: BriefingSettings, zone: Zo
             delivery = if (site.podcast == SitePodcast.OWN) "separate" else "briefing", priority = index, source = site.source)
     }, schedule = SubscriptionSchedule(old.enabled, old.time.toString(), subscriptionDays, zone.id))
 
+/** A server briefing site as a local follow; keeps the server id so podsub rules keep mapping to it. */
+fun SiteRule.toFeedSource() = FeedSource(id, name, feedUrl, siteUrl, 0,
+    podcast = when { mode == "off" -> SitePodcast.OFF; delivery == "separate" -> SitePodcast.OWN; else -> SitePodcast.BRIEFING },
+    topCount = if (mode == "off") 0 else (count ?: 1).coerceIn(1, 5), source = source)
+
 /** Age is the episode creation age, so re-downloading never extends retention. Invalid dates are preserved. */
 fun downloadExpired(createdAt: String, keepDays: Int, now: Instant): Boolean {
     require(keepDays in 1..30)

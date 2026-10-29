@@ -54,6 +54,8 @@ class PodsubRepository(private val api: PodsubService, private val migration: Mi
         migration.complete(account, localIds)
         return result
     }
+    /** Read-only GET of the briefing's site list, used to mirror it into the Sites tab. */
+    suspend fun serverSites(): List<SiteRule> = mutex.withLock { api.get().sites }
     suspend fun save(document: SubscriptionDocument): SubscriptionResponse = mutex.withLock { api.put(document) }
     suspend fun today() = api.today()
     suspend fun runNow() = mutex.withLock { synchronize(); api.runNow() }

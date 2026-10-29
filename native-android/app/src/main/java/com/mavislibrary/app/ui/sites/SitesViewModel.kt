@@ -13,6 +13,7 @@ import com.mavislibrary.app.data.podcast.PodcastRequest
 import com.mavislibrary.app.data.podcast.PodcastService
 import com.mavislibrary.app.data.podsub.PodsubRepository
 import com.mavislibrary.app.data.podsub.SiteRule
+import com.mavislibrary.app.data.podsub.toFeedSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -89,6 +90,7 @@ class SitesViewModel(
         val p = podsub
         if (p != null) {
             viewModelScope.launch {
+                mirrorServerSites()
                 runCatching {
                     val res = p.load()
                     _state.update { it.copy(siteRules = res.sites.associateBy { r -> r.id }) }
@@ -98,7 +100,17 @@ class SitesViewModel(
         }
     }
 
-    fun refresh() = _state.value.sources.filter { it.enabled && it.id !in _state.value.loading }.forEach(::load)
+    fun refresh() {
+        if (podsub != null) viewModelScope.launch { mirrorServerSites() }
+        _state.value.sources.filter { it.enabled && it.id !in _state.value.loading }.forEach(::load)
+    }
+
+    /** Quietly adds briefing sites missing on this phone; new ones load via the sources collector. Failure keeps the local list. */
+    private suspend fun mirrorServerSites() {
+        val p = podsub ?: return
+        try { store.addMissing(p.serverSites().map { it.toFeedSource() }) }
+        catch (e: CancellationException) { throw e } catch (_: Exception) {}
+    }
 
     fun load(source: FeedSource) {
         _state.update { it.copy(loading = it.loading + source.id) }

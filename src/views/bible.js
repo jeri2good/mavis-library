@@ -17,11 +17,13 @@ import { stateBlock } from '../components.js';
 import { planDayFor, describeDay, setDayDone } from '../lib/plans.js';
 import { bibleGroups, myGroups } from '../lib/groups.js';
 
+import { isKids } from '../lib/kids.js';
+
 const KEY = 'bible';
 const HL = { sun: '#e9c46a', mint: '#86c7a1', sky: '#8fb8e6', rose: '#e7a1a8' };
 const TR_IDS = B.ALL_TRANSLATIONS.map((t) => t.id);
 
-export const title = (route) => ({ search: 'Search the Bible', topics: 'Topics', topic: 'Topic', plans: 'Reading plans' }[route.segs[0]] || 'Bible');
+export const title = (route) => ({ search: 'Search the Bible', topics: 'Topics', topic: 'Topic', plans: 'Reading plans', mine: 'My Bible' }[route.segs[0]] || 'Bible');
 
 export async function ensureOnShelf() {
   const item = await store.getShelfItem(KEY).catch(() => null);
@@ -47,9 +49,9 @@ export async function render(root, route, { navigate, token }) {
     setTimeout(() => B.prefetchAll().then((ok) => { if (ok) store.setSetting('bibleCached', true); }), 1500);
   }
   if (route.segs[0] === 'search') return renderSearch(root, route, { idx, navigate, token });
-  if (['topics', 'topic', 'plans'].includes(route.segs[0])) {
+  if (['topics', 'topic', 'plans', 'mine'].includes(route.segs[0])) {
     const study = await import('./bible-study.js');
-    const fn = { topics: study.renderTopics, topic: study.renderTopic, plans: study.renderPlans }[route.segs[0]];
+    const fn = { topics: study.renderTopics, topic: study.renderTopic, plans: study.renderPlans, mine: study.renderMine }[route.segs[0]];
     return fn(root, route, { idx, navigate, token });
   }
   return renderChapter(root, route, { idx, navigate, token });
@@ -92,6 +94,8 @@ async function renderChapter(root, route, { idx, navigate, token }) {
         <button type="button" class="icon-btn" data-act="strongs" aria-pressed="${strongsOn}" aria-label="Show Strong’s numbers (tap a word for its Hebrew or Greek)" title="Strong’s concordance">${icon('dict')}</button>
         <a class="icon-btn" href="#/bible/search" aria-label="Search the Bible">${icon('search')}</a>
         <button type="button" class="icon-btn" data-act="listen" aria-label="Listen to this chapter">${icon('headphones')}</button>
+        ${window.MavisPodcast && !isKids() ? html`<button type="button" class="icon-btn" data-act="podcast" aria-label="Bible lesson podcast" title="Bible lesson podcast">${icon('mic')}</button>` : ''}
+        <a class="btn btn-sm" href="#/bible/mine">${icon('note', { size: 18 })} My Bible</a>
         <button type="button" class="icon-btn" data-act="ask" aria-label="Ask Mavis about this chapter">${icon('spark')}</button>
         <button type="button" class="icon-btn" data-act="study" aria-label="Study tools: commentary, topics, reading plans" title="Study tools">${icon('library')}</button>
         </span>
@@ -147,7 +151,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     const v2 = chap2?.verses || [];
     const n = Math.max(v1.length, v2.length, book.verses[ref.chapter - 1] || 0);
     const label1 = B.trInfo(tr).short, label2 = tr2 ? B.trInfo(tr2).short : '';
-    const text1 = (v) => (tr === 'kjv' && strongsOn && chap1.raw?.[v - 1] != null ? strongsHtml(chap1.raw[v - 1]) : esc(v1[v - 1] || ''));
+    const text1 = (v) => wordHtml(v1[v - 1] || '', chap1.raw?.[v - 1], v, tr);
     const out = [];
     if (chap1.subtitle) out.push(`<p class="ps-title">${esc(chap1.subtitle)}</p>`);
     for (let v = 1; v <= n; v++) {
@@ -156,7 +160,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       const cls = ['v', m.color ? `hl hl-${m.color}` : '', selected.has(v) ? 'sel' : '', v >= (focusVerse || 0) && v <= (focusEnd || 0) ? 'focus' : ''].filter(Boolean).join(' ');
       const notes = chap1.notes?.[v]?.length ? `<button type="button" class="v-ico v-fn" data-fn="${v}" aria-label="Translator’s note on verse ${v}">${icon('info', { size: 14 })}</button>` : '';
       const body = tr2
-        ? `<span class="pair"><span class="tr-k"><b class="trl">${esc(label1)}</b> ${text1(v)}</span><span class="tr-w"><b class="trl">${esc(label2)}</b> ${esc(v2[v - 1] || '')}</span></span>`
+        ? `<span class="pair"><span class="tr-k"><b class="trl">${esc(label1)}</b> ${text1(v)}</span><span class="tr-w"><b class="trl">${esc(label2)}</b> ${wordHtml(v2[v - 1] || '', chap2.raw?.[v - 1], v, tr2)}</span></span>`
         : text1(v);
       out.push(`<p class="${cls}" id="v${v}" data-v="${v}" tabindex="0" ${m.color ? `style="--hl:${HL[m.color]}"` : ''}><sup class="vn" aria-hidden="true">${v}</sup><span class="visually-hidden">Verse ${v}. </span>${body}${notes}${m.quote ? `<span class="v-ico" title="Saved quote">${icon('starFill', { size: 14 })}</span>` : ''}${m.note ? `<button type="button" class="v-ico v-note" data-note="${m.note.uid}" aria-label="Note on verse ${v}">${icon('note', { size: 14 })}</button>` : ''}</p>`);
     }
@@ -171,12 +175,93 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     }
   }
 
-  function strongsHtml(raw) {
-    return B.tokens(raw).map((t) => {
-      const lead = t.text.startsWith(' ') ? ' ' : '';
-      const word = esc(t.text.trimStart());
-      return t.strongs ? `${lead}<span class="w" data-s="${t.strongs.join(',')}" role="button" tabindex="0">${word}</span>` : `${lead}${word}`;
-    }).join('');
+  function wordHtml(text, rawText, verse, translation) {
+    const wordSpan = t => {
+      if (t.word == null) return esc(t.text);
+      const mark = annotations.find(a => a.kind === 'wordhl' && a.cfi === `${ref.book}.${ref.chapter}.${verse}` && a.word === t.word && a.text === t.text && (!a.translation || a.translation === translation));
+      return `<span class="bible-word${mark ? ' word-hl' : ''}" data-word="${t.word}" data-tr="${translation}">${esc(t.text)}</span>`;
+    };
+    if (translation === 'kjv' && strongsOn && rawText != null) {
+      // Keep the original Strong's token borders and tap targets; word spans nest inside.
+      let word = 0;
+      return B.tokens(rawText).map(t => {
+        const lead = t.text.startsWith(' ') ? ' ' : '';
+        const body = B.verseWords(t.text.trimStart()).map(part => wordSpan(part.word == null ? part : { ...part, word: word++ })).join('');
+        return t.strongs ? `${lead}<span class="w" data-s="${t.strongs.join(',')}" role="button" tabindex="0">${body}</span>` : `${lead}${body}`;
+      }).join('');
+    }
+    return B.verseWords(text).map(wordSpan).join('');
+  }
+
+  let hold = null, suppressClickUntil = 0, heldGesture = false;
+  function cancelHold() { clearTimeout(hold?.timer); hold = null; }
+  versesEl.addEventListener('pointerdown', e => {
+    cancelHold();
+    if (!e.isPrimary || e.button !== 0) return;
+    const target = e.target.closest('[data-word]');
+    if (!target) return;
+    hold = { x: e.clientX, y: e.clientY, timer: setTimeout(() => {
+      cancelHold();
+      if (!token()) return;
+      heldGesture = true;
+      suppressClickUntil = Date.now() + 900;
+      window.getSelection()?.removeAllRanges();
+      wordMenu(target);
+    }, 450) };
+  });
+  versesEl.addEventListener('pointermove', e => {
+    if (hold && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 10) cancelHold();
+  });
+  function endHold() {
+    cancelHold();
+    if (heldGesture) suppressClickUntil = Date.now() + 900;
+    heldGesture = false;
+  }
+  document.addEventListener('pointerup', endHold, true);
+  document.addEventListener('pointercancel', endHold, true);
+  versesEl.addEventListener('pointerleave', cancelHold);
+  versesEl.addEventListener('contextmenu', e => { if (e.target.closest('[data-word]')) e.preventDefault(); });
+  document.addEventListener('scroll', cancelHold, true);
+
+  function wordMenu(target) {
+    const v = Number(target.closest('[data-v]').dataset.v), word = Number(target.dataset.word);
+    const translation = target.dataset.tr, text = target.textContent, cfi = `${ref.book}.${ref.chapter}.${v}`;
+    const existing = annotations.find(a => a.kind === 'wordhl' && a.cfi === cfi && a.word === word && a.text === text && (!a.translation || a.translation === translation));
+    const d = openDialog({ title: text, variant: 'sheet', body: html`<div class="study-grid">
+      <button class="btn" data-word-action="highlight">${existing ? 'Remove highlight' : 'Highlight word'}</button>
+      <button class="btn" data-word-action="original">Original word</button>
+      <button class="btn" data-word-action="verse">Verse options</button></div>` });
+    d.body.addEventListener('click', async e => {
+      const action = e.target.closest('[data-word-action]')?.dataset.wordAction;
+      if (!action) return;
+      d.close();
+      try {
+        if (action === 'highlight') {
+          if (existing) await store.deleteAnnotation(existing.uid);
+          else {
+            const a = await store.addAnnotation(KEY, { kind: 'wordhl', cfi, text, color: 'sun', chapter: chLabel });
+            await store.updateAnnotation(a.uid, { word, translation });
+          }
+          await paint();
+        }
+        if (action === 'verse') {
+          selected = new Set([v]);
+          versesEl.querySelectorAll('.v').forEach(el => el.classList.toggle('sel', Number(el.dataset.v) === v));
+          paintBar();
+        }
+        if (action === 'original') {
+          const kjv = await B.loadChapter('kjv', ref.book, ref.chapter);
+          const words = B.verseWords(kjv.verses[v - 1], kjv.raw[v - 1]).filter(t => t.word != null);
+          // Translations don't have aligned token indices. Match English words, never guess by position.
+          const normal = t => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+          const matches = words.filter(t => normal(t.text) === normal(text));
+          const mapped = translation === 'kjv' ? words[word] : matches.length === 1 ? matches[0] : null;
+          const note = translation !== 'kjv' ? 'Original word lookup uses the KJV wording of this verse.' : '';
+          if (mapped?.strongs?.length) showStrongs(mapped.strongs.join(','), note);
+          else showInterlinear(v, `${note}${note ? ' ' : ''}No direct original word — here's the verse in the original.`);
+        }
+      } catch (err) { toast(`Couldn’t open word action: ${err.message}`); }
+    });
   }
 
   function chapterMarks() {
@@ -323,9 +408,9 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   }
 
   // ---------- study tools: original language, commentary, topics ----------
-  async function showInterlinear() {
-    const vs = [...selected].sort((a, b) => a - b).slice(0, 6);
-    const r = selRange();
+  async function showInterlinear(verse = null, note = '') {
+    const vs = (verse ? [verse] : [...selected]).sort((a, b) => a - b).slice(0, 6);
+    const r = verse ? { ...ref, verse } : selRange();
     const d = openDialog({ title: `Original language · ${B.labelSync(idx, { ...r, verseEnd: vs[vs.length - 1] })}`, variant: 'sheet', className: 'il-dialog', body: html`<p class="muted">Loading…</p>` });
     try {
       const [data, morph] = await Promise.all([B.loadInterlinear(ref.book, ref.chapter), import('../lib/morph.js')]);
@@ -353,8 +438,9 @@ async function renderChapter(root, route, { idx, navigate, token }) {
           ${v === 1 && data.title ? html`<p class="small faint">The Hebrew also has a title line here that English Bibles print as a heading.</p>` : ''}
           <ol class="il-words ${heb ? 'rtl' : ''}" dir="${heb ? 'rtl' : 'ltr'}">${items}</ol></section>`);
       }
-      d.body.innerHTML = String(html`${cards}
+      d.body.innerHTML = String(html`${note ? html`<p class="small muted">${note}</p>` : ''}${cards}
         <p class="hint">${heb ? 'Hebrew: Open Scriptures Hebrew Bible (Westminster Leningrad Codex). Glosses and transliterations: STEPBible lexicon.' : 'Greek: STEPBible TAGNT, with word-by-word English.'} CC BY 4.0. Verse numbers follow English Bibles (STEPBible TVTMS). Tap a Strong’s number for the full entry.</p>`);
+      if (verse) d.body.querySelector('.il-verse')?.scrollIntoView({ block: 'nearest' });
       d.body.addEventListener('click', (e) => { const b = e.target.closest('.il-s[data-s]'); if (b) showStrongs(b.dataset.s); });
     } catch (err) { d.body.innerHTML = String(html`<p class="muted">${err.message}</p>`); }
   }
@@ -419,6 +505,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     const d = openDialog({
       title: 'Study tools', variant: 'sheet',
       body: html`<div class="study-grid">
+        <a class="study-btn" href="#/bible/mine">${icon('note')}<span><strong>My Bible</strong><small>Notes, saved verses and highlights</small></span></a>
         <button type="button" class="study-btn" data-st="commentary">${icon('note', { size: 22 })}<span><strong>Commentary</strong><small>Matthew Henry and six more on ${chLabel}</small></span></button>
         <button type="button" class="study-btn" data-st="original">${icon('dict', { size: 22 })}<span><strong>Original language</strong><small>${book.testament === 'OT' ? 'Hebrew' : 'Greek'} word by word for this chapter</small></span></button>
         <a class="study-btn" href="#/bible/topics">${icon('library', { size: 22 })}<span><strong>Topics</strong><small>Nave’s Topical Bible: 5,000+ subjects</small></span></a>
@@ -440,14 +527,14 @@ async function renderChapter(root, route, { idx, navigate, token }) {
 
   const verseLines = () => (chap1?.verses || []).map((t, i) => `${i + 1} ${t}`).join('\n');
 
-  async function showStrongs(nums) {
+  async function showStrongs(nums, note = '') {
     // Show the content word before the Greek article (G3588) when both are tagged.
     const list = nums.split(',').sort((a, b) => (a === 'G3588') - (b === 'G3588'));
     const d = openDialog({ title: 'Strong’s concordance', variant: 'sheet', body: html`<p class="muted">Loading…</p>` });
     try {
       const entries = (await Promise.all(list.map((n) => B.strongsEntry(n)))).filter(Boolean);
       if (!entries.length) { d.body.innerHTML = String(html`<p class="muted">No lexicon entry for ${nums}.</p>`); return; }
-      d.body.innerHTML = String(html`${entries.map((e) => html`
+      d.body.innerHTML = String(html`${note ? html`<p class="small muted">${note}</p>` : ''}${entries.map((e) => html`
         <section class="lex">
           <div class="lex-head"><span class="lex-lemma" lang="${e.id[0] === 'H' ? 'he' : 'el'}">${e.lemma}</span><span class="lex-id">${e.id}</span></div>
           <p><em>${e.translit}</em> · <strong>${e.gloss}</strong></p>
@@ -609,6 +696,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
 
   // ---------- events ----------
   root.addEventListener('click', async (e) => {
+    if ((heldGesture || Date.now() < suppressClickUntil) && e.target.closest('#verses')) { e.preventDefault(); e.stopPropagation(); return; }
     const w = e.target.closest('.strongs-on .w');
     if (w) { e.stopPropagation(); showStrongs(w.dataset.s); return; }
     const note = e.target.closest('[data-note]');
@@ -665,6 +753,16 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       if (strongsOn && tr !== 'kjv') toast('Strong’s numbers are on the KJV text. Switch to KJV to tap words, or use “Original” on a verse.');
       await paint();
     }
+    if (act === 'podcast' && window.MavisPodcast && !isKids()) {
+      try {
+        const translation = B.trInfo(tr).local ? tr : 'kjv';
+        const chapter = await B.loadChapter(translation, ref.book, ref.chapter);
+        if (token() && !isKids()) {
+          window.MavisPodcast?.postMessage(JSON.stringify(B.bibleLessonPayload(book.name, ref.chapter, B.trInfo(translation).short, chapter.verses)));
+          toast('Opening the Podcast Lounge…');
+        }
+      } catch (err) { toast(`Couldn’t open the Podcast Lounge: ${err.message}`); }
+    }
     if (act === 'listen') startListening(1);
     if (act === 'ask') ask();
     if (act === 'study') openStudy();
@@ -674,7 +772,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     }
   });
   root.addEventListener('keydown', (e) => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.w')) { e.preventDefault(); showStrongs(e.target.dataset.s); }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.strongs-on .w')) { e.preventDefault(); showStrongs(e.target.dataset.s); }
     else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.v')) { e.preventDefault(); toggleVerse(Number(e.target.dataset.v), true); }
   });
   root.querySelector('#lookup').addEventListener('submit', (e) => { e.preventDefault(); lookup(root.querySelector('#lookup-q').value); });
@@ -709,6 +807,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   let sx = 0, sy = 0;
   versesEl.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
   versesEl.addEventListener('touchend', (e) => {
+    if (heldGesture || Date.now() < suppressClickUntil) return;
     const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
     if (Math.abs(dx) > 80 && Math.abs(dy) < 50) stepChapter(dx < 0 ? 1 : -1);
   }, { passive: true });
@@ -794,6 +893,10 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     return cleanup;
   }
   function cleanup() {
+    cancelHold();
+    document.removeEventListener('scroll', cancelHold, true);
+    document.removeEventListener('pointerup', endHold, true);
+    document.removeEventListener('pointercancel', endHold, true);
     // Keep reading (and car mode) if read-aloud moved on to the next chapter.
     if (location.hash.includes('listen=1') && narrator && narrator.state !== 'idle') return;
     narrator?.destroy();

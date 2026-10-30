@@ -1,0 +1,67 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/src/styles/app.css"></head><body><main id="root"></main><script type="module">
+import * as store from '/src/lib/store.js';
+import { render } from '/src/views/bible.js';
+const actualFetch = window.fetch.bind(window);
+window.fetch = (url, options) => String(url).startsWith('/bible/') ? actualFetch(url, options) : Promise.resolve(new Response(JSON.stringify(String(url).includes('/api/bible-ext') ? {verses:['Remote fixture verse.']} : {}), { headers: { 'Content-Type': 'application/json' } }));
+let count = 0, cleanup;
+const check = (ok, message) => { if (!ok) throw Error(message); count++; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const wait = async f => { for (let i=0;i<100;i++) { if (f()) return; await sleep(30); } throw Error('Timed out: '+f); };
+const messages=[]; window.MavisPodcast={postMessage: m=>messages.push(JSON.parse(m))};
+let root = document.querySelector('#root');
+const show = async (segs=['John','3'], query='') => {
+ cleanup?.(); const next = document.createElement('main'); root.replaceWith(next); root=next;
+ cleanup=await render(root,{segs,params:new URLSearchParams(query)},{token:()=>true,navigate:()=>{}});
+};
+const pointer=(el,type,x=30,y=30)=>el.dispatchEvent(new PointerEvent(type,{bubbles:true,isPrimary:true,button:0,pointerId:1,clientX:x,clientY:y}));
+const hold = async el => { pointer(el,'pointerdown'); await sleep(480); pointer(el,'pointerup'); await wait(()=>document.querySelector('[data-word-action]')); };
+const close = async () => { document.querySelector('.overlay.open [data-close]')?.click(); await sleep(250); };
+try {
+ await store.loadSettings(); await store.setSetting('bibleCached',true); await store.setSetting('kidsMode',false); await store.setSetting('bibleStrongs',false);
+ await show();
+ check(root.querySelector('a[href="#/bible/mine"]'), 'My Bible header');
+ root.querySelector('[data-act="podcast"]').click(); await wait(()=>messages.length===1);
+ check(messages[0].chapter==='John 3' && messages[0].text.includes('\n36 '), 'Full chapter bridge');
+ const target=()=>root.querySelector('#v16 [data-word="0"]');
+ pointer(target(),'pointerdown'); pointer(target(),'pointermove',50,30); await sleep(500); pointer(target(),'pointerup');
+ check(!document.querySelector('[data-word-action]'), 'Movement cancels hold');
+ pointer(target(),'pointerdown'); document.dispatchEvent(new Event('scroll')); await sleep(500); pointer(target(),'pointerup');
+ check(!document.querySelector('[data-word-action]'), 'Scroll cancels hold');
+ await hold(target()); document.querySelector('[data-word-action="highlight"]').click(); await wait(()=>root.querySelector('#v16 .word-hl'));
+ let rows=await store.listAnnotations('bible'); check(rows.some(a=>a.kind==='wordhl'&&a.word===0&&a.cfi==='John.3.16'), 'Word metadata persisted');
+ await hold(target()); check(document.querySelector('[data-word-action="highlight"]').textContent==='Remove highlight','Remove offered');
+ document.querySelector('[data-word-action="verse"]').click(); check(!root.querySelector('#verse-bar').hidden&&root.querySelector('#v16.sel'),'Verse options selects verse');
+ await sleep(950);
+ await hold(target()); document.querySelector('[data-word-action="original"]').click(); await wait(()=>document.querySelector('.lex-lemma')); check(!!document.querySelector('.lex-id').textContent,'Original lexicon'); await close();
+ const article=root.querySelector('#v1 [data-word="2"]');
+ await hold(article); document.querySelector('[data-word-action="original"]').click(); await wait(()=>document.querySelector('.il-verse')); check(document.querySelector('.il-dialog').textContent.includes('No direct original word'),'Interlinear fallback'); await close();
+ await store.addAnnotation('bible',{kind:'note',cfi:'John.3.16',text:'Fixture verse',note:'Fixture note'});
+ await store.addAnnotation('bible',{kind:'quote',cfi:'John.3.16',text:'Saved fixture'});
+ await show(['mine']); check(root.querySelectorAll('.mine-section').length===3,'Three sections');
+ check(root.textContent.includes('Fixture note')&&root.textContent.includes('Word highlight'),'Annotations visible');
+ root.querySelector('#mine-search').value='Fixture note'; root.querySelector('#mine-search').dispatchEvent(new Event('input'));
+ check(root.querySelectorAll('.mine-row').length===1,'Search');
+ root.querySelector('[data-edit]').click(); document.querySelector('#mine-note').value='Edited note'; document.querySelector('[data-save]').click();
+ await wait(()=>!document.querySelector('[data-save]')); rows=await store.listAnnotations('bible'); check(rows.some(a=>a.note==='Edited note'),'Edit persists');
+ root.querySelector('#mine-search').value=''; root.querySelector('#mine-search').dispatchEvent(new Event('input'));
+ check(root.querySelector('.mine-row').getAttribute('href').includes('?v='),'Focused verse link');
+ root.querySelector('[data-delete]').click(); await wait(()=>!root.querySelector('[data-delete]')); check(root.textContent.includes('Tap a verse, then Note'),'Delete/empty state');
+ await show(); await hold(target()); document.querySelector('[data-word-action="highlight"]').click(); await wait(()=>!root.querySelector('#v16 .word-hl'));
+ check(!(await store.listAnnotations('bible')).some(a=>a.kind==='wordhl'),'Remove word highlight persists');
+ await sleep(950); target().click(); check(!root.querySelector('#verse-bar').hidden,'Ordinary tap still selects');
+ root.querySelector('[data-hl="mint"]').click(); await wait(()=>root.querySelector('#v16.hl-mint')); check(!!root.querySelector('#v16.hl-mint'),'Verse highlight unchanged');
+ root.querySelector('[data-act="strongs"]').click(); await wait(()=>root.querySelector('#v16 .w'));
+ check(root.querySelector('#v16 .w [data-word]'),'Strong’s token look retains nested word targets');
+ await hold(target()); check(document.querySelector('[data-word-action="original"]'),'Hold works with Strong’s on'); await close();
+ await show(['John','3'],'t=web'); root.querySelector('[data-act="podcast"]').click(); await wait(()=>messages.length===2);
+ check(messages[1].text.startsWith('John 3 (WEB)'),'Bundled selected translation');
+ const webGod=[...root.querySelectorAll('#v16 [data-word]')].find(el=>el.textContent==='God');
+ await hold(webGod); document.querySelector('[data-word-action="original"]').click(); await wait(()=>document.querySelector('.lex-lemma'));
+ check(document.querySelector('.lex-lemma').closest('.dialog').textContent.includes('KJV wording'),'Non-KJV original disclosure'); await close();
+ await show(['John','3'],'t=BSB'); root.querySelector('[data-act="podcast"]').click(); await wait(()=>messages.length===3);
+ check(messages[2].text.startsWith('John 3 (KJV)')&&messages[2].text.includes('\n36 '),'Remote translation falls back to whole KJV chapter');
+ await store.setSetting('kidsMode',true); await show(); check(!root.querySelector('[data-act="podcast"]'),'Kids hide');
+ await store.setSetting('kidsMode',false); delete window.MavisPodcast; await show(); check(!root.querySelector('[data-act="podcast"]'),'Bridge absent hides');
+ cleanup?.(); document.body.textContent=`PASS: ${count} Bible browser checks; intercepted bridge, no live jobs.`;
+} catch(e) { cleanup?.(); document.body.textContent='FAIL: '+e.stack; }
+</script></body></html>

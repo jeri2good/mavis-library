@@ -1,7 +1,7 @@
 // Bible study screens: Nave's Topical Bible (#/bible/topics, #/bible/topic/<id>)
 // and reading plans (#/bible/plans).
 
-import { html, icon, toast, confirmDialog } from '../lib/ui.js';
+import { html, icon, toast, confirmDialog, openDialog } from '../lib/ui.js';
 import * as B from '../lib/bible.js';
 import * as P from '../lib/plans.js';
 import * as store from '../lib/store.js';
@@ -155,4 +155,59 @@ export async function renderPlans(root, route, { idx, navigate, token }) {
   const off = store.onChange((ev) => { if (ev.type === 'remote' && ev.store === 'plans') paint(); });
   await paint();
   return () => off();
+}
+
+// ================================================================ My Bible
+export async function renderMine(root, route, { idx, token }) {
+  root.innerHTML = String(html`<div class="page bible-study">
+    <a class="btn btn-quiet" href="#/bible">${icon('back')} Back to reading</a>
+    <h1 class="h-page">My Bible</h1>
+    <label for="mine-search">Search notes, verses and references</label>
+    <input class="input" id="mine-search" type="search" placeholder="John 3:16, hope…" />
+    <div id="mine-list" aria-live="polite"></div></div>`);
+  let rows = [];
+  const list = root.querySelector('#mine-list'), search = root.querySelector('#mine-search');
+  const colors = { sun: '#e9c46a', mint: '#86c7a1', sky: '#8fb8e6', rose: '#e7a1a8' };
+  function paint() {
+    const filtered = B.mineAnnotations(rows, idx, search.value);
+    list.innerHTML = String(html`${[
+      ['Notes', ['note'], 'Tap a verse, then Note, to write a note.'],
+      ['Saved verses', ['quote'], 'Tap a verse, then Save quote, to keep it here.'],
+      ['Highlights', ['highlight', 'wordhl'], 'Tap a verse and choose a colour, or press and hold a word and choose Highlight word.'],
+    ].map(([title, kinds, hint]) => {
+      const items = filtered.filter(a => kinds.includes(a.kind));
+      return html`<section class="mine-section"><h2>${title}</h2>${items.length ? html`<ul class="mine-rows">${items.map(a => {
+        const r = B.parseOsis(a.cfi);
+        return html`<li><a class="mine-row" href="#/bible/${encodeURIComponent(r.book)}/${r.chapter}?v=${r.verse || 1}">
+          <strong>${a.reference}</strong><span>${a.text}</span>${a.note ? html`<span class="mine-note">${a.note}</span>` : ''}
+          <small><span class="dot" style="background:${colors[a.color] || 'transparent'}"></span> ${a.kind === 'wordhl' ? 'Word highlight · ' : ''}<time datetime="${new Date(a.createdAt || 0).toISOString()}">${new Date(a.createdAt || 0).toLocaleDateString()}</time></small>
+        </a>${a.kind === 'note' ? html`<button class="btn btn-sm" data-edit="${a.uid}" aria-label="Edit note on ${a.reference}">Edit note</button><button class="btn btn-sm" data-delete="${a.uid}" aria-label="Delete note on ${a.reference}">Delete</button>` : ''}</li>`;
+      })}</ul>` : html`<p class="muted">${search.value ? 'No matches. ' : ''}${hint}</p>`}</section>`;
+    })}`);
+  }
+  async function refresh() {
+    try {
+      rows = await store.listAnnotations('bible');
+      if (token()) paint();
+    } catch (err) { if (token()) list.textContent = `Couldn’t load My Bible: ${err.message}`; }
+  }
+  search.addEventListener('input', paint);
+  list.addEventListener('click', async e => {
+    const edit = e.target.closest('[data-edit]'), del = e.target.closest('[data-delete]');
+    const a = rows.find(a => a.uid === (edit?.dataset.edit || del?.dataset.delete));
+    if (!a) return;
+    if (del) { await store.deleteAnnotation(a.uid); toast('Note deleted.'); await refresh(); return; }
+    const d = openDialog({ title: `Note · ${B.labelSync(idx, B.parseOsis(a.cfi))}`, variant: 'sheet',
+      body: html`<blockquote class="ann-text">${a.text}</blockquote>
+      <div class="field"><label for="mine-note">Your note</label><textarea class="input" id="mine-note" rows="5" maxlength="5000" autofocus>${a.note}</textarea></div>
+      <div class="dialog-actions"><button class="btn" data-del>Delete</button><button class="btn btn-primary" data-save>Save note</button></div>` });
+    d.body.addEventListener('click', async e => {
+      if (e.target.closest('[data-save]')) {
+        await store.updateAnnotation(a.uid, { note: d.body.querySelector('textarea').value.trim() });
+        d.close(); toast('Note saved.'); await refresh();
+      }
+      if (e.target.closest('[data-del]')) { await store.deleteAnnotation(a.uid); d.close(); toast('Note deleted.'); await refresh(); }
+    });
+  });
+  await refresh();
 }

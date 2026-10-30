@@ -331,3 +331,33 @@ export async function prefetchAll() {
     return true;
   } catch { return false; }
 }
+
+
+/** Bridge payload: the plain reference in chapter selects the Bible lesson prompt. */
+export function bibleLessonPayload(book, chapter, translation, verses) {
+  const reference = `${book === 'Psalms' ? 'Psalm' : book} ${chapter}`;
+  const text = `${reference} (${translation})\n\n${verses.map((v, i) => `${i + 1} ${v}`).join('\n')}`;
+  return { kind: 'chapter', book: 'Bible', chapter: reference, text: text.slice(0, 400000), originalChars: text.length };
+}
+
+/** Preserve every space and punctuation mark while assigning stable word indices. */
+export function verseWords(text, raw = null) {
+  const tagged = raw == null ? [] : tokens(raw).flatMap(t => {
+    const words = t.text.match(/[^\s]+/gu) || [];
+    return words.map((word, i) => ({ text: word, strongs: i === words.length - 1 ? t.strongs : null }));
+  });
+  let index = 0;
+  return String(text).split(/(\s+)/u).filter(Boolean).map(part => {
+    if (/^\s+$/u.test(part)) return { text: part };
+    const word = index++;
+    return { text: part, word, strongs: tagged[word]?.strongs || null };
+  });
+}
+
+export function mineAnnotations(rows, idx, query = '') {
+  const q = query.trim().toLocaleLowerCase();
+  return rows.filter(a => ['note', 'quote', 'highlight', 'wordhl'].includes(a.kind) && parseOsis(a.cfi))
+    .map(a => ({ ...a, reference: labelSync(idx, parseOsis(a.cfi)) }))
+    .filter(a => `${a.reference} ${a.text} ${a.note || ''}`.toLocaleLowerCase().includes(q))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}

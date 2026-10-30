@@ -15,6 +15,10 @@ interface BookDao {
 
     @Query("SELECT * FROM books WHERE `key` = :key")
     suspend fun get(key: String): BookEntity?
+
+    /** Every book this device has opened or saved, most recently read first (for pickers). */
+    @Query("SELECT b.* FROM books b LEFT JOIN reading_progress p ON p.bookKey = b.`key` ORDER BY COALESCE(p.updatedAt, b.updatedAt) DESC LIMIT 100")
+    suspend fun recent(): List<BookEntity>
 }
 
 @Dao

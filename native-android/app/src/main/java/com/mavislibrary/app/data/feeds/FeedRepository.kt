@@ -16,6 +16,10 @@ class FeedRepository(private val fetcher: FeedFetcher, private val online: () ->
     private data class Cached(val at: Long, val feed: ParsedFeed)
     private val cache = mutableMapOf<String, Cached>()
     private val mutex = Mutex()
+    /** Local headlines only; opening a topic picker never refreshes feeds. */
+    suspend fun cachedStories(): List<FeedStory> = mutex.withLock {
+        cache.values.flatMap { it.feed.stories }.distinctBy { it.item.url }.sortedByDescending { it.published ?: 0 }
+    }
     suspend fun load(sources: List<FeedSource>): FeedLoad = mutex.withLock {
         val notes = mutableListOf<String>()
         val stories = sources.filter { it.enabled }.flatMap { source ->

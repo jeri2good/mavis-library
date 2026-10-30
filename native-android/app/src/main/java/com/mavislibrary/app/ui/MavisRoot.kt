@@ -393,7 +393,7 @@ fun MavisRoot(
                 composable("lounge") {
                     if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) key(podcastRequest) {
                         com.mavislibrary.app.ui.lounge.PodcastLoungeScreen(
-                            container, playback, podcastDraft, onSettings = { goTab(Tab.SETTINGS.route) }, onBack = { nav.popBackStack() }, onFirstPlay = onFirstAudio, onOpenArticle = openArticle, onOpenReader = openReader,
+                            container, playback, podcastDraft, onSettings = { goTab(Tab.SETTINGS.route) }, onBack = { nav.popBackStack() }, onFirstPlay = onFirstAudio, onOpenArticle = openArticle, onOpenReader = openReader, pickerWebView = webHost?.also { it.warm() }?.webView,
                         )
                     } else LaunchedEffect(Unit) { nav.popBackStack() }
                 }

@@ -2,6 +2,7 @@
 <html><head><meta charset="utf-8"><link rel="stylesheet" href="/src/styles/app.css"></head><body><main id="root"></main>
 <script type="module">
 import JSZip from 'jszip';
+import { annotationsSummary, podcastChapters } from '/src/lib/podcast-picker.js';
 import * as store from '/src/lib/store.js';
 import { render } from '/src/views/reader.js';
 import { render as renderHome } from '/src/views/home.js';
@@ -43,6 +44,16 @@ try {
   check(messages[0].text.length > 24000, 'Must not use recap truncation');
   check(!messages[0].text.includes('EXCLUDED NEXT CHAPTER'), 'Chapter boundary must exclude next chapter');
   check(!messages[0].gutenbergId, 'Default chapter must not send whole book ID');
+  let position;
+  for (let i = 0; i < 100 && !position?.cfi; i++) { position = await store.getProgress(item.key); if (!position?.cfi) await new Promise(resolve => setTimeout(resolve, 50)); }
+  check(position?.cfi, 'Reader saves a position for picker');
+  await store.addAnnotation(item.key, { kind: 'bookmark', cfi: position.cfi, chapter: 'Chapter One', text: 'Fixture bookmark' });
+  const marks = await annotationsSummary();
+  const choices = await podcastChapters(item.key, marks);
+  check(choices.length === 2, 'Picker must expose both TOC chapters');
+  check(choices[0].text === messages[0].text, 'Picker chapter text must equal reader shortcut');
+  check(choices[0].marked && choices[0].lastRead, 'Picker resolves bookmark and last-read CFI');
+  check(choices[1].text.includes('EXCLUDED NEXT CHAPTER') && !choices[1].text.includes('FIRST PAGE'), 'Picker second chapter boundary');
   root.querySelector('[data-podcast-book]').click();
   check(messages[1].kind === 'book' && messages[1].gutenbergId === 1342, 'Explicit whole-book choice');
   await cleanup(); cleanup = null;

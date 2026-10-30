@@ -1,3 +1,4 @@
+import { annotationsSummary, booksSummary, podcastChapters } from './lib/podcast-picker.js';
 import './styles/app.css';
 import { installAppFonts } from './lib/fonts.js';
 import * as store from './lib/store.js';
@@ -280,4 +281,4 @@ async function boot() {
 boot();
 
 // Lets the Android app hand over the owner access code it keeps in secure storage (no-op on the plain website).
-window.MavisApp = Object.assign(window.MavisApp || {}, { setAccessCode: (code) => setOwnerAccessCode(code) });
+window.MavisApp = Object.assign(window.MavisApp || {}, { annotationsSummary, booksSummary, podcastChapters, setAccessCode: (code) => setOwnerAccessCode(code) });

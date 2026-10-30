@@ -254,6 +254,14 @@ class WebHost(private val activity: ComponentActivity) {
         updateBackState()
     }
 
+    /** Boots the web app off-screen (if no web tab has yet) so native screens can query its local store. */
+    fun warm() {
+        if (loaded) return
+        loaded = true
+        webView.loadUrl("$WEB_ORIGIN/#/")
+        baseHistoryIndex = 0
+    }
+
     fun goBack() {
         if (webView.canGoBack()) webView.goBack()
         updateBackState()

@@ -45,7 +45,7 @@ import kotlinx.coroutines.flow.catch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onBack: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null, onOpenReader: ((ReaderTarget) -> Unit)? = null) {
+fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onBack: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null, onOpenReader: ((ReaderTarget) -> Unit)? = null, pickerWebView: android.webkit.WebView? = null) {
     val context = LocalContext.current
     val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
     if (!loungeRouteAllowed(kids?.enabled)) return
@@ -67,6 +67,11 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val positionFlow = remember { container.resumePositionStore.podcastPositions() }
     val positions by positionFlow.collectAsStateWithLifecycle(initialValue = emptyMap())
     val shelf by container.shelfRepository.shelfBooks.collectAsStateWithLifecycle(initialValue = emptyList())
+    // Books on the shelf first, then any other book this device has opened (most recently read first).
+    val seenBooks by androidx.compose.runtime.produceState(emptyList<com.mavislibrary.app.data.model.Book>(), shelf) {
+        val recent = runCatching { container.database.books().recent() }.getOrDefault(emptyList())
+        value = shelf + recent.map { with(com.mavislibrary.app.data.db.EntityMappers) { it.asBook() } }.filter { b -> shelf.none { it.key == b.key } }
+    }
     val imports = remember { EpubImports(context) }
     val imported by imports.books.collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
@@ -93,9 +98,10 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     var message by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<Book>>(emptyList()) }
     var editingSource by remember(initial) { mutableStateOf(false) }
+    var picker by remember { mutableStateOf<String?>(null) }
+    var chosenKind by remember(initial) { mutableStateOf(initial?.let { if (it.title.startsWith("Bible - ")) "bible" else it.kind }) }
+    var confirmed by remember(initial) { mutableStateOf(initial != null && initial != PodcastDraft()) }
     var moreOptions by remember { mutableStateOf(false) }
     var refresh by remember { mutableIntStateOf(0) }
     val pollingMessages = remember(loaded.address) { mutableStateMapOf<String, String>() }
@@ -160,7 +166,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     fun chooseImported(book: ImportedBook) = act {
         val file = imports.open(book.id) ?: error("That imported book is unavailable.")
         val text = withContext(Dispatchers.IO) { NativeEpubText.read(file).joinToString("\n\n") }
-        if (allowed()) draft = PodcastDraft.extracted("book", book.title, text)
+        if (allowed()) { draft = PodcastDraft.extracted("book", book.title, text); confirmed = true; picker = null; editingSource = false }
     }
     fun uriOf(saved: SavedPodcast): Uri? = container.audioFiles.podcastLocal(saved.studio, saved.job.id)?.let(Uri::fromFile)
         ?: Uri.parse(api.audioUrl(saved.job.id)).takeIf { saved.studio == loaded.address }
@@ -189,7 +195,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                     TextButton(onClick = { active.values.forEach { it.cancel() }; active.clear(); refresh++ }) { Text("Refresh") }
                 }
-                Button(onClick = { composing = true }, modifier = Modifier.fillMaxWidth().testTag("new_podcast")) {
+                Button(onClick = { composing = true; confirmed = false; chosenKind = null; editingSource = false }, modifier = Modifier.fillMaxWidth().testTag("new_podcast")) {
                     Icon(Icons.Outlined.Add, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("New podcast")
                 }
                 if (message == "Request access" || message == "Sign in to use Podcast Lounge") Button(onClick = onSettings) { Text(message!!) }
@@ -234,38 +240,28 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp).testTag("new_podcast_sheet"),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("New podcast", style = MaterialTheme.typography.headlineSmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                linkedMapOf("book" to "From a book", "chapter" to "From a chapter", "article" to "Website or article", "topic" to "From a topic").forEach { (kind, label) ->
-                    FilterChip(draft.kind == kind, { draft = PodcastDraft(kind) }, { Text(label) })
+            if (!confirmed) PodcastTypeCards { picker = it; chosenKind = it }
+            else {
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(sourceTypes[chosenKind] ?: draft.kind, style = MaterialTheme.typography.labelLarge)
+                        Text(draft.title.ifBlank { draft.text.take(100) }, style = MaterialTheme.typography.titleLarge)
+                        Text(when {
+                            chosenKind == "bible" -> "Bible lesson · ${draft.title.removePrefix("Bible - ")} · ${draft.text.lines().count { it.matches(Regex("^\\d+ .*")) }} verses"
+                            draft.kind == "chapter" -> "${podcastStyles[style] ?: style} · ${draft.title} · ${java.text.NumberFormat.getIntegerInstance().format(draft.originalChars)} characters"
+                            draft.kind == "article" -> draft.url
+                            draft.gutenbergId != null -> "Free classic · Gutenberg ${draft.gutenbergId}"
+                            else -> "${draft.originalChars} characters"
+                        })
+                        TextButton(onClick = { picker = chosenKind ?: draft.kind }) { Text("Change") }
+                    }
                 }
-            }
-            if (draft.kind == "book") {
-                Text("Pick a saved book or find a free classic.")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    shelf.forEach { book -> AssistChip(onClick = { draft = PodcastDraft.book(book) }, label = { Text(book.title, maxLines = 2) }) }
-                    imported.forEach { book -> AssistChip(onClick = { chooseImported(book) }, label = { Text("${book.title} · imported", maxLines = 2) }) }
+                TextButton(onClick = { editingSource = !editingSource }) { Text(if (editingSource) "Hide details" else "Edit details") }
+                if (editingSource) {
+                    OutlinedTextField(draft.title, { draft = draft.copy(title = it.take(200)) }, label = { Text("Podcast title") }, modifier = Modifier.fillMaxWidth())
+                    if (draft.kind == "article") OutlinedTextField(draft.url, { draft = draft.copy(url = it.take(4096)) }, label = { Text("Web address") }, modifier = Modifier.fillMaxWidth())
+                    if (draft.gutenbergId == null) OutlinedTextField(draft.text, { draft = draft.copy(text = podcastText(it), originalChars = it.length) }, label = { Text(if (draft.kind == "topic") "What should the hosts talk about?" else "Source text") }, minLines = 3, maxLines = 6, modifier = Modifier.fillMaxWidth())
                 }
-                OutlinedTextField(query, { query = it.take(120) }, label = { Text("Search free classics") }, modifier = Modifier.fillMaxWidth())
-                OutlinedButton(enabled = query.isNotBlank() && !busy, onClick = { act { results = container.searchRepository.search(BookSource.GUTENBERG, query).value.books } }) { Text("Find books") }
-                results.forEach { book -> TextButton(onClick = { draft = PodcastDraft.book(book) }) { Text(book.title) } }
-                draft.gutenbergId?.let { Text("Chosen: ${draft.title}", style = MaterialTheme.typography.bodySmall) }
-            }
-            if (draft.kind == "chapter" && draft.text.isBlank()) Text("Open a book and choose Make podcast of this chapter, or paste the chapter text here.")
-            OutlinedTextField(draft.title, { draft = draft.copy(title = it.take(200)) }, label = { Text("Podcast title") }, modifier = Modifier.fillMaxWidth())
-            if (draft.kind == "article") {
-                OutlinedTextField(draft.url, { draft = draft.copy(url = it.take(4096)) }, label = { Text("Web address (https://…)") }, modifier = Modifier.fillMaxWidth())
-                if (onOpenArticle != null && draft.url.isNotBlank()) TextButton(onClick = { composing = false; onOpenArticle(draft) }) { Text("Read article") }
-            }
-            if (draft.gutenbergId == null) {
-                if (draft.kind in setOf("book", "chapter") && draft.text.length > 600 && !editingSource) {
-                    Text(draft.text.take(600) + "…", maxLines = 6, style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { editingSource = true }) { Text("Edit source text") }
-                } else OutlinedTextField(draft.text, { draft = draft.copy(text = podcastText(it), originalChars = it.length) },
-                    label = { Text(if (draft.kind == "topic") "What should the hosts talk about?" else "Source text (optional with a web address)") },
-                    minLines = 3, maxLines = 6, modifier = Modifier.fillMaxWidth())
-                if (draft.kind != "topic" && draft.text.isNotEmpty()) Text("${draft.text.length} / 400,000 characters" +
-                    if (draft.originalChars > MAX_PODCAST_TEXT) " · trimmed from ${draft.originalChars}" else "", style = MaterialTheme.typography.bodySmall)
-            }
             Text("${podcastStyles[style] ?: style} · ${podcastLengths[length] ?: length} · ${if (engine == "local") "local voices" else "NotebookLM when available"}",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(onClick = { moreOptions = !moreOptions }, contentPadding = PaddingValues(0.dp)) { Text(if (moreOptions) "Fewer options" else "More options") }
@@ -281,7 +277,13 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                 composing = false
             } }) { Text(if (busy) "Working…" else "Make podcast") }
             if (!accessReady) Text("Waiting for your studio to connect.", style = MaterialTheme.typography.bodySmall)
+            }
         }
+    }
+    picker?.let { kind ->
+        PodcastSourcePicker(kind, container, seenBooks, imported, pickerWebView, onDismiss = { picker = null }, onPick = {
+            draft = it; confirmed = true; editingSource = false; picker = null
+        }, onImported = ::chooseImported)
     }
     details?.let { (job, playIt) -> EpisodeDetailsSheet(job, onDismiss = { details = null }, onPlay = playIt, onOpenReader = onOpenReader) }
     reading?.let { saved ->

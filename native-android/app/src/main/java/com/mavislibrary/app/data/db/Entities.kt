@@ -101,6 +101,9 @@ fun Book.toEntity(now: Long) = BookEntity(
     updatedAt = now,
 )
 
+/** Lets callers outside this package map entities without importing the top-level extension. */
+object EntityMappers { fun BookEntity.asBook() = toBook() }
+
 fun BookEntity.toBook() = Book(
     key = key,
     source = runCatching { BookSource.valueOf(source) }.getOrDefault(BookSource.GUTENBERG),

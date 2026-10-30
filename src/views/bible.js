@@ -194,11 +194,27 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   }
 
   let hold = null, suppressClickUntil = 0, heldGesture = false;
+  // A fingertip often lands on the space between words: snap to the nearest word in that verse.
+  function wordAt(e) {
+    const hit = e.target.closest?.('[data-word]');
+    if (hit) return hit;
+    const verse = e.target.closest?.('.v');
+    if (!verse) return null;
+    let best = null, bestD = 40;
+    for (const w of verse.querySelectorAll('[data-word]')) {
+      for (const r of w.getClientRects()) {
+        const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right), dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
+        const d = Math.hypot(dx, dy * 2);
+        if (d < bestD) { bestD = d; best = w; }
+      }
+    }
+    return best;
+  }
   function cancelHold() { clearTimeout(hold?.timer); hold = null; }
   versesEl.addEventListener('pointerdown', e => {
     cancelHold();
     if (!e.isPrimary || e.button !== 0) return;
-    const target = e.target.closest('[data-word]');
+    const target = wordAt(e);
     if (!target) return;
     hold = { x: e.clientX, y: e.clientY, timer: setTimeout(() => {
       cancelHold();
@@ -220,7 +236,20 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   document.addEventListener('pointerup', endHold, true);
   document.addEventListener('pointercancel', endHold, true);
   versesEl.addEventListener('pointerleave', cancelHold);
-  versesEl.addEventListener('contextmenu', e => { if (e.target.closest('[data-word]')) e.preventDefault(); });
+  versesEl.addEventListener('contextmenu', e => {
+    const target = wordAt(e);
+    if (!target) return;
+    e.preventDefault();
+    // Android WebView reports a long-press as contextmenu (and may cancel the pointer); open the word menu here too.
+    if (hold || !heldGesture) {
+      cancelHold();
+      if (!token()) return;
+      heldGesture = true;
+      suppressClickUntil = Date.now() + 900;
+      window.getSelection()?.removeAllRanges();
+      wordMenu(target);
+    }
+  });
   document.addEventListener('scroll', cancelHold, true);
 
   function wordMenu(target) {

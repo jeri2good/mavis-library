@@ -1075,7 +1075,7 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 3px; paddi
 @media (prefers-reduced-motion: reduce) { .reader-view[class*="flip-"], .reader-view[class*="cover-"] { animation: none !important; } }
 
 /* Word targets preserve inline spacing, while holds use the Bible word sheet. */
-.bible-word { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.bible-word, #verses .v { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .bible-word.word-hl { box-shadow: inset 0 -.3em #e9c46a99; }
 .mine-section { margin-block: 1.5rem; }
 .mine-rows { list-style: none; padding: 0; }

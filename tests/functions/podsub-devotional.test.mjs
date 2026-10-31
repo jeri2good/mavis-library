@@ -33,11 +33,33 @@ test('topic LLM receives exclusions, fallback handles throws, junk and duplicate
 test('site uses newest uncovered devotion and Scripture-first title, preview returns reference', async () => {
  const page = async () => ({url:'https://example.com/library',html:'<main><a href="/new">Newest devotion</a><a href="/old">Older devotion</a></main>'});
  const article = async url => ({title:url.endsWith('new')?'New':'Old',text:'Reflection',scriptureText:'Hebrews 12:1-3'});
- const deps = {page,article,passage:async r=>`${r}\nFull Scripture`};
+ const deps = {page,article,passage:async r=>`${r}\nFull Scripture`,feed:async()=>{throw Error('no feed');}};
  const e = await devotionalEpisode({id:'d',kind:'site',url:'https://example.com/library'}, {seen:['https://example.com/new']},deps);
  assert.equal(e.title,'Hebrews 12:1-3 — Old'); assert.match(e.text,/Full Scripture/); assert.match(e.text,/Today's devotional reflection/); assert.equal(e.devotional.reference,'Hebrews 12:1-3');
  assert.equal((await previewDevotional('https://example.com/library',deps)).title,'New');
  await assert.rejects(devotionalEpisode({id:'d',kind:'site',url:'https://example.com/library'}, {}, {...deps,passage:async()=>{throw Error();}}), /scripture_unavailable/);
+});
+test('JavaScript-rendered library: devotions come from the site feed with their printed reference (todaydevotional.com shape)', async () => {
+ const page = async () => ({url:'https://todaydevotional.com/daily-devotional-library',html:'<html><head><title>Library</title></head><body><div id="app"></div><a href="/devotions/by-topic">By topic</a></body></html>'});
+ const feeds = [];
+ const item = (slug, title, day, ref) => ({ id:`https://todaydevotional.com/devotions/${slug}`, link:`https://todaydevotional.com/devotions/${slug}?embedded`, title,
+   publishedAt: Date.parse(`2026-10-${day}T05:00:00Z`), text:`Scripture Reading &mdash;       ${ref}                        “Key verse.”  &mdash;&nbsp; ${ref.split(';')[0]}   Reflection on ${title}. Pray with us.` });
+ const feed = async url => { feeds.push(url); if (!url.endsWith('/feed')) throw Error('404');
+   return [item('jesus-savior','Jesus, Savior','29','Acts 4:5-12'), item('alpha-and-omega-2','Alpha and Omega','31','Revelation 22:12-21'), item('god','God','28','Matthew 16:13-17 ;  Hebrews 1:1-3, 8-12')]; };
+ const article = async () => { throw Error('article must not be fetched for feed devotions'); };
+ const passage = async r => `${r} (BSB)\n1 Verse`;
+ assert.deepEqual(await previewDevotional('https://todaydevotional.com/daily-devotional-library',{page,feed,article}),
+   {title:'Alpha and Omega',reference:'Revelation 22:12-21',url:'https://todaydevotional.com/devotions/alpha-and-omega-2'});
+ assert.equal(feeds[0],'https://todaydevotional.com/feed');
+ const e = await devotionalEpisode({id:'t',kind:'site',name:'Today',url:'https://todaydevotional.com/daily-devotional-library'},
+   {seen:['https://todaydevotional.com/devotions/alpha-and-omega-2']},{page,feed,article,passage});
+ assert.equal(e.title,'Acts 4:5-12 — Jesus, Savior');
+ assert.match(e.text,/Today's devotional reflection\nhttps:\/\/todaydevotional\.com\/devotions\/jesus-savior\n/);
+ assert.doesNotMatch(e.text,/&mdash;|&nbsp;/);
+ assert.equal(e.posts[0].id,'https://todaydevotional.com/devotions/jesus-savior');
+ const multi = await devotionalEpisode({id:'t',kind:'site',name:'Today',url:'https://todaydevotional.com/daily-devotional-library'},
+   {seen:['https://todaydevotional.com/devotions/alpha-and-omega-2','https://todaydevotional.com/devotions/jesus-savior']},{page,feed,article,passage});
+ assert.equal(multi.devotional.reference,'Matthew 16:13-17; Hebrews 1:1-3, 8-12');
 });
 test('HelloAO BSB fetch covers multiple chapters and passages and rejects missing verses', async () => {
  const urls=[]; const fetcher = async u => {urls.push(u); return Response.json({chapter:{content:Array.from({length:36},(_,i)=>({type:'verse',number:i+1,content:[`Verse ${i+1}`]}))}});};

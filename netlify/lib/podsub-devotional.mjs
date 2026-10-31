@@ -1,6 +1,47 @@
 import { complete } from './llm.mjs';
 import { parseReference, extractReference, fetchPassage } from './podsub-bible.mjs';
 import { fetchPage, pageLinks, fetchArticle, pageUrl } from './podsub-page.mjs';
+import { fetchFeed } from './podsub-feed.mjs';
+
+// Devotional sites usually render their library with JavaScript, so the page HTML has no devotion links
+// (todaydevotional.com does exactly this). Their RSS feed carries each devotion with its printed Scripture
+// reference and full text, so prefer it: the page's own <link rel=alternate>, then /feed, then /rss.
+export async function devotionCandidates(url, { page = fetchPage, feed = fetchFeed, timeout = 4000 } = {}) {
+  const tried = new Set(), feeds = [];
+  let library = null;
+  try {
+    library = await page(url, { timeout });
+    for (const m of String(library.html).matchAll(/<link\b[^>]*>/gi)) {
+      const tag = m[0];
+      if (!/\brel\s*=\s*["']?alternate/i.test(tag) || !/(rss|atom)\+xml/i.test(tag)) continue;
+      const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1];
+      if (href) try { feeds.push(new URL(href, library.url || url).href); } catch { /* ignore bad href */ }
+    }
+  } catch { /* the page may block us; the feed can still work */ }
+  const origin = new URL(url).origin;
+  feeds.push(`${origin}/feed`, `${origin}/rss`);
+  for (const f of feeds) {
+    if (tried.has(f)) continue;
+    tried.add(f);
+    try {
+      const posts = await feed(f, { timeout });
+      const usable = (Array.isArray(posts) ? posts : []).filter(p => p?.link && p?.title)
+        .map(p => { try { return { ...p, reference: extractReference(p.text || '').reference }; } catch { return null; } })
+        .filter(Boolean);
+      if (usable.length) return usable.sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0)).map(p => ({ ...p, source: 'feed' }));
+    } catch { /* try the next feed */ }
+  }
+  if (!library) return [];
+  return pageLinks(library.html, library.url).sort((a, b) => b.publishedAt - a.publishedAt).map(p => ({ ...p, source: 'page' }));
+}
+const cleanText = t => String(t || '').replace(/&nbsp;/g, ' ').replace(/&mdash;/g, '—').replace(/&ndash;/g, '–').replace(/&amp;/g, '&')
+  .replace(/&#0?39;/g, "'").replace(/&quot;/g, '"').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+/** A candidate's title and Scripture reference; page candidates need the article fetched. */
+async function devotion(post, { article = fetchArticle, timeout = 4000 } = {}) {
+  if (post.source === 'feed') return { title: post.title, reference: post.reference, text: cleanText(post.text), url: post.id || post.link };
+  const full = await article(post.link, { timeout });
+  return { title: full.title || post.title, reference: extractReference(full.scriptureText || full.text).reference, text: full.text, url: post.link };
+}
 // More than sixty distinct passages means a 60-reference history cannot exhaust the fallback.
 export const CURATED = [
  ['anxiety peace','Philippians 4:4-9'],['anxiety trust','Matthew 6:25-34'],['marriage love','Ephesians 5:21-33'],['marriage love','1 Corinthians 13:1-13'],
@@ -38,23 +79,21 @@ export async function choosePassage(devotional, history = [], { llm = complete, 
     return { reference: pick.reference, title: devotional.surprise ? pick.topic : devotional.name, topic: devotional.surprise ? pick.topic : devotional.topic };
   }
 }
-export async function previewDevotional(url, { page = fetchPage, article = fetchArticle, timeout = 4000 } = {}) {
+export async function previewDevotional(url, { page = fetchPage, article = fetchArticle, feed = fetchFeed, timeout = 4000 } = {}) {
   pageUrl(url);
-  const library = await page(url, { timeout });
-  const post = pageLinks(library.html, library.url).sort((a, b) => b.publishedAt - a.publishedAt)[0];
+  const post = (await devotionCandidates(url, { page, feed, timeout }))[0];
   if (!post) throw new Error('No devotion found');
-  const full = await article(post.link, { timeout });
-  return { title: full.title || post.title, reference: extractReference(full.scriptureText || full.text).reference, url: post.link };
+  const d = await devotion(post, { article, timeout });
+  return { title: d.title, reference: d.reference, url: d.url };
 }
-export async function devotionalEpisode(devotional, record, { page = fetchPage, article = fetchArticle, passage = fetchPassage, llm = complete, timeout = 4000 } = {}) {
+export async function devotionalEpisode(devotional, record, { page = fetchPage, article = fetchArticle, feed = fetchFeed, passage = fetchPassage, llm = complete, timeout = 4000 } = {}) {
   let selection, post, reflection = '';
   if (devotional.kind === 'site') {
-    const library = await page(devotional.url, { timeout });
-    post = pageLinks(library.html, library.url).sort((a, b) => b.publishedAt - a.publishedAt).find(p => !(record.seen || []).includes(p.id));
+    post = (await devotionCandidates(devotional.url, { page, feed, timeout })).find(p => !(record.seen || []).includes(p.id));
     if (!post) return null;
-    const full = await article(post.link, { timeout });
-    selection = { reference: extractReference(full.scriptureText || full.text).reference, title: full.title || post.title };
-    reflection = `\n\nToday's devotional reflection\n${post.link}\n${full.text}`;
+    const d = await devotion(post, { article, timeout });
+    selection = { reference: d.reference, title: d.title };
+    reflection = `\n\nToday's devotional reflection\n${d.url}\n${d.text}`;
   } else selection = await choosePassage(devotional, record.references, { llm, timeout });
   let scripture;
   try { scripture = await passage(selection.reference, { timeout }); if (!scripture?.trim()) throw new Error(); }

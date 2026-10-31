@@ -37,7 +37,14 @@ class PodsubViewModel(private val repository: PodsubRepository) : ViewModel() {
         }
     }
     fun addDevotional(rule: DevotionalRule) = edit { d ->
-        d.copy(devotionals = d.devotionals.filterNot { it.id == rule.id } + rule).validated()
+        // Adding the first devotional turns its delivery on: a devotional that silently never arrives is the
+        // failure J hit. The server's default devotional schedule is UTC; anchor it to the briefing's (the
+        // user's) time zone so "7:00 PM" means his evening.
+        val first = d.devotionals.isEmpty()
+        val sched = if (first) d.devotionalSchedule.copy(enabled = true,
+            timezone = if (d.devotionalSchedule.timezone == "UTC") d.schedule.timezone else d.devotionalSchedule.timezone,
+            days = d.devotionalSchedule.days.ifEmpty { subscriptionDays }) else d.devotionalSchedule
+        d.copy(devotionals = d.devotionals.filterNot { it.id == rule.id } + rule, devotionalSchedule = sched).validated()
     }
     fun addWebsite(name: String) {
         val p = state.value.websitePreview ?: return

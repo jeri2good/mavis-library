@@ -185,6 +185,7 @@ private fun SubscriptionEditor(kind: String, editing: DevotionalRule?, state: Po
                 else vm.addDevotional(DevotionalRule(editing?.id ?: UUID.randomUUID().toString(), if (topic) "topic" else "site",
                     if (topic) if (surprise) "Surprise me" else value.trim() else name.ifBlank { state.devotionalPreview?.title ?: "Devotional" },
                     url = if (topic) null else value.trim(), topic = if (topic) value.trim() else null, surprise = surprise, enabled = editing?.enabled ?: true))
+                vm.save()   // Add/Update is the commit: never leave a new subscription unsaved behind a second button.
                 close()
             } catch (e: Exception) { error = e.message ?: "Check the subscription details." }
         }, enabled = !state.busy && (topic && (surprise || value.isNotBlank()) || !topic && state.previewUrl == value.trim() && (state.devotionalPreview != null || state.websitePreview != null))) { Text(if (editing == null) "Add subscription" else "Update subscription") }

@@ -99,7 +99,11 @@ fun RecordSelector(
             return@Column
         }
         key(filter) {
-            val pager = rememberPagerState { crate.size }
+            // The pager reads the crate through this state, so its page count and key lambda always see the same
+            // list. Capturing `crate` directly crashed with IndexOutOfBounds when the Lounge loaded more episodes
+            // (13 → 14) while the pager was composing: the count lambda saw 14, the key lambda the stale 13.
+            val current by rememberUpdatedState(crate)
+            val pager = rememberPagerState { current.size }
             val scope = rememberCoroutineScope()
             val centred = crate[pager.currentPage.coerceIn(crate.indices)]
             fun isLoaded(e: Episode) = nowPlaying == e.saved.resumeKey
@@ -118,10 +122,10 @@ fun RecordSelector(
                     contentPadding = PaddingValues(horizontal = (maxWidth - size) / 2),
                     pageSize = PageSize.Fixed(size),
                     beyondViewportPageCount = 2,
-                    key = { crate[it].saved.key },
+                    key = { current.getOrNull(it)?.saved?.key ?: "record-$it" },
                     modifier = Modifier.fillMaxWidth().height(size + 24.dp),
                 ) { page ->
-                    val episode = crate[page]
+                    val episode = current.getOrNull(page) ?: return@HorizontalPager
                     val offset = (page - pager.currentPage) - pager.currentPageOffsetFraction
                     val distance = abs(offset).coerceAtMost(1f)
                     var recordMenuOpen by remember { mutableStateOf(false) }

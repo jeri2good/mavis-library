@@ -69,7 +69,7 @@ fun episodeDetails(episode: Episode, zone: ZoneId = ZoneId.systemDefault(), now:
         episodeWhen(job, now, zone).takeIf(String::isNotEmpty),
         episodeSources(job).takeIf(String::isNotEmpty),
         left?.let { "${minutesLabel(it.coerceAtLeast(0))} left" } ?: job.durationSec?.let(::minutesLabel),
-        podcastStyles[job.style],
+        if (com.mavislibrary.app.data.podcast.episodeKind(job) == "Bible lesson") "Bible lesson" else podcastStyles[job.style],
         "Downloaded".takeIf { episode.saved.localFile != null },
     ).joinToString(" · ")
 }

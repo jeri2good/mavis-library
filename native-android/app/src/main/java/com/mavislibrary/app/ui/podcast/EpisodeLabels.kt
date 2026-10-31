@@ -41,5 +41,5 @@ fun episodeSources(job: PodcastJob): String {
 }
 
 fun episodeSubtitle(job: PodcastJob, now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): String =
-    listOf(episodeWhen(job, now, zone), episodeSources(job), job.durationSec?.let { "${maxOf(1, (it + 30) / 60)} min" }.orEmpty())
+    listOf(if (com.mavislibrary.app.data.podcast.episodeKind(job) == "Bible lesson") "Bible lesson" else "", episodeWhen(job, now, zone), episodeSources(job), job.durationSec?.let { "${maxOf(1, (it + 30) / 60)} min" }.orEmpty())
         .filter(String::isNotEmpty).joinToString(" · ")

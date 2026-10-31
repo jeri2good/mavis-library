@@ -4,7 +4,10 @@ import com.mavislibrary.app.data.podcast.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 
+@kotlinx.serialization.Serializable data class DevotionalPreview(val title: String, val reference: String, val url: String)
 interface PodsubService {
+    suspend fun previewDevotional(url: String): DevotionalPreview = error("Preview unavailable")
+    suspend fun previewWebsite(url: String): com.mavislibrary.app.data.reader.SitePreview = error("Preview unavailable")
     suspend fun get(): SubscriptionResponse
     suspend fun put(document: SubscriptionDocument): SubscriptionResponse
     suspend fun runNow(): SubscriptionRun
@@ -13,6 +16,11 @@ interface PodsubService {
 }
 /** Same gateway client, adult gate and account/owner headers as manual podcasts. */
 class PodsubApi(private val gateway: PodcastApi) : PodsubService {
+    override suspend fun previewDevotional(url: String): DevotionalPreview {
+        require(publicDevotionalUrl(url)) { "Use a public HTTPS link." }
+        return podcastJson.decodeFromString(gateway.request("/api/podsub/preview?kind=devotional&url=" + java.net.URLEncoder.encode(url, "UTF-8")))
+    }
+    override suspend fun previewWebsite(url: String) = com.mavislibrary.app.data.reader.ReaderApi(gateway).preview(url)
     override suspend fun get() = podcastJson.decodeFromString<SubscriptionResponse>(gateway.request("/api/podsub"))
     override suspend fun put(document: SubscriptionDocument) = podcastJson.decodeFromString<SubscriptionResponse>(
         gateway.request("/api/podsub", "PUT", podcastJson.encodeToString(document.validated())))

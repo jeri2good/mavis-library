@@ -49,7 +49,7 @@ class PodcastSettings(private val store: DataStore<Preferences>, private val sec
             if (podcastExpired(podcast.job, p[CLEANUP] ?: 0)) return@edit
             val old = decode(p).find { it.key == podcast.key }
             // Single-job status reads don't carry the briefing's site/story list; keep what the list call saved.
-            val job = if (old != null && podcast.job.sites.isEmpty() && podcast.job.stories.isEmpty()) podcast.job.copy(sites = old.job.sites, stories = old.job.stories) else podcast.job
+            val job = if (old != null && podcast.job.sites.isEmpty() && podcast.job.stories.isEmpty()) podcast.job.copy(sites = old.job.sites, stories = old.job.stories, meta = podcast.job.meta ?: old.job.meta) else podcast.job
             val merged = podcast.copy(job = job, localFile = podcast.localFile ?: old?.localFile, request = podcast.request ?: old?.request)
             p[LIBRARY] = podcastJson.encodeToString(listOf(merged) + decode(p).filterNot { it.key == merged.key })
         }

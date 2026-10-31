@@ -289,7 +289,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                 }
             }
             item {
-                PodsubSection(subscriptionState, subscription, onDetails = { job -> details = DetailsTarget(savedFor(job)) { playToday(listOf(job)) } }, onPlay = ::playToday)
+                PodsubSection(subscriptionState, subscription, library = jobs.map { it.job }, onDetails = { job -> details = DetailsTarget(savedFor(job)) { playToday(listOf(job)) } }, onPlay = ::playToday)
             }
             if (jobs.isEmpty()) item {
                 Text("Your podcasts will appear here. Make one with New podcast, or set a subscription schedule above.",

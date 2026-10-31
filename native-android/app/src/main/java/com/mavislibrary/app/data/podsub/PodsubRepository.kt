@@ -27,6 +27,8 @@ class PodsubRepository(private val api: PodsubService, private val migration: Mi
     private val identity: suspend () -> String?, private val sources: suspend () -> List<FeedSource>,
     private val oldSettings: suspend () -> BriefingSettings, private val zone: () -> ZoneId = ZoneId::systemDefault) {
     private val mutex = Mutex()
+    suspend fun previewDevotional(url: String) = api.previewDevotional(url)
+    suspend fun previewWebsite(url: String) = api.previewWebsite(url)
     suspend fun load(): SubscriptionResponse = mutex.withLock { synchronize() }
     private suspend fun synchronize(): SubscriptionResponse {
         val account = identity() ?: throw ApiException("sign_in_required", "Sign in to use Podcast Lounge", 401)
@@ -35,7 +37,7 @@ class PodsubRepository(private val api: PodsubService, private val migration: Mi
         val remote = try { api.get() } catch (e: ApiException) { if (e.status == 404) null else throw e }
         val initial = migrateSubscription(followed, oldSettings(), zone())
         // An existing saved server subscription wins over legacy phone settings, including on a second phone.
-        val base = remote?.takeIf { it.updatedAt != null || it.sites.isNotEmpty() }?.document() ?: initial
+        val base = remote?.takeIf { it.updatedAt != null || it.sites.isNotEmpty() || it.devotionals.isNotEmpty() }?.document() ?: initial
         val localIds = followed.map { it.id }
         val removed = prior.orEmpty().toSet() - localIds.toSet()
         val remaining = base.sites.filterNot { it.id in removed }.sortedBy { it.priority }

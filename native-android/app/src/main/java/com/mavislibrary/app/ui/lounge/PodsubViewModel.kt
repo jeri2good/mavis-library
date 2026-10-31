@@ -12,6 +12,9 @@ import kotlinx.coroutines.launch
 
 data class PodsubUiState(val document: SubscriptionDocument? = null, val usage: DailyUsage? = null,
     val episodes: List<PodcastJob> = emptyList(), val lastRun: SubscriptionRun? = null, val nextRunAt: String? = null,
+    val nextDevotionalAt: String? = null, val lastDevotionals: Map<String, DevotionalEpisode> = emptyMap(),
+    val previewUrl: String? = null, val devotionalPreview: DevotionalPreview? = null,
+    val websitePreview: com.mavislibrary.app.data.reader.SitePreview? = null,
     val busy: Boolean = false, val dirty: Boolean = false, val error: String? = null) {
     val meter get() = usage?.let { "Today: ${it.used} of ${it.limit} used" } ?: "Today: usage unavailable"
 }
@@ -21,6 +24,25 @@ class PodsubViewModel(private val repository: PodsubRepository) : ViewModel() {
     fun edit(change: (SubscriptionDocument) -> SubscriptionDocument) {
         if (state.value.busy) return
         mutable.update { it.document?.let { doc -> it.copy(document = change(doc), dirty = true) } ?: it }
+    }
+    fun clearPreview() { mutable.update { it.copy(previewUrl = null, devotionalPreview = null, websitePreview = null, error = null) } }
+    fun preview(url: String, devotional: Boolean) = act {
+        clearPreview()
+        if (devotional) {
+            val result = repository.previewDevotional(url)
+            mutable.update { it.copy(previewUrl = url, devotionalPreview = result) }
+        } else {
+            val result = repository.previewWebsite(url)
+            mutable.update { it.copy(previewUrl = url, websitePreview = result) }
+        }
+    }
+    fun addDevotional(rule: DevotionalRule) = edit { d ->
+        d.copy(devotionals = d.devotionals.filterNot { it.id == rule.id } + rule).validated()
+    }
+    fun addWebsite(name: String) {
+        val p = state.value.websitePreview ?: return
+        edit { d -> d.copy(sites = d.sites + SiteRule(java.util.UUID.randomUUID().toString(), name.ifBlank { p.title },
+            p.feedUrl, p.siteUrl, priority = d.sites.size, source = p.source)).validated() }
     }
     fun move(id: String, delta: Int) = edit { doc ->
         val sites = doc.sites.sortedBy { it.priority }.toMutableList()
@@ -32,7 +54,8 @@ class PodsubViewModel(private val repository: PodsubRepository) : ViewModel() {
     private suspend fun refreshData() {
         val response = repository.load()
         mutable.update { it.copy(document = if (it.dirty) it.document else response.document(), usage = response.today,
-            lastRun = response.lastRun, nextRunAt = response.nextRunAt) }
+            lastRun = response.lastRun, nextRunAt = response.nextRunAt, nextDevotionalAt = response.nextDevotionalAt,
+            lastDevotionals = response.devotionals.mapNotNull { d -> d.lastEpisode?.let { d.id to it } }.toMap()) }
         val episodes = repository.today()
         mutable.update { it.copy(episodes = episodes) }
     }

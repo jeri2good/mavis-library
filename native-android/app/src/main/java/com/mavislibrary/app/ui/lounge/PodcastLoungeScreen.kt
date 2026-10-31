@@ -43,6 +43,9 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.catch
 
+private data class DetailsTarget(val saved: SavedPodcast, val onPlay: () -> Unit)
+private data class ExportProgressState(val label: String, val fraction: Float?)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onBack: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null, onOpenReader: ((ReaderTarget) -> Unit)? = null, pickerWebView: android.webkit.WebView? = null) {
@@ -108,7 +111,9 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val active = remember(loaded.address) { mutableMapOf<String, Job>() }
     var delete by remember { mutableStateOf<SavedPodcast?>(null) }
     var reading by remember { mutableStateOf<SavedPodcast?>(null) }
-    var details by remember { mutableStateOf<Pair<PodcastJob, () -> Unit>?>(null) }
+    var details by remember { mutableStateOf<DetailsTarget?>(null) }
+    var exportProgress by remember { mutableStateOf<ExportProgressState?>(null) }
+    val snackbar = remember { SnackbarHostState() }
     var sharedConfirm by remember(initial) { mutableStateOf(initial?.confirmShare == true) }
     val jobs = visiblePodcasts(all, identity, loaded.address, loaded.cleanupDays)
     val nowPlaying by playback.state.collectAsStateWithLifecycle()
@@ -184,56 +189,145 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
         }
         if (queue.isNotEmpty() && allowed()) { onFirstPlay(); playback.playPodcasts(queue, null) }
     }
-
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("podcast_lounge"), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onBack) { Text("Back") }
-                Text("Podcast Lounge", style = MaterialTheme.typography.headlineLarge)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (wakingStudio) "Waking up the studio…" else status, style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { active.values.forEach { it.cancel() }; active.clear(); refresh++ }) { Text("Refresh") }
+    fun savedFor(job: PodcastJob): SavedPodcast =
+        jobs.firstOrNull { it.job.id == job.id }?.copy(job = job)
+            ?: SavedPodcast(job, loaded.address, localFile = container.audioFiles.podcastLocal(loaded.address, job.id)?.absolutePath, accountId = identity)
+    fun saveMp3(saved: SavedPodcast) {
+        scope.launch {
+            if (busy || !allowed() || saved.job.status != "ready") return@launch
+            busy = true; message = null; notice = null
+            exportProgress = ExportProgressState("Saving MP3…", null)
+            var exported: SavedPodcastMp3? = null
+            try {
+                val source = api.asAudioSource().takeIf { saved.studio == loaded.address }
+                exported = savePodcastMp3(
+                    context = context,
+                    saved = saved,
+                    audioSource = source,
+                    localLookup = { container.audioFiles.podcastLocal(it.studio, it.job.id) },
+                    onProgress = { written, total ->
+                        exportProgress = ExportProgressState(
+                            label = formatExportProgressLabel("Saving MP3…", written, total),
+                            fraction = if (total > 0L) (written.toFloat() / total.toFloat()).coerceIn(0f, 1f) else null,
+                        )
+                    },
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                message = e.message ?: "Couldn't save MP3."
+            } finally {
+                exportProgress = null
+                busy = false
+            }
+            if (exported != null) {
+                val action = snackbar.showSnackbar(
+                    message = SAVED_MP3_SNACKBAR,
+                    actionLabel = "Open",
+                    duration = SnackbarDuration.Long,
+                )
+                if (action == SnackbarResult.ActionPerformed) {
+                    openSavedPodcastMp3(context, exported.uri)
                 }
-                Button(onClick = { composing = true; confirmed = false; chosenKind = null; editingSource = false }, modifier = Modifier.fillMaxWidth().testTag("new_podcast")) {
-                    Icon(Icons.Outlined.Add, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("New podcast")
-                }
-                if (message == "Request access" || message == "Sign in to use Podcast Lounge") Button(onClick = onSettings) { Text(message!!) }
-                message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             }
         }
-        item {
-            PodsubSection(subscriptionState, subscription, onDetails = { job -> details = job to { playToday(listOf(job)) } }, onPlay = ::playToday)
+    }
+    fun shareMp3(saved: SavedPodcast) {
+        scope.launch {
+            if (busy || !allowed() || saved.job.status != "ready") return@launch
+            busy = true; message = null; notice = null
+            exportProgress = ExportProgressState("Preparing MP3…", null)
+            try {
+                val source = api.asAudioSource().takeIf { saved.studio == loaded.address }
+                sharePodcastMp3(
+                    context = context,
+                    saved = saved,
+                    audioSource = source,
+                    localLookup = { container.audioFiles.podcastLocal(it.studio, it.job.id) },
+                    onProgress = { written, total ->
+                        exportProgress = ExportProgressState(
+                            label = formatExportProgressLabel("Preparing MP3…", written, total),
+                            fraction = if (total > 0L) (written.toFloat() / total.toFloat()).coerceIn(0f, 1f) else null,
+                        )
+                    },
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                message = e.message ?: "Couldn't share MP3."
+            } finally {
+                exportProgress = null
+                busy = false
+            }
         }
-        if (jobs.isEmpty()) item {
-            Text("Your podcasts will appear here. Make one with New podcast, or set a subscription schedule above.",
-                Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyLarge)
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("podcast_lounge"), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onBack) { Text("Back") }
+                    Text("Podcast Lounge", style = MaterialTheme.typography.headlineLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (wakingStudio) "Waking up the studio…" else status, style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { active.values.forEach { it.cancel() }; active.clear(); refresh++ }) { Text("Refresh") }
+                    }
+                    Button(onClick = { composing = true; confirmed = false; chosenKind = null; editingSource = false }, modifier = Modifier.fillMaxWidth().testTag("new_podcast")) {
+                        Icon(Icons.Outlined.Add, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("New podcast")
+                    }
+                    if (message == "Request access" || message == "Sign in to use Podcast Lounge") Button(onClick = onSettings) { Text(message!!) }
+                    message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                    exportProgress?.let { progress ->
+                        Column(Modifier.fillMaxWidth().testTag("podcast_export_progress"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(progress.label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                            if (progress.fraction != null) LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth())
+                            else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
+            item {
+                PodsubSection(subscriptionState, subscription, onDetails = { job -> details = DetailsTarget(savedFor(job)) { playToday(listOf(job)) } }, onPlay = ::playToday)
+            }
+            if (jobs.isEmpty()) item {
+                Text("Your podcasts will appear here. Make one with New podcast, or set a subscription schedule above.",
+                    Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyLarge)
+            }
+            if (jobs.isNotEmpty()) item(key = "records") {
+                RecordSelector(
+                    shelves, nowPlaying.mediaId, nowPlaying.playing, enabled = !busy,
+                    onPlay = ::play,
+                    onToggle = playback::toggle,
+                    onDetails = { episode -> details = DetailsTarget(episode.saved) { play(episode) } },
+                    modifier = Modifier.padding(top = 16.dp),
+                    polling = pollingMessages,
+                    menu = { episode, close ->
+                        val job = episode.job
+                        if (job.status == "ready") {
+                            DropdownMenuItem({ Text("Save MP3") }, { close(); saveMp3(episode.saved) })
+                            DropdownMenuItem({ Text("Share") }, { close(); shareMp3(episode.saved) })
+                        }
+                        if (job.status == "ready" && episode.saved.localFile == null && episode.saved.studio == loaded.address)
+                            DropdownMenuItem({ Text("Download for offline") }, { close(); act {
+                                val file = container.audioFiles.downloadPodcast(api, job.id)
+                                container.podcastSettings.save(episode.saved.copy(localFile = file.absolutePath)); notice = "Saved for offline listening."
+                            } })
+                        if (!job.transcript.isNullOrBlank() || job.sources.isNotEmpty())
+                            DropdownMenuItem({ Text("Transcript and sources") }, { close(); reading = episode.saved })
+                        val request = episode.saved.request
+                        if (job.status == "failed" && request != null && episode.saved.studio == loaded.address)
+                            DropdownMenuItem({ Text("Try again") }, { close(); act { repo.create(request); notice = "Sent to your studio again." } })
+                        DropdownMenuItem({ Text(if (job.terminal) "Delete" else "Cancel and delete") }, { close(); delete = episode.saved })
+                    },
+                )
+            }
         }
-        if (jobs.isNotEmpty()) item(key = "records") {
-            RecordSelector(
-                shelves, nowPlaying.mediaId, nowPlaying.playing, enabled = !busy,
-                onPlay = ::play,
-                onToggle = playback::toggle,
-                onDetails = { episode -> details = episode.job to { play(episode) } },
-                modifier = Modifier.padding(top = 16.dp),
-                polling = pollingMessages,
-                menu = { episode, close ->
-                    val job = episode.job
-                    if (job.status == "ready" && episode.saved.localFile == null && episode.saved.studio == loaded.address)
-                        DropdownMenuItem({ Text("Download for offline") }, { close(); act {
-                            val file = container.audioFiles.downloadPodcast(api, job.id)
-                            container.podcastSettings.save(episode.saved.copy(localFile = file.absolutePath)); notice = "Saved for offline listening."
-                        } })
-                    if (!job.transcript.isNullOrBlank() || job.sources.isNotEmpty())
-                        DropdownMenuItem({ Text("Transcript and sources") }, { close(); reading = episode.saved })
-                    val request = episode.saved.request
-                    if (job.status == "failed" && request != null && episode.saved.studio == loaded.address)
-                        DropdownMenuItem({ Text("Try again") }, { close(); act { repo.create(request); notice = "Sent to your studio again." } })
-                    DropdownMenuItem({ Text(if (job.terminal) "Delete" else "Cancel and delete") }, { close(); delete = episode.saved })
-                },
-            )
-        }
+        SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).testTag("podcast_lounge_snackbar"),
+        )
     }
 
     if (composing) ModalBottomSheet(onDismissRequest = { composing = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -285,7 +379,17 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
             draft = it; confirmed = true; editingSource = false; picker = null
         }, onImported = ::chooseImported)
     }
-    details?.let { (job, playIt) -> EpisodeDetailsSheet(job, onDismiss = { details = null }, onPlay = playIt, onOpenReader = onOpenReader) }
+    details?.let { target ->
+        EpisodeDetailsSheet(
+            job = target.saved.job,
+            onDismiss = { details = null },
+            onPlay = target.onPlay,
+            onOpenReader = onOpenReader,
+            onSaveMp3 = { saveMp3(target.saved) },
+            onShare = { shareMp3(target.saved) },
+            actionsEnabled = !busy,
+        )
+    }
     reading?.let { saved ->
         AlertDialog(onDismissRequest = { reading = null }, title = { Text(saved.job.title) }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {

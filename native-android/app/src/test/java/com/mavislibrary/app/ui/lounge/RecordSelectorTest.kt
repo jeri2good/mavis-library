@@ -156,6 +156,53 @@ class RecordSelectorTest {
         assertFalse(episodeDetails(episode).contains("Toolsa"))
     }
 
+    @Test fun longPressAndOverflowMenusOfferSaveMp3AndShareOnReadyEpisodesOnly() {
+        val actions = mutableListOf<Pair<String, String>>()
+        val scrollState = androidx.compose.foundation.ScrollState(0)
+        compose.setContent {
+            RecordSelector(
+                shelves,
+                nowPlaying = null,
+                playing = false,
+                enabled = true,
+                onPlay = { _, _ -> },
+                onToggle = {},
+                onDetails = {},
+                modifier = androidx.compose.ui.Modifier.verticalScroll(scrollState),
+                menu = { e, close ->
+                    if (e.job.status == "ready") {
+                        androidx.compose.material3.DropdownMenuItem({ androidx.compose.material3.Text("Save MP3") }, { actions += "save" to e.job.id; close() })
+                        androidx.compose.material3.DropdownMenuItem({ androidx.compose.material3.Text("Share") }, { actions += "share" to e.job.id; close() })
+                    }
+                    androidx.compose.material3.DropdownMenuItem({ androidx.compose.material3.Text("Delete") }, { actions += "delete" to e.job.id; close() })
+                },
+            )
+        }
+        // Long-press on centred record opens its menu.
+        compose.onNodeWithTag("record_n3").performTouchInput { longClick() }
+        compose.onNodeWithText("Save MP3").performClick()
+        assertEquals(listOf("save" to "n3"), actions)
+
+        // Overflow button on Up next row opens that row's menu.
+        compose.onNodeWithTag("record_next_menu_n2").performScrollTo().performClick()
+        compose.onNodeWithText("Share").performClick()
+        assertEquals(listOf("save" to "n3", "share" to "n2"), actions)
+
+        // Long-press on Up next row also opens that row's menu.
+        compose.onNodeWithTag("record_next_n2").performScrollTo().performTouchInput { longClick() }
+        compose.onNodeWithText("Save MP3").performClick()
+        assertEquals(listOf("save" to "n3", "share" to "n2", "save" to "n2"), actions)
+
+        // Unfinished Up next row under All does not offer Save MP3 or Share.
+        compose.runOnIdle { kotlinx.coroutines.runBlocking { scrollState.scrollTo(0) } }
+        compose.onNodeWithTag("record_chip_all").performClick()
+        compose.onNodeWithTag("record_next_menu_m5").performScrollTo().performClick()
+        compose.onNodeWithText("Save MP3").assertDoesNotExist()
+        compose.onNodeWithText("Share").assertDoesNotExist()
+        compose.onNodeWithText("Delete").assertExists().performClick()
+        assertEquals("delete" to "m5", actions.last())
+    }
+
     private fun show(onPlay: (Episode, List<Episode>) -> Unit = { _, _ -> }, onDetails: (Episode) -> Unit = {}) = compose.setContent {
         RecordSelector(shelves, nowPlaying = null, playing = false, enabled = true, onPlay = onPlay, onToggle = {}, onDetails = onDetails,
             modifier = androidx.compose.ui.Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()))

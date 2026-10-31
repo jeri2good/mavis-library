@@ -4,8 +4,10 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -122,20 +124,27 @@ fun RecordSelector(
                     val episode = crate[page]
                     val offset = (page - pager.currentPage) - pager.currentPageOffsetFraction
                     val distance = abs(offset).coerceAtMost(1f)
-                    Record(
-                        episode, size, spinning = playing && isLoaded(episode),
-                        onTap = { if (page == pager.currentPage) primary(episode) else scope.launch { pager.animateScrollToPage(page) } },
-                        onLabel = { if (page == pager.currentPage) onDetails(episode) else scope.launch { pager.animateScrollToPage(page) } },
-                        modifier = Modifier.zIndex(1f - distance).graphicsLayer {
-                            val scale = lerp(1f, .72f, distance)
-                            scaleX = scale; scaleY = scale
-                            alpha = lerp(1f, .5f, distance)
-                            rotationY = -offset.coerceIn(-1.5f, 1.5f) * 28f
-                            rotationZ = offset.coerceIn(-1.5f, 1.5f) * 5f
-                            translationX = -offset.coerceIn(-1.5f, 1.5f) * size.toPx() * .22f
-                            cameraDistance = 14f * density
-                        },
-                    )
+                    var recordMenuOpen by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.zIndex(1f - distance)) {
+                        Record(
+                            episode, size, spinning = playing && isLoaded(episode),
+                            onTap = { if (page == pager.currentPage) primary(episode) else scope.launch { pager.animateScrollToPage(page) } },
+                            onLabel = { if (page == pager.currentPage) onDetails(episode) else scope.launch { pager.animateScrollToPage(page) } },
+                            onLongPress = if (menu != null) ({ recordMenuOpen = true }) else null,
+                            modifier = Modifier.graphicsLayer {
+                                val scale = lerp(1f, .72f, distance)
+                                scaleX = scale; scaleY = scale
+                                alpha = lerp(1f, .5f, distance)
+                                rotationY = -offset.coerceIn(-1.5f, 1.5f) * 28f
+                                rotationZ = offset.coerceIn(-1.5f, 1.5f) * 5f
+                                translationX = -offset.coerceIn(-1.5f, 1.5f) * size.toPx() * .22f
+                                cameraDistance = 14f * density
+                            },
+                        )
+                        if (menu != null) {
+                            DropdownMenu(recordMenuOpen, { recordMenuOpen = false }) { menu(episode) { recordMenuOpen = false } }
+                        }
+                    }
                 }
                 CrateLip(Modifier.align(Alignment.BottomCenter))
             }
@@ -185,15 +194,20 @@ fun RecordSelector(
             if (rest.isNotEmpty()) Column(Modifier.fillMaxWidth().testTag("record_up_next")) {
                 Text("Up next", Modifier.padding(start = 4.dp, bottom = 2.dp).semantics { heading() }, style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                rest.forEach { (index, episode) -> UpNextRow(episode) { scope.launch { pager.animateScrollToPage(index) } } }
+                rest.forEach { (index, episode) -> UpNextRow(episode, menu = menu, onSelect = { scope.launch { pager.animateScrollToPage(index) } }) }
             }
         }
     }
 }
 
-/** One compact Up next row: a small record in the episode's label colour, its headline, then date and length. Tap selects it. */
+/** One compact Up next row: a small record in the episode's label colour, its headline, then date and length. Tap selects it; long-press or overflow opens options. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun UpNextRow(episode: Episode, onSelect: () -> Unit) {
+private fun UpNextRow(
+    episode: Episode,
+    onSelect: () -> Unit,
+    menu: (@Composable ColumnScope.(Episode, () -> Unit) -> Unit)? = null,
+) {
     val job = episode.job
     val headline = episodeHeadline(job)
     val detail = listOf(
@@ -204,24 +218,47 @@ private fun UpNextRow(episode: Episode, onSelect: () -> Unit) {
             else -> job.durationSec?.let(::minutesLabel).orEmpty()
         },
     ).filter(String::isNotEmpty).joinToString(" · ")
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(8.dp))
-            .clickable(role = Role.Button, onClickLabel = "Select", onClick = onSelect)
-            .semantics(mergeDescendants = true) {}
-            .padding(horizontal = 4.dp, vertical = 6.dp)
-            .testTag("record_next_${job.id}"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        val hue = recordHue(episode)
-        Box(Modifier.size(32.dp).clip(CircleShape).background(Color(0xFF111111)), contentAlignment = Alignment.Center) {
-            Box(Modifier.size(13.dp).clip(CircleShape).background(if (episode.shelf == PodcastShelf.FAILED) Color(0xFF8C8882) else Color.hsv(hue, .45f, .85f)))
-            Box(Modifier.size(3.dp).clip(CircleShape).background(Color(0xFF0D0D0D)))
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(8.dp))
+                .then(
+                    if (menu != null) {
+                        Modifier.combinedClickable(
+                            role = Role.Button,
+                            onClickLabel = "Select",
+                            onLongClickLabel = "Options for $headline",
+                            onLongClick = { open = true },
+                            onClick = onSelect,
+                        )
+                    } else {
+                        Modifier.clickable(role = Role.Button, onClickLabel = "Select", onClick = onSelect)
+                    }
+                )
+                .semantics(mergeDescendants = true) {}
+                .padding(horizontal = 4.dp, vertical = 6.dp)
+                .testTag("record_next_${job.id}"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val hue = recordHue(episode)
+            Box(Modifier.size(32.dp).clip(CircleShape).background(Color(0xFF111111)), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(13.dp).clip(CircleShape).background(if (episode.shelf == PodcastShelf.FAILED) Color(0xFF8C8882) else Color.hsv(hue, .45f, .85f)))
+                Box(Modifier.size(3.dp).clip(CircleShape).background(Color(0xFF0D0D0D)))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(headline, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+            }
+            if (menu != null) {
+                IconButton(onClick = { open = true }, modifier = Modifier.testTag("record_next_menu_${job.id}")) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = "Options for ${job.title}")
+                }
+            }
         }
-        Column(Modifier.weight(1f)) {
-            Text(headline, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                overflow = TextOverflow.Ellipsis)
+        if (menu != null) {
+            DropdownMenu(open, { open = false }) { menu(episode) { open = false } }
         }
     }
 }
@@ -239,8 +276,17 @@ private fun CrateLip(modifier: Modifier = Modifier) {
         })
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Record(episode: Episode, size: Dp, spinning: Boolean, onTap: () -> Unit, onLabel: () -> Unit, modifier: Modifier = Modifier) {
+private fun Record(
+    episode: Episode,
+    size: Dp,
+    spinning: Boolean,
+    onTap: () -> Unit,
+    onLabel: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
     val job = episode.job
     val making = episode.shelf == PodcastShelf.MAKING
     val failed = episode.shelf == PodcastShelf.FAILED
@@ -260,7 +306,19 @@ private fun Record(episode: Episode, size: Dp, spinning: Boolean, onTap: () -> U
     }
     Box(
         modifier.size(size).shadow(if (making) 4.dp else 12.dp, CircleShape).clip(CircleShape)
-            .clickable(role = Role.Button, onClickLabel = if (job.status == "ready") "Play" else "Episode details", onClick = onTap)
+            .then(
+                if (onLongPress != null) {
+                    Modifier.combinedClickable(
+                        role = Role.Button,
+                        onClickLabel = if (job.status == "ready") "Play" else "Episode details",
+                        onLongClickLabel = "Options for $headline",
+                        onLongClick = onLongPress,
+                        onClick = onTap,
+                    )
+                } else {
+                    Modifier.clickable(role = Role.Button, onClickLabel = if (job.status == "ready") "Play" else "Episode details", onClick = onTap)
+                }
+            )
             .semantics { contentDescription = "Record: $headline. $status" }
             .testTag("record_${job.id}"),
         contentAlignment = Alignment.Center,
@@ -285,7 +343,19 @@ private fun Record(episode: Episode, size: Dp, spinning: Boolean, onTap: () -> U
         Box(
             Modifier.size(size * .4f).graphicsLayer { rotationZ = angle.value; alpha = if (making) .7f else 1f }.clip(CircleShape)
                 .background(Brush.radialGradient(labelColors))
-                .clickable(role = Role.Button, onClickLabel = "Episode details", onClick = onLabel)
+                .then(
+                    if (onLongPress != null) {
+                        Modifier.combinedClickable(
+                            role = Role.Button,
+                            onClickLabel = "Episode details",
+                            onLongClickLabel = "Options for $headline",
+                            onLongClick = onLongPress,
+                            onClick = onLabel,
+                        )
+                    } else {
+                        Modifier.clickable(role = Role.Button, onClickLabel = "Episode details", onClick = onLabel)
+                    }
+                )
                 .testTag("record_label_${job.id}"),
             contentAlignment = Alignment.Center,
         ) {

@@ -42,7 +42,7 @@ class PodcastRepository(private val api: PodcastService, private val store: Podc
         val account = accountId()
         val created = studioCall { api.create(checked) }
         StudioAddress.safeId(created.id)
-        return SavedPodcast(PodcastJob(created.id, created.status, title = checked.title, kind = checked.kind, style = checked.style), studio, request = checked, accountId = account).also { store.save(it) }
+        return SavedPodcast(PodcastJob(created.id, created.status, title = checked.title, kind = checked.kind, style = checked.style, createdAt = java.time.Instant.now().toString()), studio, request = checked, accountId = account).also { store.save(it) }
     }
     suspend fun refresh(): List<PodcastJob> = mutation.withLock {
         val account = accountId()

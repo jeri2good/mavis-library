@@ -103,11 +103,18 @@ class AppContainer internal constructor(
     fun podcastApi() = com.mavislibrary.app.data.podcast.PodcastApi(BuildConfig.API_BASE, execute = podcastTransport,
         owner = { secureStore.read(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE) },
         adult = { !app.kidsPrefs().state.first().enabled },
+        onCreated = { created, request ->
+            podcastSettings.save(com.mavislibrary.app.data.podcast.SavedPodcast(
+                com.mavislibrary.app.data.podcast.PodcastJob(created.id, created.status, title = request.title, kind = request.kind,
+                    style = request.style, createdAt = java.time.Instant.now().toString()), BuildConfig.API_BASE, request = request, accountId = podcastAccountId()))
+            com.mavislibrary.app.work.PodcastReadyScheduler.soon(app)
+        },
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) })
     fun readerApi() = com.mavislibrary.app.data.reader.ReaderApi(podcastApi())
     val readerPrefs by lazy { com.mavislibrary.app.data.reader.ReaderPrefs(settingsPrefs) }
     val readState by lazy { com.mavislibrary.app.data.reader.ReadStateStore(settingsPrefs) }
     fun podcastRepository() = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(), podcastSettings, BuildConfig.API_BASE, ::podcastAccountId)
+    val podcastReadyStore by lazy { com.mavislibrary.app.data.briefing.PodcastReadyStore(settingsPrefs) }
     val briefingStore by lazy { com.mavislibrary.app.data.briefing.BriefingStore(settingsPrefs) }
     val podsubRepository by lazy { com.mavislibrary.app.data.podsub.PodsubRepository(
         com.mavislibrary.app.data.podsub.PodsubApi(podcastApi()),
@@ -134,6 +141,7 @@ class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Fac
         super.onCreate()
         container = AppContainer(this)
         WidgetUpdater.schedule(this)
+        com.mavislibrary.app.work.PodcastReadyScheduler.start(this)
         container.scope.launch { com.mavislibrary.app.work.BriefingScheduler.sync(this@MavisApp, restore = true) }
         container.scope.launch {
             kotlinx.coroutines.flow.combine(container.feedStore.sources,

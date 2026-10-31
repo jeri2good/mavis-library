@@ -94,6 +94,8 @@
             <intent-filter><action android:name="android.intent.action.MEDIA_BUTTON" /></intent-filter>
         </receiver>
 
+        <receiver android:name=".work.PodcastPlaybackAction" android:exported="false" />
+
         <receiver android:name=".update.UpdateReceiver" android:exported="false" />
 
         <!-- WorkManager is initialised on demand from MavisApp (Configuration.Provider). -->

@@ -35,6 +35,7 @@ class PodcastApi(
     private val execute: (suspend (Request) -> Response)? = null,
     private val owner: suspend () -> String? = { null },
     private val adult: suspend () -> Boolean = { true },
+    private val onCreated: suspend (PodcastCreated, PodcastRequest) -> Unit = { _, _ -> },
     private val token: suspend () -> String?,
 ) : PodcastService {
     private val client by lazy { OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
@@ -114,7 +115,7 @@ class PodcastApi(
     override suspend fun create(request: PodcastRequest): PodcastCreated {
         val fields = podcastJson.encodeToJsonElement(request.validated()).jsonObject.toMutableMap()
         request.gutenbergId?.let { fields["gutenbergId"] = JsonPrimitive(it.toString()) }
-        return podcastJson.decodeFromString<PodcastCreated>(request("/api/podcast/create", "POST", JsonObject(fields).toString()))
+        return podcastJson.decodeFromString<PodcastCreated>(request("/api/podcast/create", "POST", JsonObject(fields).toString())).also { onCreated(it, request) }
     }
     override suspend fun get(id: String) = podcastJson.decodeFromString<PodcastJob>(request("/api/podcast/job/${StudioAddress.safeId(id)}"))
     override suspend fun list(): List<PodcastJob> {

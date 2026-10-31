@@ -103,8 +103,8 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     var busy by remember { mutableStateOf(false) }
     var editingSource by remember(initial) { mutableStateOf(false) }
     var picker by remember { mutableStateOf<String?>(null) }
-    var chosenKind by remember(initial) { mutableStateOf(initial?.let { if (it.title.startsWith("Bible - ")) "bible" else it.kind }) }
-    var confirmed by remember(initial) { mutableStateOf(initial != null && initial != PodcastDraft()) }
+    var chosenKind by remember(initial) { mutableStateOf(initial?.takeUnless { it.pickSource }?.let { if (it.title.startsWith("Bible - ")) "bible" else it.kind }) }
+    var confirmed by remember(initial) { mutableStateOf(initial != null && initial != PodcastDraft() && !initial.pickSource) }
     var moreOptions by remember { mutableStateOf(false) }
     var refresh by remember { mutableIntStateOf(0) }
     val pollingMessages = remember(loaded.address) { mutableStateMapOf<String, String>() }
@@ -367,6 +367,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(enabled = !busy && accessReady && !sharedConfirm, modifier = Modifier.fillMaxWidth(), onClick = { act {
                 repo.create(draft.request(style, length, engine))
+                com.mavislibrary.app.work.WidgetUpdater.refresh(context)
                 notice = "Sent to your studio. It appears under Being made."
                 composing = false
             } }) { Text(if (busy) "Working…" else "Make podcast") }

@@ -44,7 +44,7 @@ class Subscriptions084Test {
         val api = Api(); val vm = show(api)
         compose.onNodeWithText("Daily briefing").assertExists(); compose.onNodeWithText("Devotionals").assertExists(); compose.onNodeWithText("Delivery").assertExists()
         compose.onNodeWithText("Add").performClick(); compose.onNodeWithText("Topic").performClick()
-        compose.onNodeWithText("Anxiety").performClick(); compose.onNodeWithText("Add subscription").performClick()
+        compose.onNodeWithText("Anxiety").performClick(); compose.onNodeWithText("Add subscription").performScrollTo().performClick()
         compose.onNodeWithText("Save subscriptions").performScrollTo().performClick()
         compose.waitUntil { !vm.state.value.busy && !vm.state.value.dirty }
         assertEquals("Anxiety", api.document.devotionals.single().topic)
@@ -54,7 +54,8 @@ class Subscriptions084Test {
         compose.onNodeWithText("Add").performClick(); compose.onNodeWithText("Devotional site").performClick()
         compose.onNodeWithText("Today Daily Devotional").performClick()
         compose.waitUntil { vm.state.value.devotionalPreview != null && !vm.state.value.busy }
-        compose.onNodeWithText("Hebrews 12:1-3").assertExists(); compose.onNodeWithText("Add subscription").performClick()
+        compose.onNodeWithText("Hebrews 12:1-3").assertExists(); compose.onNodeWithText("Add subscription").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, vm.state.value.document!!.devotionals.size) }
         compose.onNodeWithTag("Devotional delivery").performScrollTo().performClick(); compose.onNodeWithText("Set time").performClick()
         compose.onNodeWithText("Save subscriptions").performScrollTo().performClick(); compose.waitUntil { !vm.state.value.busy && !vm.state.value.dirty }
         assertEquals("site", api.document.devotionals.single().kind); assertTrue(api.document.devotionalSchedule.enabled); assertFalse(api.document.schedule.enabled)

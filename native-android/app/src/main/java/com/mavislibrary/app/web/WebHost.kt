@@ -316,6 +316,49 @@ class WebHost(private val activity: ComponentActivity) {
                 else @Suppress("DEPRECATION") vibrator?.vibrate(8)
             }
         }
+
+        @JavascriptInterface fun readingProgress(payload: String) {
+            if (payload.length > 16_000) return
+            activity.runOnUiThread {
+                if (!isAppOrigin(webView.url)) return@runOnUiThread
+                activity.lifecycleScope.launch {
+                    if (activity.kidsPrefs().state.first().enabled) return@launch
+                    runCatching {
+                        val json = JSONObject(payload)
+                        val key = json.optString("key").trim()
+                        if (key.isEmpty() || key == "bible" || key.length > 500 || key.any { it.code < 32 }) return@launch
+                        val rawSource = json.optString("source").trim().lowercase()
+                        val sourceId = json.optString("sourceId").trim()
+                        if (com.mavislibrary.app.data.kids.kidsBook(rawSource, sourceId)) return@launch
+                        val c = (activity.application as MavisApp).container
+                        val now = System.currentTimeMillis()
+                        if (c.database.books().get(key) == null) {
+                            val sourceName = if (rawSource == "openlibrary" || rawSource == "open_library") "OPEN_LIBRARY" else "GUTENBERG"
+                            val authors = json.optJSONArray("authors")?.let { arr ->
+                                (0 until arr.length()).mapNotNull { arr.optString(it).takeIf(String::isNotBlank) }.joinToString("\u001F")
+                            }.orEmpty()
+                            val cover = json.optString("coverUrl").takeIf { it.startsWith("https://") }
+                            c.database.books().upsert(com.mavislibrary.app.data.db.BookEntity(
+                                key = key, source = sourceName, sourceId = sourceId.ifBlank { key.substringAfter(':') },
+                                title = json.optString("title").ifBlank { "Untitled" }.take(300), authors = authors,
+                                coverUrl = cover, formats = "EPUB|true", year = null, languages = "en",
+                                epubUrl = null, sourceUrl = null, updatedAt = now,
+                            ))
+                        }
+                        val cfi = json.optString("cfi").takeIf { it.startsWith("epubcfi(") && it.length <= 2000 }
+                        val prev = c.database.readingProgress().get(key)
+                        val rawPercent = json.optDouble("percent", Double.NaN)
+                        val fraction = if (!rawPercent.isNaN()) rawPercent.toFloat().coerceIn(0f, 1f) else (prev?.fraction ?: 0f)
+                        c.database.readingProgress().put(com.mavislibrary.app.data.db.ReadingProgressEntity(
+                            bookKey = key, locator = cfi ?: prev?.locator, fraction = fraction, updatedAt = now,
+                        ))
+                        c.settings.setLastOpenedBook(key)
+                        com.mavislibrary.app.work.WidgetUpdater.resetBookSelection(activity)
+                        com.mavislibrary.app.work.WidgetUpdater.refresh(activity)
+                    }
+                }
+            }
+        }
     }
 
     private fun updateBackState() {
@@ -397,7 +440,7 @@ class WebHost(private val activity: ComponentActivity) {
                 .put("version", BuildConfig.VERSION_NAME)
                 .put("build", BuildConfig.GIT_SHA)
                 .put("platform", "android")
-            return "window.MavisNative = Object.freeze({...$info,haptic:(kind)=>window.MavisAndroid?.haptic(String(kind))});"
+            return "window.MavisNative = Object.freeze({...$info,haptic:(kind)=>window.MavisAndroid?.haptic(String(kind)),readingProgress:(payload)=>window.MavisAndroid?.readingProgress?.(String(payload))});"
         }
     }
 }

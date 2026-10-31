@@ -4,7 +4,7 @@ import com.mavislibrary.app.data.model.Book
 import com.mavislibrary.app.data.model.BookSource
 import com.mavislibrary.app.data.share.parseBibleReference
 
-data class PodcastDraft(val kind: String = "topic", val title: String = "", val text: String = "", val url: String = "", val gutenbergId: Int? = null, val originalChars: Int = text.length, val confirmShare: Boolean = false) {
+data class PodcastDraft(val kind: String = "topic", val title: String = "", val text: String = "", val url: String = "", val gutenbergId: Int? = null, val originalChars: Int = text.length, val confirmShare: Boolean = false, val pickSource: Boolean = false) {
     fun request(style: String, length: String, engine: String) = PodcastRequest(kind, title.trim().ifBlank { if (kind == "article") url else text.take(100) },
         text = podcastText(text).takeIf { kind != "topic" && it.isNotBlank() }, url = url.takeIf { kind == "article" && it.isNotBlank() }?.let(::articleUrl),
         gutenbergId = gutenbergId.takeIf { kind == "book" }, query = text.takeIf { kind == "topic" }, style = style, length = length, engine = engine).validated()

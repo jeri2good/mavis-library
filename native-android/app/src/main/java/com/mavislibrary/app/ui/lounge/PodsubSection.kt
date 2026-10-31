@@ -1,6 +1,8 @@
 package com.mavislibrary.app.ui.lounge
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -109,7 +111,7 @@ fun PodsubSection(state: PodsubUiState, vm: PodsubViewModel, onDetails: (Podcast
             }) { Text("Set time") } }
         } } }
     }
-    if (add != null) ModalBottomSheet(onDismissRequest = { add = null; editing = null }) {
+    if (add != null) ModalBottomSheet(onDismissRequest = { add = null; editing = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         if (add == "pick") Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Add a subscription", style = MaterialTheme.typography.headlineSmall)
             listOf("website" to "Website", "devotional" to "Devotional site", "topic" to "Topic").forEach { (kind, label) ->
@@ -158,7 +160,7 @@ private fun SubscriptionEditor(kind: String, editing: DevotionalRule?, state: Po
     var surprise by remember { mutableStateOf(editing?.surprise ?: false) }
     var error by remember { mutableStateOf<String?>(null) }
     val topic = kind == "topic"
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(if (topic) "Daily Bible topic" else if (kind == "devotional") "Devotional site" else "Website", style = MaterialTheme.typography.titleLarge)
         if (kind == "devotional") OutlinedButton({ value = "https://todaydevotional.com/daily-devotional-library"; name = "Today Daily Devotional"; vm.preview(value, true) }) { Text("Today Daily Devotional") }
         OutlinedTextField(value, { value = it.take(if (topic) 120 else 2048); vm.clearPreview() }, modifier = Modifier.fillMaxWidth(), label = { Text(if (topic) "Topic" else "Website link") }, enabled = !surprise && !state.busy)

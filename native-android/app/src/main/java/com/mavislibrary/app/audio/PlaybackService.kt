@@ -104,10 +104,15 @@ class PlaybackService : MediaLibraryService() {
                         sleepState = next
                         finishSleep()
                     }
+                    com.mavislibrary.app.work.WidgetPlayback.changed(this@PlaybackService, mediaItem?.mediaId.orEmpty(), player.isPlaying)
                     publishSleepButton()
                 }
 
-                override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) savePosition() }
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    val mediaId = player.currentMediaItem?.mediaId.orEmpty()
+                    if (!isPlaying) savePosition { com.mavislibrary.app.work.WidgetPlayback.changed(this@PlaybackService, mediaId, false) }
+                    else com.mavislibrary.app.work.WidgetPlayback.changed(this@PlaybackService, mediaId, true)
+                }
                 override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) = savePosition()
                 override fun onPlaybackStateChanged(playbackState: Int) { if (playbackState == Player.STATE_ENDED) savePosition() }
             })
@@ -131,6 +136,7 @@ class PlaybackService : MediaLibraryService() {
         scope.cancel()
         librarySession.release()
         player.release()
+        com.mavislibrary.app.work.WidgetPlayback.changed(this, "", false)
         super.onDestroy()
     }
 
@@ -141,12 +147,22 @@ class PlaybackService : MediaLibraryService() {
         publishSleepButton()
     }
 
-    private fun savePosition() {
-        val item = player.currentMediaItem ?: return
-        val bookKey = item.mediaMetadata.extras?.getString(EXTRA_BOOK_KEY) ?: return
+    private fun savePosition(afterSave: (() -> Unit)? = null) {
+        val item = player.currentMediaItem
+        val bookKey = item?.mediaMetadata?.extras?.getString(EXTRA_BOOK_KEY)
+        if (item == null || bookKey == null) {
+            afterSave?.invoke()
+            return
+        }
         val value = ResumePosition(bookKey, player.currentMediaItemIndex.coerceAtLeast(0), player.currentPosition, player.playbackParameters.speed)
         val app = application as MavisApp
-        scope.launch { app.container.resumePositionStore.save(value) }
+        scope.launch {
+            try {
+                app.container.resumePositionStore.save(value)
+            } finally {
+                afterSave?.invoke()
+            }
+        }
     }
 
     private fun sleepLabel(): String = when (val target = sleepState.target) {

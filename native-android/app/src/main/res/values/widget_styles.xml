@@ -1,0 +1,37 @@
+<resources>
+    <style name="WidgetAction">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">28dp</item>
+        <item name="android:paddingTop">4dp</item>
+        <item name="android:paddingBottom">4dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">#7A3E1D</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:visibility">gone</item>
+    </style>
+    <string name="widget_book_cover">Book cover</string>
+    <string name="widget_podcast_description">Play your newest podcast or make a new one.</string>
+    <string name="widget_podcast_preview_heading">Podcast Lounge</string>
+    <string name="widget_podcast_preview_title">Psalm 23 — The Lord Is My Shepherd</string>
+    <string name="widget_podcast_preview_detail">7 min · Ready</string>
+    <string name="widget_action_play">▶ Play</string>
+    <string name="widget_action_new_podcast">＋ New podcast</string>
+    <string name="widget_continue_preview_heading">Continue reading</string>
+    <string name="widget_continue_preview_title">Pride and Prejudice</string>
+    <string name="widget_continue_preview_detail">42% read</string>
+    <string name="widget_action_listen">▶ Listen</string>
+    <string name="widget_action_next_book">Next book →</string>
+    <string name="widget_verse_preview_heading">Verse of the day</string>
+    <string name="widget_verse_preview_title">The LORD is my shepherd; I shall not want.</string>
+    <string name="widget_verse_preview_detail">Psalms 23:1</string>
+    <string name="widget_action_read">Read</string>
+    <string name="widget_action_lesson">Lesson</string>
+    <string name="widget_action_share">Share</string>
+    <string name="widget_action_another">⟳</string>
+</resources>

@@ -3,22 +3,30 @@ package com.mavislibrary.app.work
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.BroadcastReceiver.PendingResult
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.BroadcastReceiver.PendingResult
+import android.net.Uri
+import android.os.Bundle
+import android.view.View
 import android.widget.RemoteViews
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import coil3.toBitmap
+import com.mavislibrary.app.BuildConfig
 import com.mavislibrary.app.MainActivity
 import com.mavislibrary.app.MavisApp
 import com.mavislibrary.app.R
 import com.mavislibrary.app.data.db.BookEntity
 import com.mavislibrary.app.data.kids.kidsBook
 import com.mavislibrary.app.data.kids.kidsPrefs
+import com.mavislibrary.app.data.podcast.PodcastJob
+import com.mavislibrary.app.data.podcast.SavedPodcast
+import com.mavislibrary.app.ui.lounge.visiblePodcasts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -116,65 +124,309 @@ object VerseOfDay {
 fun continueReading(books: List<BookEntity>, lastOpenedKey: String?): BookEntity? =
     books.firstOrNull { it.key == lastOpenedKey && !kidsBook(it.source.lowercase(), it.sourceId) }
 
-class ContinueReadingWidget : AppWidgetProvider() {
-    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) { WidgetUpdater.refresh(context, goAsync()) }
+class ContinueReadingWidget : InteractiveLibraryWidget()
+class VerseOfDayWidget : InteractiveLibraryWidget()
+class PodcastLoungeWidget : InteractiveLibraryWidget()
+
+open class InteractiveLibraryWidget : AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        WidgetUpdater.refresh(context, goAsync())
+    }
+
+    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: Bundle) {
+        WidgetUpdater.refresh(context, goAsync())
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        WidgetUpdater.clearSelections(context, appWidgetIds)
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (WidgetUpdater.advanceSelection(context, javaClass, intent)) {
+            WidgetUpdater.refresh(context, goAsync())
+        }
+    }
 }
 
-class VerseOfDayWidget : AppWidgetProvider() {
-    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) { WidgetUpdater.refresh(context, goAsync()) }
+fun recentReadingBooks(books: List<BookEntity>, last: String?): List<BookEntity> =
+    books.filterNot { kidsBook(it.source.lowercase(), it.sourceId) }
+        .sortedByDescending { it.key == last }
+        .distinctBy { it.key }
+        .take(3)
+
+fun readingWidgetRoute(book: BookEntity, locator: String?, listen: Boolean = false): String =
+    "#/read/${Uri.encode(book.key)}" +
+        listOfNotNull(
+            locator?.takeIf { it.startsWith("epubcfi(") }?.let { "at=${Uri.encode(it)}" },
+            "listen=1".takeIf { listen },
+        ).joinToString("&").let { if (it.isEmpty()) "" else "?$it" }
+
+fun bookCanListen(book: BookEntity) = !book.epubUrl.isNullOrBlank() || book.formats.contains("epub", true)
+
+fun podcastWidgetStatus(job: PodcastJob?, pending: Int, played: Boolean): String = when {
+    pending > 0 -> "Making… ($pending in progress)"
+    job == null -> "Make your first podcast"
+    job.status == "failed" -> "Couldn't be made"
+    !job.terminal -> "Making…"
+    played -> "Played"
+    else -> "Ready"
+}
+
+/** Prefers the active playing episode, then the newest ready episode (keeping Play usable while new jobs are being made), then any newest job. */
+fun selectPodcastWidgetEpisode(
+    library: List<SavedPodcast>,
+    activeMediaId: String = WidgetPlayback.mediaId,
+    isPlaying: Boolean = WidgetPlayback.playing,
+): SavedPodcast? {
+    val active = library.find { it.resumeKey == activeMediaId && it.job.status == "ready" }
+    return active?.takeIf { isPlaying } ?: library.firstOrNull { it.job.status == "ready" } ?: library.firstOrNull()
+}
+
+/** Actual live state, never a persisted 'playing' flag that could survive process death. */
+object WidgetPlayback {
+    @Volatile var mediaId: String = ""
+    @Volatile var playing: Boolean = false
+    fun changed(context: Context, id: String, isPlaying: Boolean) {
+        mediaId = id
+        playing = isPlaying
+        WidgetUpdater.refresh(context)
+    }
 }
 
 object WidgetUpdater {
+    const val NEXT_BOOK = "com.mavislibrary.app.WIDGET_NEXT_BOOK"
+    const val NEXT_VERSE = "com.mavislibrary.app.WIDGET_NEXT_VERSE"
+    private const val PREFS_NAME = "widget-selections"
+    // lcm(1, 2, 3) = 6 so cycling modulo 1, 2, or 3 recent books never stutters on wrap-around.
+    private const val BOOK_CYCLE_MODULUS = 6
+
     fun schedule(context: Context) {
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            "mavis-widgets", ExistingPeriodicWorkPolicy.KEEP,
+            "mavis-widgets",
+            ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<WidgetRefreshWorker>(1, TimeUnit.DAYS).build(),
         )
     }
 
     fun refresh(context: Context, result: PendingResult? = null) {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            try { update(context.applicationContext) } catch (_: Exception) { } finally { result?.finish() }
+            try {
+                update(context.applicationContext)
+            } catch (_: Exception) {
+            } finally {
+                result?.finish()
+            }
         }
     }
 
-    suspend fun update(context: Context) {
-        val app = context.applicationContext as MavisApp
-        val kids = context.kidsPrefs().state.first().enabled
+    fun advanceSelection(context: Context, providerClass: Class<out AppWidgetProvider>, intent: Intent): Boolean {
+        val expectedAction = when (providerClass) {
+            ContinueReadingWidget::class.java -> NEXT_BOOK
+            VerseOfDayWidget::class.java -> NEXT_VERSE
+            else -> return false
+        }
+        if (intent.action != expectedAction) return false
+        val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+        if (id == AppWidgetManager.INVALID_APPWIDGET_ID) return false
+        val manager = AppWidgetManager.getInstance(context)
+        if (id !in manager.getAppWidgetIds(ComponentName(context, providerClass))) return false
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val key = "$expectedAction/$id"
+        val modulus = if (expectedAction == NEXT_BOOK) BOOK_CYCLE_MODULUS else VerseOfDay.size
+        prefs.edit().putInt(key, (prefs.getInt(key, 0) + 1) % modulus).apply()
+        return true
+    }
+
+    fun resetBookSelection(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val bookKeys = prefs.all.keys.filter { it.startsWith("$NEXT_BOOK/") }
+        if (bookKeys.isEmpty()) return
+        val editor = prefs.edit()
+        bookKeys.forEach(editor::remove)
+        editor.apply()
+    }
+
+    fun clearSelections(context: Context, ids: IntArray) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        ids.forEach { id ->
+            editor.remove("$NEXT_BOOK/$id")
+            editor.remove("$NEXT_VERSE/$id")
+        }
+        editor.apply()
+    }
+
+    fun isCompactHeight(options: Bundle?): Boolean {
+        val minHeight = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0) ?: 0
+        return minHeight in 1..84
+    }
+
+    fun activity(context: Context, id: Int, slot: Int, destination: String): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java)
+            .putExtra(MainActivity.WIDGET_DESTINATION, destination)
+            .setData(Uri.parse("mavis://widget/$id/$slot"))
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        return PendingIntent.getActivity(context, id * 16 + slot, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    fun cycle(context: Context, id: Int, book: Boolean): PendingIntent {
+        val intent = Intent(context, if (book) ContinueReadingWidget::class.java else VerseOfDayWidget::class.java)
+            .setAction(if (book) NEXT_BOOK else NEXT_VERSE)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            .setData(Uri.parse("mavis://widget/$id/cycle"))
+        return PendingIntent.getBroadcast(context, id * 16 + 4, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    fun base(context: Context, heading: String, title: String, detail: String, compact: Boolean = false): RemoteViews =
+        RemoteViews(context.packageName, R.layout.widget_interactive).apply {
+            setTextViewText(R.id.widget_heading, heading)
+            setViewVisibility(R.id.widget_heading, if (compact) View.GONE else View.VISIBLE)
+            setTextViewText(R.id.widget_title, title)
+            setInt(R.id.widget_title, "setMaxLines", if (compact) 1 else 4)
+            setTextViewText(R.id.widget_detail, detail)
+            for (view in listOf(R.id.widget_cover, R.id.widget_progress, R.id.widget_action1, R.id.widget_action2, R.id.widget_action3, R.id.widget_action4)) {
+                setViewVisibility(view, View.GONE)
+            }
+        }
+
+    private fun RemoteViews.button(view: Int, label: String, intent: PendingIntent) {
+        setViewVisibility(view, View.VISIBLE)
+        setTextViewText(view, label)
+        setOnClickPendingIntent(view, intent)
+    }
+
+    fun verseView(context: Context, id: Int, verse: DailyVerse, compact: Boolean = false): RemoteViews =
+        base(context, "Verse of the day", verse.text, verse.reference, compact).apply {
+            setOnClickPendingIntent(R.id.widget_root, activity(context, id, 6, verse.route))
+            setOnClickPendingIntent(R.id.widget_title, activity(context, id, 0, verse.route))
+            button(R.id.widget_action1, "Read", activity(context, id, 1, verse.route))
+            button(R.id.widget_action2, "Lesson", activity(context, id, 2, "lesson:" + verse.route))
+            val send = Intent(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_SUBJECT, verse.reference)
+                .putExtra(Intent.EXTRA_TEXT, "${verse.text} — ${verse.reference}")
+            // Do not set a custom data URI on an implicit ACTION_CHOOSER intent; ChooserActivity's filter has no scheme.
+            val share = Intent.createChooser(send, "Share verse").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            button(R.id.widget_action3, "Share", PendingIntent.getActivity(context, id * 16 + 3, share, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            button(R.id.widget_action4, "⟳", cycle(context, id, false))
+        }
+
+    fun readingView(context: Context, id: Int, book: BookEntity?, fraction: Float, compact: Boolean = false): RemoteViews =
+        base(
+            context,
+            "Continue reading",
+            book?.title ?: "Open your shelf",
+            if (book == null) "Choose a book to begin" else "${(fraction.coerceIn(0f, 1f) * 100).toInt()}% read",
+            compact,
+        ).apply {
+            val route = book?.let { "read:${Uri.encode(it.key)}" } ?: "shelf"
+            setOnClickPendingIntent(R.id.widget_root, activity(context, id, 6, route))
+            setOnClickPendingIntent(R.id.widget_title, activity(context, id, 0, route))
+            setOnClickPendingIntent(R.id.widget_cover, activity(context, id, 5, route))
+            if (book != null) {
+                setViewVisibility(R.id.widget_cover, View.VISIBLE)
+                setImageViewResource(R.id.widget_cover, R.mipmap.ic_launcher)
+                setViewVisibility(R.id.widget_progress, View.VISIBLE)
+                setProgressBar(R.id.widget_progress, 1000, (fraction.coerceIn(0f, 1f) * 1000).toInt(), false)
+                if (bookCanListen(book)) {
+                    button(R.id.widget_action1, "▶ Listen", activity(context, id, 1, "listen:${Uri.encode(book.key)}"))
+                }
+            }
+            button(R.id.widget_action2, "Next book →", cycle(context, id, true))
+        }
+
+    fun podcastView(
+        context: Context,
+        id: Int,
+        saved: SavedPodcast?,
+        pending: Int,
+        played: Boolean,
+        isPlaying: Boolean = saved != null && WidgetPlayback.mediaId == saved.resumeKey && WidgetPlayback.playing,
+        compact: Boolean = false,
+    ): RemoteViews {
+        val job = saved?.job
+        val detail = listOfNotNull(
+            job?.durationSec?.let { "${maxOf(1, (it + 30) / 60)} min" },
+            podcastWidgetStatus(job, pending, played),
+        ).joinToString(" · ")
+        return base(context, "Podcast Lounge", job?.title?.ifBlank { null } ?: "Your Podcast Lounge", detail, compact).apply {
+            setOnClickPendingIntent(R.id.widget_root, activity(context, id, 6, MainActivity.LOUNGE))
+            setOnClickPendingIntent(R.id.widget_title, activity(context, id, 0, MainActivity.LOUNGE))
+            if (saved != null && job?.status == "ready") {
+                button(R.id.widget_action1, if (isPlaying) "⏸ Pause" else "▶ Play", PodcastPlaybackAction.pending(context, job.id, true))
+            }
+            button(R.id.widget_action2, "＋ New podcast", activity(context, id, 2, "new-podcast"))
+        }
+    }
+
+    suspend fun update(
+        context: Context,
+        todayDayOfYear: Int = LocalDate.now().dayOfYear,
+        c: com.mavislibrary.app.AppContainer = (context.applicationContext as MavisApp).container,
+    ) {
         val manager = AppWidgetManager.getInstance(context)
         val readingIds = manager.getAppWidgetIds(ComponentName(context, ContinueReadingWidget::class.java))
         val verseIds = manager.getAppWidgetIds(ComponentName(context, VerseOfDayWidget::class.java))
-        if (readingIds.isEmpty() && verseIds.isEmpty()) return
-        val book = if (kids || readingIds.isEmpty()) null else {
-            val key = app.container.settings.lastOpenedBook.first()
-            continueReading(listOfNotNull(key?.let { app.container.database.books().get(it) }), key)
+        val podcastIds = manager.getAppWidgetIds(ComponentName(context, PodcastLoungeWidget::class.java))
+        if (readingIds.isEmpty() && verseIds.isEmpty() && podcastIds.isEmpty()) return
+        if (context.kidsPrefs().state.first().enabled) {
+            (readingIds + verseIds + podcastIds).forEach { id ->
+                val compact = isCompactHeight(manager.getAppWidgetOptions(id))
+                manager.updateAppWidget(
+                    id,
+                    base(context, "Mavis Library", "Open Mavis", "", compact).apply {
+                        setOnClickPendingIntent(R.id.widget_root, activity(context, id, 6, "shelf"))
+                        setOnClickPendingIntent(R.id.widget_title, activity(context, id, 0, "shelf"))
+                    },
+                )
+            }
+            return
         }
-        val verse = VerseOfDay.forDay(LocalDate.now().dayOfYear)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val books = if (readingIds.isEmpty()) emptyList() else recentReadingBooks(c.database.books().recent(), c.settings.lastOpenedBook.first())
         readingIds.forEach { id ->
-            val title = if (kids) "Open Mavis" else book?.title ?: "Open Mavis"
-            manager.updateAppWidget(id, view(context, id, if (kids) "Mavis Library" else "Continue reading", title, if (kids) "" else if (book == null) "Visit your shelf" else "Tap to open your shelf", "shelf"))
+            val compact = isCompactHeight(manager.getAppWidgetOptions(id))
+            val book = books.getOrNull(prefs.getInt("$NEXT_BOOK/$id", 0) % maxOf(1, books.size))
+            val fraction = book?.let { c.database.readingProgress().get(it.key)?.fraction } ?: 0f
+            val view = readingView(context, id, book, fraction, compact)
+            if (book?.coverUrl != null) {
+                runCatching {
+                    val result = coil3.SingletonImageLoader.get(context).execute(
+                        coil3.request.ImageRequest.Builder(context).data(book.coverUrl).size(120, 180).build(),
+                    )
+                    result.image?.let { view.setImageViewBitmap(R.id.widget_cover, it.toBitmap()) }
+                }
+            }
+            manager.updateAppWidget(id, view)
         }
         verseIds.forEach { id ->
-            manager.updateAppWidget(id, view(context, id, if (kids) "Mavis Library" else "Verse of the day", if (kids) "Open Mavis" else verse.text,
-                if (kids) "" else verse.reference, if (kids) "shelf" else verse.route))
+            val compact = isCompactHeight(manager.getAppWidgetOptions(id))
+            val day = (todayDayOfYear - 1 + prefs.getInt("$NEXT_VERSE/$id", 0)) % VerseOfDay.size + 1
+            manager.updateAppWidget(id, verseView(context, id, VerseOfDay.forDay(day), compact))
+        }
+        if (podcastIds.isNotEmpty()) {
+            val account = c.podcastAccountId()
+            val cleanupDays = c.podcastSettings.preferences.first().cleanupDays
+            val library = visiblePodcasts(c.podcastSettings.library.first(), account, BuildConfig.API_BASE, cleanupDays)
+            val featured = selectPodcastWidgetEpisode(library)
+            val position = featured?.let { c.resumePositionStore.load(it.resumeKey)?.positionMs } ?: 0L
+            val played = featured?.job?.durationSec?.let { position >= it * 1000L - 30_000 && position >= 5_000 } ?: false
+            val pending = library.count { !it.job.terminal }
+            podcastIds.forEach { id ->
+                val compact = isCompactHeight(manager.getAppWidgetOptions(id))
+                manager.updateAppWidget(id, podcastView(context, id, featured, pending, played, compact = compact))
+            }
         }
     }
-
-    private fun view(context: Context, id: Int, heading: String, title: String, detail: String, destination: String): RemoteViews =
-        RemoteViews(context.packageName, R.layout.widget_paper).apply {
-            setTextViewText(R.id.widget_heading, heading)
-            setTextViewText(R.id.widget_title, title)
-            setTextViewText(R.id.widget_detail, detail)
-            val intent = Intent(context, MainActivity::class.java).putExtra(MainActivity.WIDGET_DESTINATION, destination)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            setOnClickPendingIntent(R.id.widget_root, PendingIntent.getActivity(context, id + if (destination == "shelf") 10000 else 20000, intent, flags))
-        }
 }
 
 class WidgetRefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
         WidgetUpdater.update(applicationContext)
         Result.success()
-    } catch (e: Exception) { Result.retry() }
+    } catch (_: Exception) {
+        Result.retry()
+    }
 }

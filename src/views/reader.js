@@ -283,9 +283,22 @@ async function renderEpub(root, item, file, close, route) {
     } catch (err) { console.warn('Locations unavailable', err); }
   })();
 
+  function syncNativeProgress(cfi, percent) {
+    if (isKids() || !window.MavisNative?.readingProgress) return;
+    try {
+      window.MavisNative.readingProgress(JSON.stringify({
+        key, source: item.source || '', sourceId: String(item.sourceId ?? ''), title: item.title || '',
+        authors: item.authors || [], coverUrl: item.coverUrl || null, cfi: cfi || null,
+        percent: Number.isFinite(percent) ? percent : null,
+      }));
+    } catch { /* ignore */ }
+  }
+  syncNativeProgress(saved?.cfi, saved?.percent);
+
   // ---------- Relocation → UI + progress ----------
   saveProgress = debounce((loc) => {
     const percent = locationsReady ? book.locations.percentageFromCfi(loc.start.cfi) : null;
+    syncNativeProgress(loc.start.cfi, percent);
     store.setProgress(key, { cfi: loc.start.cfi, percent, chapter: chapterLabel(loc) }).catch((err) => toast(`Couldn't save your place: ${err.message}`, { tone: 'error' }));
   }, 800);
 
@@ -1246,6 +1259,14 @@ async function renderEpub(root, item, file, close, route) {
         <div class="dialog-actions"><button type="button" class="btn btn-quiet" data-close>Stay here</button><a class="btn btn-primary" href="${/^https?:/i.test(href) ? href : '#'}" target="_blank" rel="noopener noreferrer" data-open>Open link</a></div>`,
     });
     d.body.querySelector('[data-open]').addEventListener('click', () => d.close());
+  }
+
+  // The home-screen Listen action opens the same reader at its saved location.
+  if (route?.params?.get('listen') === '1' && !isKids()) {
+    ttsBar.hidden = false;
+    root.querySelector('[data-act="tts"]').setAttribute('aria-pressed', 'true');
+    await paintTtsBar();
+    if (!destroyed) { rendition.resize(); playToggle(); }
   }
 
   return async () => {

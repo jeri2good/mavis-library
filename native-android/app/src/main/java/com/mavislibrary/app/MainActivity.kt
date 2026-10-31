@@ -91,8 +91,9 @@ class MainActivity : FragmentActivity() {
     private var widgetRequest by mutableIntStateOf(0)
 
     private fun acceptWidgetDestination(intent: android.content.Intent?) {
+        if (kidsModeLoaded && kidsModeEnabled) return
         val requested = intent?.getStringExtra(WIDGET_DESTINATION)
-        widgetDestination = requested?.takeIf { it == "shelf" || it == LOUNGE || it == UPDATES || it in (1..366).map { day -> com.mavislibrary.app.work.VerseOfDay.forDay(day).route } }
+        widgetDestination = requested?.takeIf { com.mavislibrary.app.work.widgetDestinationAllowed(it) }
         if (widgetDestination != null) widgetRequest++
     }
     private var sharedIntent by mutableStateOf<android.content.Intent?>(null)
@@ -131,6 +132,7 @@ class MainActivity : FragmentActivity() {
                 refreshOwnerCode()
                 if (state.enabled) {
                     pendingDebugDrive = false
+                    widgetDestination = null
                     configureDriveMode(false)
                 } else if (pendingDebugDrive) {
                     pendingDebugDrive = false

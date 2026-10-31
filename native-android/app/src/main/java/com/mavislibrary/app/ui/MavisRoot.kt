@@ -184,16 +184,6 @@ fun MavisRoot(
     val importedBooks by imports.books.collectAsState(initial = emptyList())
     AdultReadingTracker(container, stats, webHost,
         current?.route == ROUTE_WEB_SHELF || current?.route == Tab.BIBLE.route)
-    LaunchedEffect(widgetRequest, loadedKids.enabled) {
-        if (widgetDestination != null && widgetDestination != com.mavislibrary.app.MainActivity.LOUNGE && !loadedKids.enabled) {
-            val tab = when {
-                widgetDestination.startsWith("#/bible/") -> Tab.BIBLE.route
-                widgetDestination == com.mavislibrary.app.MainActivity.UPDATES -> Tab.SETTINGS.route
-                else -> Tab.SHELF.route
-            }
-            goTab(tab)
-        }
-    }
     val scope = rememberCoroutineScope()
     var podcastDraft by remember { mutableStateOf<com.mavislibrary.app.data.podcast.PodcastDraft?>(null) }
     var podcastRequest by remember { mutableIntStateOf(0) }
@@ -236,11 +226,48 @@ fun MavisRoot(
             catch (e: Exception) { snackbar.showSnackbar(e.message ?: "Couldn't play that episode. Try again.") }
         }
     }
-    // "Podcast ready" notifications open the Lounge, with Listen behind it for Back.
+    // Widget and "Podcast ready" notification destinations.
     LaunchedEffect(widgetRequest, loadedKids.enabled) {
-        if (widgetDestination == com.mavislibrary.app.MainActivity.LOUNGE && !loadedKids.enabled) {
-            goTab(Tab.LISTEN.route)
-            openLounge(com.mavislibrary.app.data.podcast.PodcastDraft())
+        val destination = widgetDestination ?: return@LaunchedEffect
+        if (loadedKids.enabled) return@LaunchedEffect
+        when {
+            destination == com.mavislibrary.app.MainActivity.LOUNGE -> {
+                goTab(Tab.LISTEN.route)
+                openLounge(com.mavislibrary.app.data.podcast.PodcastDraft())
+            }
+            destination == "new-podcast" -> {
+                goTab(Tab.LISTEN.route)
+                openLounge(com.mavislibrary.app.data.podcast.PodcastDraft(pickSource = true))
+            }
+            destination.startsWith("lesson:") -> {
+                val draft = com.mavislibrary.app.work.widgetLessonDraft(context, destination.removePrefix("lesson:"))
+                if (draft != null) {
+                    goTab(Tab.LISTEN.route)
+                    openLounge(draft)
+                }
+            }
+            destination.startsWith("read:") || destination.startsWith("listen:") -> {
+                goTab(Tab.SHELF.route)
+                val key = android.net.Uri.decode(destination.substringAfter(':'))
+                val book = container.database.books().get(key)
+                if (book != null && !kidsBook(book.source.lowercase(), book.sourceId)) {
+                    val progress = container.database.readingProgress().get(key)
+                    container.settings.setLastOpenedBook(key)
+                    WidgetUpdater.resetBookSelection(context)
+                    WidgetUpdater.refresh(context)
+                    val route = com.mavislibrary.app.work.readingWidgetRoute(
+                        book,
+                        progress?.locator,
+                        destination.startsWith("listen:") && com.mavislibrary.app.work.bookCanListen(book),
+                    )
+                    webHost?.openLater(route)
+                    if (nav.currentDestination?.route == ROUTE_WEB_SHELF) webHost?.show(route)
+                    nav.navigate(ROUTE_WEB_SHELF) { launchSingleTop = true }
+                }
+            }
+            destination.startsWith("#/bible/") -> goTab(Tab.BIBLE.route)
+            destination == com.mavislibrary.app.MainActivity.UPDATES -> goTab(Tab.SETTINGS.route)
+            else -> goTab(Tab.SHELF.route)
         }
     }
     val latestLounge by rememberUpdatedState(openLounge)
@@ -254,6 +281,7 @@ fun MavisRoot(
         if (!kidsBook(book.source.name.lowercase(), book.sourceId)) scope.launch {
             container.database.books().upsert(book.toEntity(System.currentTimeMillis()))
             container.settings.setLastOpenedBook(book.key)
+            WidgetUpdater.resetBookSelection(context)
             WidgetUpdater.refresh(context)
         }
         webHost?.openLater("#/book/" + java.net.URLEncoder.encode(book.key, "UTF-8").replace("+", "%20"))

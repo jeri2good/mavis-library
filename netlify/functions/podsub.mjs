@@ -6,12 +6,14 @@ import { podcastUsage } from '../lib/podcast.mjs';
 import { pageUrl, fetchPage, pageLinks, fetchArticle, previewSite } from '../lib/podsub-page.mjs';
 import { defaultPodsub, savePodsub, runs, runSubscription, limitRunNow, todayEpisodes, validUid } from '../lib/podsub.mjs';
 
+import { previewDevotional } from '../lib/podsub-devotional.mjs';
+
 const handler = async req => {
   if (!sameOrigin(req)) return fail(403, 'cross_origin', 'Cross-site requests are not allowed.');
   const access = await requireAccess(req, { feature: 'podcast' });
   if (access instanceof Response) return access;
   const uid = access.owner ? 'owner' : access.user.id;
-  const action = new URL(req.url).pathname.replace(/^\/api\/podsub\/?/, '');
+  const action = new URL(req.url).pathname.replace(/^\/api\/(?:podsub|podcast\/subscription)\/?/, '');
   try {
     if (['preview', 'article', 'page'].includes(action)) {
       if (req.method !== 'GET') return fail(405, 'method_not_allowed', 'Use GET.');
@@ -19,7 +21,7 @@ const handler = async req => {
       try { url = pageUrl(new URL(req.url).searchParams.get('url')).href; }
       catch { return fail(400, 'bad_request', 'Use a valid public HTTPS URL.'); }
       try {
-        if (action === 'preview') return json(await previewSite(url));
+        if (action === 'preview') return json(new URL(req.url).searchParams.get('kind') === 'devotional' ? await previewDevotional(url) : await previewSite(url));
         if (action === 'article') return json({ ...await fetchArticle(url), url }, { cache: 'private, max-age=3600' });
         const page = await fetchPage(url);
         const posts = pageLinks(page.html, page.url).map(({ id, title, link, publishedAt }) => ({ id, title, link, publishedAt }));
@@ -29,7 +31,9 @@ const handler = async req => {
     }
     if (!action) {
       if (req.method === 'GET') {
-        const doc = await subStore().get(`podsub/${uid}`, { type: 'json' }) || defaultPodsub();
+        const stored = await subStore().get(`podsub/${uid}`, { type: 'json' }) || {};
+        const doc = { ...defaultPodsub(), ...stored };
+        doc.devotionals = await Promise.all(doc.devotionals.map(async d => ({ ...d, lastEpisode: (await subStore().get(`podsub-seen/${uid}/${d.id}`, { type: 'json' }))?.lastEpisode || null })));
         const { used, limit, date } = await podcastUsage(uid);
         return json({ ...doc, today: { used, limit, date }, lastRun: (await runs(uid))[0] || null });
       }
@@ -61,4 +65,4 @@ const handler = async req => {
   }
 };
 export default withCors(handler, { methods: 'GET, PUT, POST, OPTIONS' });
-export const config = { path: ['/api/podsub', '/api/podsub/*'], rateLimit: { windowLimit: 90, windowSize: 60, aggregateBy: ['ip', 'domain'] } };
+export const config = { path: ['/api/podsub', '/api/podsub/*', '/api/podcast/subscription', '/api/podcast/subscription/*'], rateLimit: { windowLimit: 90, windowSize: 60, aggregateBy: ['ip', 'domain'] } };

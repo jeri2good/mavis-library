@@ -12,17 +12,39 @@ val subscriptionDays = listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")
     val mode: String = "top", val count: Int? = 1, val delivery: String = "briefing", val priority: Int = 0, val source: String = "feed")
 @Serializable data class SubscriptionSchedule(val enabled: Boolean = false, val readyBy: String = "06:30",
     val days: List<String> = subscriptionDays, val timezone: String = ZoneId.systemDefault().id)
+@Serializable data class DevotionalRule(val id: String, val kind: String, val name: String,
+    val url: String? = null, val topic: String? = null, val surprise: Boolean = false, val enabled: Boolean = true)
+@Serializable data class DevotionalEpisode(val jobId: String, val title: String, val reference: String, val createdAt: String)
+@Serializable data class DevotionalResponse(val id: String, val kind: String, val name: String,
+    val url: String? = null, val topic: String? = null, val surprise: Boolean = false, val enabled: Boolean = true,
+    val lastEpisode: DevotionalEpisode? = null) {
+    fun rule() = DevotionalRule(id, kind, name, url, topic, surprise, enabled)
+}
 @Serializable data class SubscriptionNotify(val telegram: Boolean = false)
 /** PUT has its own model so server fields can never leak into a strict request. */
 @Serializable data class SubscriptionDocument(val version: Int = 1, val sites: List<SiteRule> = emptyList(),
     val schedule: SubscriptionSchedule = SubscriptionSchedule(), val engine: String = "notebooklm",
-    val rank: String = "newest", val keepDays: Int = 7, val notify: SubscriptionNotify = SubscriptionNotify()) {
+    val rank: String = "newest", val keepDays: Int = 7, val notify: SubscriptionNotify = SubscriptionNotify(),
+    val devotionals: List<DevotionalRule> = emptyList(),
+    val devotionalSchedule: SubscriptionSchedule = SubscriptionSchedule(readyBy = "19:00", timezone = schedule.timezone)) {
     fun validated(): SubscriptionDocument {
         require(version == 1 && engine in setOf("notebooklm", "auto") && rank in setOf("newest", "important") && keepDays in 1..30)
+        for (schedule in listOf(schedule, devotionalSchedule)) {
+        require(schedule.timezone.length <= 100 && schedule.timezone.matches(Regex("[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)*")))
         require(schedule.readyBy.matches(Regex("(?:[01][0-9]|2[0-3]):[0-5][0-9]")))
         ZoneId.of(schedule.timezone)
         require(schedule.days.distinct() == schedule.days && schedule.days.all { it in subscriptionDays })
         require(!schedule.enabled || schedule.days.isNotEmpty()) { "Choose at least one day." }
+        }
+        fun text(value: String, max: Int) = value.isNotEmpty() && value.length <= max && value.none { it.code < 32 || it.code == 127 }
+        require(devotionals.size <= 5)
+        require((sites.map { it.id } + devotionals.map { it.id }).distinct().size == sites.size + devotionals.size)
+        devotionals.forEach { d ->
+            require(text(d.id, 100) && d.id.matches(Regex("[A-Za-z0-9_-]+")) && text(d.name, 200) && d.kind in setOf("site", "topic"))
+            require(d.topic == null || d.topic.length <= 120 && d.topic.none { it.code < 32 || it.code == 127 })
+            if (d.kind == "topic") require(d.surprise || !d.topic.isNullOrBlank())
+            if (d.kind == "site") require(publicDevotionalUrl(d.url)) { "Use a public HTTPS devotional link." }
+        }
         require(sites.map { it.id }.distinct().size == sites.size)
         sites.forEach { require(it.source in setOf("feed", "page") && it.mode in setOf("off", "top") && (it.mode != "top" || it.count in 1..5) && it.delivery in setOf("briefing", "separate")) }
         return copy(sites = sites.map { if (it.mode == "off") it.copy(count = null) else it })
@@ -36,8 +58,11 @@ val subscriptionDays = listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 @Serializable data class SubscriptionResponse(val version: Int = 1, val sites: List<SiteRule> = emptyList(),
     val schedule: SubscriptionSchedule = SubscriptionSchedule(), val engine: String = "notebooklm", val rank: String = "newest",
     val keepDays: Int = 7, val notify: SubscriptionNotify = SubscriptionNotify(), val nextRunAt: String? = null,
-    val updatedAt: String? = null, val today: DailyUsage? = null, val lastRun: SubscriptionRun? = null) {
-    fun document() = SubscriptionDocument(version, sites, schedule, engine, rank, keepDays, notify)
+    val updatedAt: String? = null, val today: DailyUsage? = null, val lastRun: SubscriptionRun? = null,
+    val devotionals: List<DevotionalResponse> = emptyList(),
+    val devotionalSchedule: SubscriptionSchedule = SubscriptionSchedule(readyBy = "19:00", timezone = schedule.timezone),
+    val nextDevotionalAt: String? = null) {
+    fun document() = SubscriptionDocument(version, sites, schedule, engine, rank, keepDays, notify, devotionals.map { it.rule() }, devotionalSchedule)
 }
 
 fun migrateSubscription(sites: List<FeedSource>, old: BriefingSettings, zone: ZoneId): SubscriptionDocument =
@@ -58,3 +83,16 @@ fun downloadExpired(createdAt: String, keepDays: Int, now: Instant): Boolean {
     require(keepDays in 1..30)
     return runCatching { Instant.parse(createdAt).isBefore(now.minusSeconds(keepDays * 86400L)) }.getOrDefault(false)
 }
+
+/** Literal private addresses and credentials are rejected locally; server also checks DNS on fetch. */
+fun publicDevotionalUrl(value: String?): Boolean = runCatching {
+    val u = java.net.URI(value ?: "")
+    val host = u.host?.lowercase()?.removePrefix("[")?.removeSuffix("]") ?: return false
+    if (u.scheme != "https" || u.userInfo != null || u.port !in listOf(-1, 443) || host == "localhost" || host.endsWith(".local") || host.endsWith(".localhost")) return false
+    if (host.contains(':')) return false
+    if (host.all { it.isDigit() || it == '.' }) {
+        val n = host.split('.').map { it.toIntOrNull() ?: return false }
+        if (n.size != 4 || n.any { it !in 0..255 } || n[0] in listOf(0, 10, 127) || n[0] >= 224 || n[0] == 169 && n[1] == 254 || n[0] == 172 && n[1] in 16..31 || n[0] == 192 && n[1] == 168 || n[0] == 100 && n[1] in 64..127) return false
+    }
+    true
+}.getOrDefault(false)

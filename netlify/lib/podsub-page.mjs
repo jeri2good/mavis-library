@@ -152,7 +152,7 @@ export function extractArticle(html, url) {
   if (skip) text = lead.slice(skip).join('\n\n');
   const words = text.match(/\S+/g)?.length || 0;
   const author = data?.author;
-  return { title: titleOf(root), byline: (Array.isArray(author) ? author.map(a => a.name || a).join(', ') : author?.name || author) || meta(root, 'author'), siteName: meta(root, 'og:site_name') || new URL(url).hostname, image: httpsLink(meta(root, 'og:image'), url), publishedAt: data?.datePublished || meta(root, 'article:published_time') || null, text, words, readMin: Math.max(1, Math.round(words / 230)) };
+  return { scriptureText: tidy(content(nodes(root, n => n.tag === 'article')[0] || nodes(root, n => n.tag === 'main')[0] || root, true)).slice(0, 50000), title: titleOf(root), byline: (Array.isArray(author) ? author.map(a => a.name || a).join(', ') : author?.name || author) || meta(root, 'author'), siteName: meta(root, 'og:site_name') || new URL(url).hostname, image: httpsLink(meta(root, 'og:image'), url), publishedAt: data?.datePublished || meta(root, 'article:published_time') || null, text, words, readMin: Math.max(1, Math.round(words / 230)) };
 }
 export async function fetchArticle(url, opts = {}) {
   try {

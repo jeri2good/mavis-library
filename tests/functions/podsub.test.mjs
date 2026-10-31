@@ -437,6 +437,43 @@ try {
       assert.equal(fallback.find(j => j.id === 'queue-second').etaMin, second.etaMin);
     } finally { globalThis.fetch = saved; }
   });
+  await test('devotionals have independent due keys, daily coverage, metadata, cap and refunds', async () => {
+    for (const prefix of ['podsub-due/', 'podsub-devotional-due/']) for (const k of await keys(prefix)) await subStore().delete(k);
+    const now = Date.now(), at = new Date(now - 1000).toISOString();
+    const d = { id: 'dev', kind: 'topic', name: 'Anxiety', topic: 'anxiety', enabled: true };
+    const input = doc([site('brief')], { devotionals: [d], devotionalSchedule: { ...doc().schedule, readyBy: '19:00' } });
+    const uid = await setup(input);
+    const options = { ...deps, now, llm: async () => { throw Error('offline'); }, passage: async r => `${r} Full passage text` };
+    let saved = await subStore().get(`podsub/${uid}`, { type: 'json' });
+    assert.notEqual(saved.nextRunAt, saved.nextDevotionalAt);
+    await subStore().setJSON(`podsub/${uid}`, { ...saved, nextRunAt: at });
+    await subStore().setJSON(`podsub-due/${at}/${uid}`, {});
+    await tick(options);
+    assert.equal((await runs(uid))[0].kind, 'briefing');
+    saved = await subStore().get(`podsub/${uid}`, { type: 'json' });
+    await subStore().setJSON(`podsub/${uid}`, { ...saved, nextDevotionalAt: at });
+    await subStore().setJSON(`podsub-devotional-due/${at}/${uid}`, {});
+    await tick(options);
+    assert.equal((await runs(uid))[0].skipped[0].reason, 'skipped_limit');
+    const briefing = (await runs(uid)).find(r => r.episodes.length).episodes[0];
+    jobs.get(briefing.jobId).status = 'failed';
+    const out = await runSubscription(uid, { ...options, devotional: true });
+    assert.equal(out.episodes.length, 1); assert.match(out.episodes[0].title, /^Philippians 4:4-9 — Anxiety$/);
+    assert.equal((await podcastUsage(uid)).used, 1);
+    const row = await subStore().get(`pod/${uid}/${out.episodes[0].jobId}`, { type: 'json' });
+    assert.equal(row.meta.devotional, 'dev'); assert.equal(calls.at(-1).body.meta, undefined);
+    assert.equal((await runSubscription(uid, { ...options, devotional: true })).episodes.length, 0);
+    assert.equal((await todayEpisodes(uid)).find(e => e.id === row.id).meta.reference, 'Philippians 4:4-9');
+    const record = await subStore().get(`podsub-seen/${uid}/dev`, { type: 'json' });
+    assert.equal(record.lastEpisode.jobId, row.id); assert.equal(record.references.length, 1);
+  });
+  await test('devotional passage failure skips without consuming quota; own timezone and days', async () => {
+    const devotionalSchedule = { enabled:true, readyBy:'19:00', days:['mon'], timezone:'America/New_York' };
+    assert.equal(nextRunAt(devotionalSchedule, Date.parse('2026-03-08T23:00Z')), '2026-03-09T22:00:00.000Z');
+    const uid = await setup(doc([], { devotionals:[{id:'d',kind:'topic',name:'Trust',topic:'trust',enabled:true}], devotionalSchedule }));
+    const out = await runSubscription(uid, {...deps, devotional:true, llm:async()=>({}), passage:async()=>{throw Error('offline');}});
+    assert.equal(out.skipped[0].reason,'scripture_unavailable'); assert.equal((await podcastUsage(uid)).used,0);
+  });
   console.log(`\n${passed} podcast subscription checks passed.`);
 } finally {
   globalThis.fetch = realFetch; delete globalThis.__mavisRealFetch;

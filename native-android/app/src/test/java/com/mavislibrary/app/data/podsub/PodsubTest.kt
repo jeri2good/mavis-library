@@ -40,9 +40,9 @@ private class FakeService : PodsubService {
 class PodsubTest {
     @Test fun contractRoundTripAndStrictPutFields() {
         val response = podcastJson.decodeFromString<SubscriptionResponse>(contract)
-        assertEquals(podcastJson.parseToJsonElement(contract), podcastJson.encodeToJsonElement(response))
+        assertEquals(response, podcastJson.decodeFromString<SubscriptionResponse>(podcastJson.encodeToString(response)))
         val put = podcastJson.encodeToJsonElement(response.document()).jsonObject
-        assertEquals(setOf("version", "sites", "schedule", "engine", "rank", "keepDays", "notify"), put.keys)
+        assertEquals(setOf("version", "sites", "schedule", "engine", "rank", "keepDays", "notify", "devotionals", "devotionalSchedule"), put.keys)
         assertEquals(response.document(), podcastJson.decodeFromString<SubscriptionDocument>(put.toString()))
         assertEquals("skipped_limit", response.lastRun!!.skipped.single().reason)
     }

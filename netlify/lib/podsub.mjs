@@ -4,16 +4,18 @@ import { readForUpdate, writeIfUnchanged, getUser } from './accounts.mjs';
 import { isOwnerEmail } from './access.mjs';
 import { createPodcast, podcastUsage, studioConfig, studioJson, publicJob, terminalStatus, releaseSlot, refundFailedPodcast, deletePodcastRow, rememberPodcast, lastKnownPodcast, podcastQueue, withQueue, withMeta } from './podcast.mjs';
 import { fetchFeed, feedUrl } from './podsub-feed.mjs';
-import { fetchPage, pageLinks, fetchArticle } from './podsub-page.mjs';
+import { fetchPage, pageLinks, fetchArticle, pageUrl } from './podsub-page.mjs';
 import { DAYS, nextRunAt, localDate } from './podsub-time.mjs';
 import { env } from './shared.mjs';
+
+import { devotionalEpisode } from './podsub-devotional.mjs';
 
 const bad = () => { throw problem(400, 'bad_request', 'Invalid podcast subscription document.'); };
 const object = (v, keys) => v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).every(k => keys.includes(k));
 const str = (v, max) => typeof v === 'string' && v.length > 0 && v.length <= max && !/[\u0000-\u001f\u007f]/.test(v);
 export const validUid = uid => uid === 'owner' || typeof uid === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uid);
 export function validatePodsub(b) {
-  if (!object(b, ['version', 'sites', 'schedule', 'engine', 'rank', 'keepDays', 'notify']) || b.version !== 1 || !Array.isArray(b.sites) || b.sites.length > 12) bad();
+  if (!object(b, ['version', 'sites', 'schedule', 'engine', 'rank', 'keepDays', 'notify', 'devotionals', 'devotionalSchedule']) || b.version !== 1 || !Array.isArray(b.sites) || b.sites.length > 12) bad();
   const ids = new Set();
   for (const site of b.sites) {
     if (!object(site, ['id', 'name', 'feedUrl', 'siteUrl', 'mode', 'count', 'delivery', 'priority', 'source'])
@@ -25,6 +27,19 @@ export function validatePodsub(b) {
     try { feedUrl(site.feedUrl); feedUrl(site.siteUrl); } catch { bad(); }
     ids.add(site.id);
   }
+  const devotionals = b.devotionals ?? [];
+  if (!Array.isArray(devotionals) || devotionals.length > 5) bad();
+  for (const d of devotionals) {
+    if (!object(d, ['id', 'kind', 'name', 'url', 'topic', 'surprise', 'enabled']) || !str(d.id, 100) || !/^[\w-]+$/.test(d.id) || ids.has(d.id)
+      || !str(d.name, 200) || !['site', 'topic'].includes(d.kind) || typeof d.enabled !== 'boolean'
+      || d.surprise !== undefined && typeof d.surprise !== 'boolean') bad();
+    if (d.kind === 'site') { try { pageUrl(d.url); } catch { bad(); } }
+    if (d.topic !== undefined && (typeof d.topic !== 'string' || d.topic.length > 120 || /[\u0000-\u001f\u007f]/.test(d.topic))) bad();
+    if (d.kind === 'topic' && !d.surprise && !d.topic?.trim()) bad();
+    ids.add(d.id);
+  }
+  const devotionalSchedule = b.devotionalSchedule ?? { enabled: false, readyBy: '19:00', days: DAYS, timezone: b.schedule?.timezone || 'UTC' };
+  for (const schedule of [b.schedule, devotionalSchedule]) validateSchedule(schedule);
   const s = b.schedule;
   if (!object(s, ['enabled', 'readyBy', 'days', 'timezone']) || typeof s.enabled !== 'boolean' || typeof s.readyBy !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.readyBy)
     || !Array.isArray(s.days) || s.days.some(d => !DAYS.includes(d)) || new Set(s.days).size !== s.days.length || (s.enabled && !s.days.length)
@@ -32,10 +47,16 @@ export function validatePodsub(b) {
     || (b.keepDays !== undefined && (!Number.isInteger(b.keepDays) || b.keepDays < 1 || b.keepDays > 30))
     || !object(b.notify, ['telegram']) || typeof b.notify.telegram !== 'boolean') bad();
   try { new Intl.DateTimeFormat('en', { timeZone: s.timezone }).format(); } catch { bad(); }
-  return structuredClone({ ...b, sites: b.sites.map(site => ({ ...site, source: site.source ?? 'feed' })), keepDays: b.keepDays ?? 7 });
+  return structuredClone({ ...b, devotionals, devotionalSchedule, sites: b.sites.map(site => ({ ...site, source: site.source ?? 'feed' })), keepDays: b.keepDays ?? 7 });
+}
+function validateSchedule(s) {
+  if (!object(s, ['enabled', 'readyBy', 'days', 'timezone']) || typeof s.enabled !== 'boolean' || typeof s.readyBy !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.readyBy)
+    || !Array.isArray(s.days) || s.days.some(d => !DAYS.includes(d)) || new Set(s.days).size !== s.days.length || s.enabled && !s.days.length
+    || !str(s.timezone, 100) || !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)*$/.test(s.timezone)) bad();
+  try { new Intl.DateTimeFormat('en', { timeZone: s.timezone }).format(); } catch { bad(); }
 }
 export function defaultPodsub() {
-  return { version: 1, sites: [], schedule: { enabled: false, readyBy: '08:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'], timezone: 'UTC' }, engine: 'auto', rank: 'newest', keepDays: 7, notify: { telegram: false }, nextRunAt: null, updatedAt: null };
+  return { version: 1, devotionals: [], devotionalSchedule: { enabled: false, readyBy: '19:00', days: DAYS, timezone: 'UTC' }, nextDevotionalAt: null, sites: [], schedule: { enabled: false, readyBy: '08:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'], timezone: 'UTC' }, engine: 'auto', rank: 'newest', keepDays: 7, notify: { telegram: false }, nextRunAt: null, updatedAt: null };
 }
 export async function keys(prefix) {
   const out = [];
@@ -57,7 +78,9 @@ async function writeDoc(uid, doc) {
   const s = subStore();
   // Publish the new index first: a stale index is harmless (tick verifies the doc).
   if (doc.nextRunAt) await s.setJSON(`podsub-due/${doc.nextRunAt}/${uid}`, { uid });
+  if (doc.nextDevotionalAt) await s.setJSON(`podsub-devotional-due/${doc.nextDevotionalAt}/${uid}`, { uid });
   await s.setJSON(`podsub/${uid}`, doc);
+  for (const key of await keys('podsub-devotional-due/')) if (key.endsWith(`/${uid}`) && key !== `podsub-devotional-due/${doc.nextDevotionalAt}/${uid}`) await s.delete(key);
   for (const key of await keys('podsub-due/')) if (key.endsWith(`/${uid}`) && key !== `podsub-due/${doc.nextRunAt}/${uid}`) await s.delete(key);
   return doc;
 }
@@ -65,7 +88,7 @@ export async function savePodsub(uid, input, now = Date.now()) {
   const doc = validatePodsub(input), token = await acquireLock(uid);
   if (!token) throw problem(409, 'podsub_busy', 'A podcast subscription operation is already running.');
   // Saving a schedule always clears any in-progress retry window.
-  try { return await writeDoc(uid, { ...doc, nextRunAt: nextRunAt(doc.schedule, now), updatedAt: new Date(now).toISOString() }); }
+  try { return await writeDoc(uid, { ...doc, nextRunAt: nextRunAt(doc.schedule, now), nextDevotionalAt: nextRunAt(doc.devotionalSchedule, now), updatedAt: new Date(now).toISOString() }); }
   finally { await releaseLock(uid, token); }
 }
 export async function runs(uid) {
@@ -126,19 +149,23 @@ async function notify(uid, doc, run, now, deadline) {
   } catch { /* Optional notification failure never fails generation. */ }
 }
 export const RETRY_MS = 5 * 60000;
-export async function runSubscription(uid, { now = Date.now(), dueKey, deadline = Date.now() + 24000, feed = fetchFeed, page = fetchPage, article = fetchArticle, cfg = studioConfig(), checkAccess = eligible } = {}) {
+export async function runSubscription(uid, { now = Date.now(), dueKey, deadline = Date.now() + 24000, feed = fetchFeed, page = fetchPage, article = fetchArticle, cfg = studioConfig(), checkAccess = eligible, devotional = false, passage, llm } = {}) {
   const token = await acquireLock(uid);
   if (!token) throw problem(409, 'podsub_busy', 'A podcast subscription operation is already running.');
   const s = subStore();
   let doc;
   try {
     doc = await s.get(`podsub/${uid}`, { type: 'json' }) || defaultPodsub();
-    if (dueKey && (!doc.schedule.enabled || !doc.nextRunAt || `podsub-due/${doc.nextRunAt}/${uid}` !== dueKey || Date.parse(doc.nextRunAt) > now)) { await s.delete(dueKey); return null; }
-    const run = { startedAt: new Date(now).toISOString(), finishedAt: null, status: 'ok', episodes: [], skipped: [] };
+    devotional = devotional || dueKey?.startsWith('podsub-devotional-due/');
+    const schedule = devotional ? doc.devotionalSchedule || defaultPodsub().devotionalSchedule : doc.schedule;
+    const nextField = devotional ? 'nextDevotionalAt' : 'nextRunAt', retryField = devotional ? 'devotionalRetryReadyAt' : 'retryReadyAt';
+    const prefix = devotional ? 'podsub-devotional-due' : 'podsub-due';
+    if (dueKey && (!schedule.enabled || !doc[nextField] || `${prefix}/${doc[nextField]}/${uid}` !== dueKey || Date.parse(doc[nextField]) > now)) { await s.delete(dueKey); return null; }
+    const run = { startedAt: new Date(now).toISOString(), finishedAt: null, status: 'ok', kind: devotional ? 'devotional' : 'briefing', episodes: [], skipped: [] };
     const skip = (siteId, reason) => { if (!run.skipped.some(v => v.siteId === siteId && v.reason === reason)) run.skipped.push({ siteId, reason }); };
     try {
       if (!await checkAccess(uid, now)) throw new Error('Access no longer active');
-      const enabled = doc.sites.filter(site => site.mode === 'top').sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
+      const enabled = (devotional ? [] : doc.sites).filter(site => site.mode === 'top').sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
       const sites = await Promise.all(enabled.map(async site => {
         try {
           const [posts, record] = await Promise.all([(site.source === 'page' ? page(site.feedUrl, { timeout: Math.max(1, Math.min(6000, deadline - Date.now())) }).then(p => pageLinks(p.html, p.url)) : feed(site.feedUrl, { timeout: Math.max(1, Math.min(6000, deadline - Date.now())) })), s.get(`podsub-seen/${uid}/${site.id}`, { type: 'json' })]);
@@ -167,6 +194,16 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
         }
       }));
       const planned = episodesFor(sites);
+      if (devotional) for (const d of (doc.devotionals || []).filter(d => d.enabled)) {
+        const record = await s.get(`podsub-seen/${uid}/${d.id}`, { type: 'json' }) || {};
+        const day = localDate(dueKey ? Date.parse(doc[retryField] || doc[nextField]) + (doc[retryField] ? 0 : 3600000) : now, schedule.timezone);
+        if (record.day === day) continue;
+        if (Date.now() >= deadline - 1500) { skip(d.id, 'skipped_budget'); continue; }
+        try {
+          const episode = await devotionalEpisode(d, record, { page, article, passage, llm, timeout: Math.max(1, Math.min(4000, deadline - Date.now() - 1500)) });
+          if (episode) { episode.record = record; episode.day = day; planned.push(episode); }
+        } catch (err) { skip(d.id, err.message === 'scripture_unavailable' ? 'scripture_unavailable' : 'devotional_source_failed'); }
+      }
       for (const episode of planned) if (episode.briefing) episode.title = briefingTitle(episode.posts, now, doc.schedule.timezone);
       for (const episode of planned) {
         let usage = await podcastUsage(uid, now);
@@ -177,14 +214,17 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
         try {
           // Give every selected post a share of the source budget before marking it seen.
           const perPost = Math.floor(85000 / episode.posts.length);
-          const text = episode.posts.map(p => `${p.title}\n${p.link || ''}\n${p.text || p.title}`.slice(0, perPost)).join('\n\n');
+          const text = episode.text || episode.posts.map(p => `${p.title}\n${p.link || ''}\n${p.text || p.title}`.slice(0, perPost)).join('\n\n');
           // 'deep-dive' = NotebookLM's two-host conversation ('brief' is its single-voice summary). Keep it short.
-          const job = await createPodcast(uid, { kind: 'chapter', title: episode.title, text, engine: doc.engine, style: 'deep-dive', length: 'short' }, { cfg: cfg ? { ...cfg, deadline: deadline - 1000, maxWait: 20000 } : null, now, meta: episodeMeta(episode) });
-          run.episodes.push({ jobId: job.id, title: episode.title, siteIds: episode.sites.map(site => site.id) });
+          const job = await createPodcast(uid, { kind: 'chapter', title: episode.title, text, engine: doc.engine, style: 'deep-dive', length: 'short' }, { cfg: cfg ? { ...cfg, deadline: deadline - 1000, maxWait: 20000 } : null, now, meta: episode.devotional || episodeMeta(episode) });
+          run.episodes.push({ jobId: job.id, title: episode.title, siteIds: episode.sites.map(site => site.id), ...(episode.devotional || {}) });
           for (const site of episode.sites) {
             const ids = episode.posts.filter(p => site.posts.includes(p)).map(p => p.id);
             site.seen = [...new Set([...site.seen, ...ids])].slice(-300);
-            await s.setJSON(`podsub-seen/${uid}/${site.id}`, { seen: site.seen });
+            await s.setJSON(`podsub-seen/${uid}/${site.id}`, { seen: site.seen, ...(episode.devotional ? {
+              day: episode.day, references: [...(episode.record.references || []), episode.devotional.reference].slice(-60),
+              lastEpisode: { jobId: job.id, title: episode.title, reference: episode.devotional.reference, createdAt: new Date(now).toISOString() }
+            } : {}) });
           }
         } catch (err) {
           const code = err.response ? (await err.response.clone().json()).code : '';
@@ -201,23 +241,24 @@ export async function runSubscription(uid, { now = Date.now(), dueKey, deadline 
     for (const key of (await keys(`podsub-runs/${uid}/`)).slice(0, -30)) await s.delete(key);
     // A sleeping studio (cold start ~35 s) or a flaky feed must not cost the whole day:
     // retry every 5 minutes until 10 minutes before the ready-by time, then give up until tomorrow.
-    const transient = run.skipped.some(v => ['create_failed', 'skipped_budget', 'feed_failed'].includes(v.reason));
-    const readyAt = Date.parse(doc.retryReadyAt || doc.nextRunAt || '') + (doc.retryReadyAt ? 0 : 60 * 60000);
+    const transient = run.skipped.some(v => ['create_failed', 'skipped_budget', 'feed_failed', 'scripture_unavailable', 'devotional_source_failed'].includes(v.reason));
+    const readyAt = Date.parse(doc[retryField] || doc[nextField] || '') + (doc[retryField] ? 0 : 60 * 60000);
     const retryAt = Date.now() + RETRY_MS;
     if (dueKey && transient && Number.isFinite(readyAt) && retryAt <= readyAt - 10 * 60000) {
       run.status = run.episodes.length ? 'partial_retrying' : 'retrying';
       run.retryAt = new Date(retryAt).toISOString();
-      await writeDoc(uid, { ...doc, nextRunAt: run.retryAt, retryReadyAt: new Date(readyAt).toISOString(), updatedAt: new Date().toISOString() });
+      await writeDoc(uid, { ...doc, [nextField]: run.retryAt, [retryField]: new Date(readyAt).toISOString(), updatedAt: new Date().toISOString() });
     } else {
-      const { retryReadyAt: _drop, ...clean } = doc;
-      await writeDoc(uid, { ...clean, nextRunAt: nextRunAt(doc.schedule, Math.max(now, Date.now())), updatedAt: new Date().toISOString() });
+      const clean = { ...doc }; delete clean[retryField];
+      await writeDoc(uid, { ...clean, [nextField]: nextRunAt(schedule, Math.max(now, Date.now())), updatedAt: new Date().toISOString() });
     }
-    await notify(uid, doc, run, now, deadline);
+    await s.setJSON(`podsub-runs/${uid}/${new Date(stamp).toISOString()}`, run);
+    await notify(uid, { ...doc, schedule }, run, now, deadline);
     return run;
   } finally { await releaseLock(uid, token); }
 }
 export async function tick({ now = Date.now(), deadline = Date.now() + 25000, ...deps } = {}) {
-  const due = (await keys('podsub-due/')).filter(key => Date.parse(key.split('/')[1]) <= now);
+  const due = [...await keys('podsub-due/'), ...await keys('podsub-devotional-due/')].sort((a, b) => Date.parse(a.split('/')[1]) - Date.parse(b.split('/')[1])).filter(key => Date.parse(key.split('/')[1]) <= now);
   const users = new Set(), selected = due.filter(key => { const uid = key.split('/')[2]; if (!validUid(uid) || users.has(uid)) return false; users.add(uid); return true; }).slice(0, 10);
   // Wake the studio as early as possible: from idle it needs ~35 s to start, longer than one tick.
   // Fire-and-forget; a run that still misses it retries 5 minutes later against a warm studio.

@@ -300,6 +300,15 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                         onPlay = { if (loadedNow) playback.toggle() else play(resume) })
                 }
             }
+            // Your Daily sits above the episode crate: the crate item holds the whole Up next list, so anything after it is
+            // buried under every episode (seen on device: 25 swipes down).
+            val daily = dailyCards(subscriptionState, jobs.map { it.job })
+            if (subscriptionState.document != null) {
+                item(key = "daily") { SectionHeading("Your Daily") }
+                if (daily.isEmpty()) item { Text("Nothing arrives on its own yet. Tap New, then Every day.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(daily, key = { "daily_${it.id}" }) { card -> YourDailyCard(card, !busy, onOpen = onPodcastSettings, onPlay = { playToday(listOf(it)) }) }
+            }
             item { SectionHeading("New episodes", trailing = shelves[PodcastShelf.NEW]?.size?.let { "$it new" }) }
             if (jobs.isEmpty()) item {
                 Text("Your podcasts will appear here. Tap New to make one, or start something that arrives every day.",
@@ -331,13 +340,6 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                         DropdownMenuItem({ Text(if (job.terminal) "Delete" else "Cancel and delete") }, { close(); delete = episode.saved })
                     },
                 )
-            }
-            val daily = dailyCards(subscriptionState, jobs.map { it.job })
-            if (subscriptionState.document != null) {
-                item(key = "daily") { SectionHeading("Your Daily") }
-                if (daily.isEmpty()) item { Text("Nothing arrives on its own yet. Tap New, then Every day.", style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                items(daily, key = { "daily_${it.id}" }) { card -> YourDailyCard(card, !busy, onOpen = onPodcastSettings, onPlay = { playToday(listOf(it)) }) }
             }
             footer()
         }

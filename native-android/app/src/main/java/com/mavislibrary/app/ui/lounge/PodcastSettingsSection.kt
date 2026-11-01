@@ -13,9 +13,35 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mavislibrary.app.AppContainer
 import com.mavislibrary.app.data.kids.kidsPrefs
 import com.mavislibrary.app.data.podcast.PodcastPreferences
+import com.mavislibrary.app.data.podcast.podcastStyles
+import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+/** Settings → Podcasts route. Kids never see it; signed-out listeners get only the local defaults. */
+@Composable
+fun PodcastSettingsScreen(container: AppContainer, startPage: String, onBack: () -> Unit, onStartDaily: (String) -> Unit, onSignIn: () -> Unit) {
+    val context = LocalContext.current
+    val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
+    if (kids?.enabled != false) return
+    val prefs by container.podcastSettings.preferences.collectAsStateWithLifecycle(initialValue = PodcastPreferences())
+    val vm = rememberPodsubViewModel(container)
+    if (vm == null) {
+        Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(16.dp).testTag("podcast_settings_page"),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextButton(onClick = onBack) { Text("Back to Settings") }
+            Text("Podcasts", style = MaterialTheme.typography.headlineLarge)
+            Text("Sign in to manage your daily briefing and devotionals.")
+            Button(onClick = onSignIn) { Text("Sign in in Settings") }
+            PodcastSettingsSection(container)
+        }
+        return
+    }
+    val state by vm.state.collectAsStateWithLifecycle()
+    PodcastSettingsContent(state, vm, onBack, onStartDaily, startPage,
+        styleLabel = podcastStyles[prefs.style] ?: podcastStyles["deep-dive"], styleSection = { PodcastSettingsSection(container) })
+}
 
 @Composable
 fun PodcastSettingsSection(container: AppContainer) {
@@ -35,8 +61,7 @@ fun PodcastSettingsSection(container: AppContainer) {
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { message = "Could not save podcast preferences." }
     } }
-    Card(Modifier.fillMaxWidth().testTag("podcast_settings")) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Podcast Lounge", style = MaterialTheme.typography.titleLarge)
+    Card(Modifier.fillMaxWidth().testTag("podcast_defaults")) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Uses your account through Mavis Library's public gateway. No studio address or key to paste. Approved subscribers and the owner can create podcasts.")
         Text("Default podcast options", style = MaterialTheme.typography.titleMedium)
         PodcastChoices(style, prefs.length, prefs.engine,
@@ -45,11 +70,11 @@ fun PodcastSettingsSection(container: AppContainer) {
             { defaults(style, prefs.length, it) })
         Text("Downloaded podcasts stay on this device. Previous direct-studio jobs are not migrated to the gateway.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(days ?: prefs.cleanupDays.toString(), { days = it.filter(Char::isDigit).take(4) }, label = { Text("Delete finished podcasts older than N days") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
-        Text("Local cleanup only: removes old finished library entries and downloaded audio on Lounge entry. Studio originals are untouched. 0 keeps everything; unknown dates are kept.", style = MaterialTheme.typography.bodySmall)
+        Text("Local cleanup only: removes old finished library entries and downloaded audio when you open Listen. Studio originals are untouched. 0 keeps everything; unknown dates are kept.", style = MaterialTheme.typography.bodySmall)
         OutlinedButton(enabled = !busy, onClick = { confirmCleanup = true }) { Text("Apply local cleanup") }
         message?.let { Text(it) }
     } }
-    if (confirmCleanup) AlertDialog(onDismissRequest = { confirmCleanup = false }, title = { Text("Apply local cleanup?") }, text = { Text("Finished podcasts older than ${days ?: prefs.cleanupDays} days will be removed from this device now and on future Lounge visits. 0 disables cleanup. Originals at your studio are kept.") }, confirmButton = { TextButton(onClick = {
+    if (confirmCleanup) AlertDialog(onDismissRequest = { confirmCleanup = false }, title = { Text("Apply local cleanup?") }, text = { Text("Finished podcasts older than ${days ?: prefs.cleanupDays} days will be removed from this device now and each time you open Listen. 0 disables cleanup. Originals at your studio are kept.") }, confirmButton = { TextButton(onClick = {
         confirmCleanup = false
         scope.launch {
             if (busy || context.kidsPrefs().state.first().enabled) return@launch

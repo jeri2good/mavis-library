@@ -31,6 +31,8 @@ import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.Podcasts
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -73,7 +75,7 @@ import kotlinx.coroutines.launch
 const val PRIVACY_URL = "https://mavis-library.netlify.app/privacy"
 
 @Composable
-fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}, onEnableReminder: () -> Unit = {}, onOpenStats: () -> Unit = {}, onAppLockChange: (Boolean) -> Unit = {}, voice: com.mavislibrary.app.voice.VoiceUi? = null) {
+fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveModeChange: (Boolean) -> Unit = {}, onEnableReminder: () -> Unit = {}, onOpenStats: () -> Unit = {}, onAppLockChange: (Boolean) -> Unit = {}, voice: com.mavislibrary.app.voice.VoiceUi? = null, onOpenPodcasts: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
@@ -138,7 +140,19 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
         }
 
         AccountSettingsSection(container, hasCode)
-        com.mavislibrary.app.ui.lounge.PodcastSettingsSection(container)
+        Card(onClick = onOpenPodcasts, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            modifier = Modifier.fillMaxWidth().testTag("podcast_settings")) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Podcasts, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Podcasts", style = MaterialTheme.typography.titleLarge)
+                    Text("Daily briefing, devotionals, delivery times and default style", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+            }
+        }
 
         Section("Listening", Icons.Outlined.Headphones) {
             voice?.let { com.mavislibrary.app.voice.VoiceSettings(it) }

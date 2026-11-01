@@ -31,7 +31,11 @@ class PodcastNavigationTest {
         assertEquals(listOf("shelf", "search", "bible", "sites", "listen", "settings"), Tab.entries.map { it.route })
         compose.onNodeWithText("Sign in in Settings").performClick(); waitFor("settings")
         compose.onNodeWithTag("account_settings").performScrollTo().assertExists()
-        compose.onNodeWithTag("podcast_settings").performScrollTo().assertExists()
+        compose.onNodeWithTag("podcast_settings").performScrollTo().performClick()
+        waitFor("podcast_settings_page")
+        compose.onNodeWithText("Sign in to manage your daily briefing and devotionals.").assertExists()
+        compose.onNodeWithTag("podcast_defaults").performScrollTo().assertExists()
+        compose.onNodeWithTag("tab_settings").assertIsSelected()
     }
     @Test fun loungeRouteAndNotificationDestinationRedirectToListen() {
         assertEquals("listen", loungeDestination(ROUTE_LOUNGE))
@@ -46,7 +50,7 @@ class PodcastNavigationTest {
     }
     @Test fun sitesTabLinksToSubscriptionsAndKeepsFeedReading() {
         waitFor("tab_sites"); compose.onNodeWithTag("tab_sites").performClick(); waitFor("sites")
-        compose.onNodeWithText("Podcast subscriptions in Lounge").assertExists()
+        compose.onNodeWithText("Podcast subscriptions in Settings").assertExists()
         compose.onNodeWithTag("briefing_now").assertDoesNotExist()
         compose.onNodeWithTag("add_site_card").assertExists()
         compose.onNodeWithTag("follow_site").performClick()

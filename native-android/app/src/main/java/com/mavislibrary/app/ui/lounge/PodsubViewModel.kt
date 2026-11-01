@@ -92,6 +92,11 @@ class PodsubViewModel(private val repository: PodsubRepository) : ViewModel() {
         act { persist(); onSaved() }
     }
     fun save() = act { persist() }
+    /** Settings → Podcasts saves each change right away. */
+    fun commit(change: (SubscriptionDocument) -> SubscriptionDocument) {
+        if (state.value.busy || state.value.document == null) return
+        edit(change); save()
+    }
     private suspend fun persist() {
         val doc = state.value.document ?: return
         val response = repository.save(doc)

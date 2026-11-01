@@ -50,7 +50,8 @@ private data class ExportProgressState(val label: String, val fraction: Float?)
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null, onOpenReader: ((ReaderTarget) -> Unit)? = null, pickerWebView: android.webkit.WebView? = null,
-                        onPodcastSettings: () -> Unit = onSettings, onStartDaily: ((String) -> Unit)? = null, footer: LazyListScope.() -> Unit = {}) {
+                        onPodcastSettings: () -> Unit = onSettings, onStartDaily: (String) -> Unit = {}, onBriefingSites: () -> Unit = onPodcastSettings,
+                        footer: LazyListScope.() -> Unit = {}) {
     val context = LocalContext.current
     val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
     if (!loungeRouteAllowed(kids?.enabled)) return
@@ -121,12 +122,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     var exportProgress by remember { mutableStateOf<ExportProgressState?>(null) }
     val snackbar = remember { SnackbarHostState() }
     var sharedConfirm by remember(initial) { mutableStateOf(initial?.confirmShare == true) }
-    var subscriptionAdd by remember { mutableStateOf<String?>(null) }
-    fun startDaily(key: String) {
-        if (key != DAILY_BRIEFING && onStartDaily != null) return onStartDaily(key)
-        subscription.clearPreview()
-        subscriptionAdd = when (key) { DAILY_SITE -> "devotional"; DAILY_TOPIC -> "topic"; else -> "website" }
-    }
+    fun startDaily(key: String) = if (key == DAILY_BRIEFING) onBriefingSites() else onStartDaily(key)
     val jobs = visiblePodcasts(all, identity, loaded.address, loaded.cleanupDays)
     val nowPlaying by playback.state.collectAsStateWithLifecycle()
     val shelves = gallery(jobs, positions)
@@ -343,9 +339,6 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                     color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 items(daily, key = { "daily_${it.id}" }) { card -> YourDailyCard(card, !busy, onOpen = onPodcastSettings, onPlay = { playToday(listOf(it)) }) }
             }
-            item {
-                PodsubSection(subscriptionState, subscription, library = jobs.map { it.job }, onDetails = { job -> details = DetailsTarget(savedFor(job)) { playToday(listOf(job)) } }, onPlay = ::playToday)
-            }
             footer()
         }
         ExtendedFloatingActionButton(
@@ -408,12 +401,6 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
             } }) { Text(if (busy) "Working…" else "Make podcast") }
             if (!accessReady) Text("Waiting for your studio to connect.", style = MaterialTheme.typography.bodySmall)
             }
-        }
-    }
-    subscriptionAdd?.let { kind ->
-        if (subscriptionState.document != null) ModalBottomSheet(onDismissRequest = { subscriptionAdd = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            SubscriptionEditor(kind, null, subscriptionState, subscription) { subscriptionAdd = null }
-            Spacer(Modifier.height(24.dp))
         }
     }
     picker?.let { kind ->

@@ -106,6 +106,7 @@ const val ROUTE_WEB_SHELF = "web_shelf"
 const val ROUTE_SHOWCASE = "showcase"
 const val ROUTE_LOUNGE = "lounge"
 const val ROUTE_DAILY = "daily"
+const val ROUTE_PODCAST_SETTINGS = "podcast-settings"
 
 /** Where a podcast route lands: the old Lounge route is the Listen tab now; anything else is unchanged. */
 fun loungeDestination(route: String): String = if (route == ROUTE_LOUNGE) Tab.LISTEN.route else route
@@ -200,6 +201,8 @@ fun MavisRoot(
             goTab(loungeDestination(ROUTE_LOUNGE))
         }
     }
+    val openPodcastSettings: (String) -> Unit = { page -> nav.navigate("$ROUTE_PODCAST_SETTINGS/$page") { launchSingleTop = true } }
+    val openDaily: (String) -> Unit = { mode -> nav.navigate("$ROUTE_DAILY/$mode") { launchSingleTop = true } }
     var article by remember { mutableStateOf<com.mavislibrary.app.data.podcast.PodcastDraft?>(null) }
     val openArticle: (com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit = { source ->
         if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) {
@@ -297,7 +300,8 @@ fun MavisRoot(
                 NavigationBar {
                     Tab.entries.forEach { tab ->
                         NavigationBarItem(
-                            selected = current?.hierarchy?.any { it.route == tab.route } == true || tab == Tab.SITES && current?.route in setOf("site/{id}", "sites/new"),
+                            selected = current?.hierarchy?.any { it.route == tab.route } == true || tab == Tab.SITES && current?.route in setOf("site/{id}", "sites/new") ||
+                                tab == Tab.SETTINGS && current?.route == "$ROUTE_PODCAST_SETTINGS/{page}",
                             onClick = {
                                 nav.navigate(tab.route) {
                                     popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -389,7 +393,7 @@ fun MavisRoot(
                     com.mavislibrary.app.ui.sites.SitesScreen(
                         container,
                         onOpenSite = { id -> nav.navigate("site/$id") { launchSingleTop = true } },
-                        onOpenLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) },
+                        onOpenLounge = { openPodcastSettings(com.mavislibrary.app.ui.lounge.PODCAST_PAGE_MAIN) },
                         onSettings = { goTab(Tab.SETTINGS.route) },
                         onAskNotifications = onFirstAudio,
                         onPlayEpisodes = playEpisodes,
@@ -413,7 +417,9 @@ fun MavisRoot(
                     key(podcastRequest) {
                         ListenScreen(container, playback, onFirstAudio, voice, initial = podcastDraft, onSettings = { goTab(Tab.SETTINGS.route) },
                             onOpenArticle = openArticle, onOpenReader = openReader, pickerWebView = webHost?.also { it.warm() }?.webView,
-                            onStartDaily = { mode -> nav.navigate("$ROUTE_DAILY/$mode") { launchSingleTop = true } })
+                            onPodcastSettings = { openPodcastSettings(com.mavislibrary.app.ui.lounge.PODCAST_PAGE_MAIN) },
+                            onBriefingSites = { openPodcastSettings(com.mavislibrary.app.ui.lounge.PODCAST_PAGE_SITES) },
+                            onStartDaily = openDaily)
                     }
                 }
                 composable("$ROUTE_DAILY/{mode}") { route ->
@@ -421,6 +427,10 @@ fun MavisRoot(
                         com.mavislibrary.app.ui.lounge.DailyDevotionalScreen(container, route.arguments?.getString("mode").orEmpty(),
                             onBack = { nav.popBackStack() }, onSignIn = { goTab(Tab.SETTINGS.route) })
                     else LaunchedEffect(Unit) { nav.popBackStack() }
+                }
+                composable("$ROUTE_PODCAST_SETTINGS/{page}") { route ->
+                    com.mavislibrary.app.ui.lounge.PodcastSettingsScreen(container, route.arguments?.getString("page") ?: com.mavislibrary.app.ui.lounge.PODCAST_PAGE_MAIN,
+                        onBack = { nav.popBackStack() }, onStartDaily = openDaily, onSignIn = { goTab(Tab.SETTINGS.route) })
                 }
                 composable("article") {
                     article?.takeIf { com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled) }?.let {
@@ -434,7 +444,8 @@ fun MavisRoot(
                         else nav.popBackStack()
                     }
                 }
-                composable(Tab.SETTINGS.route) { SettingsScreen(container, voice = voice, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder, onOpenStats = { nav.navigate("stats") }, onAppLockChange = onAppLockChange) }
+                composable(Tab.SETTINGS.route) { SettingsScreen(container, voice = voice, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder, onOpenStats = { nav.navigate("stats") }, onAppLockChange = onAppLockChange,
+                    onOpenPodcasts = { openPodcastSettings(com.mavislibrary.app.ui.lounge.PODCAST_PAGE_MAIN) }) }
                 composable("stats") { StatsScreen(stats, onBack = { nav.popBackStack() }) }
                 composable(ROUTE_SHOWCASE) { ThemeShowcaseScreen(onBack = { nav.popBackStack() }) }
             }

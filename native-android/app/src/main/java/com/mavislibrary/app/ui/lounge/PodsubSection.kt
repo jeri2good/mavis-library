@@ -1,18 +1,30 @@
 package com.mavislibrary.app.ui.lounge
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.mavislibrary.app.data.podcast.PodcastJob
 import com.mavislibrary.app.data.podsub.*
-import com.mavislibrary.app.ui.podcast.episodeSubtitle
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -28,114 +40,163 @@ fun subscriptionArrival(at: String?, schedule: SubscriptionSchedule, now: Instan
     return "$day ${time.format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))}"
 }
 
+const val PODCAST_PAGE_MAIN = "main"
+const val PODCAST_PAGE_SITES = "sites"
+const val PODCAST_PAGE_DEVOTIONALS = "devotionals"
+
+/**
+ * Settings → Podcasts (BRIEF-085 F): schedules, retention, usage, briefing sites and devotionals moved out of
+ * the Lounge. Each change saves right away; only typed site names wait for "Save changes".
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun PodsubSection(state: PodsubUiState, vm: PodsubViewModel, onDetails: (PodcastJob) -> Unit = {}, library: List<PodcastJob> = state.episodes, onPlay: (List<PodcastJob>) -> Unit) {
+fun PodcastSettingsContent(state: PodsubUiState, vm: PodsubViewModel, onBack: () -> Unit, onStartDaily: (String) -> Unit,
+                           startPage: String = PODCAST_PAGE_MAIN, styleLabel: String? = null, styleSection: @Composable () -> Unit = {}) {
+    var page by rememberSaveable { mutableStateOf(startPage) }
     var timeFor by remember { mutableStateOf<String?>(null) }
     var add by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<DevotionalRule?>(null) }
     var editSite by remember { mutableStateOf<String?>(null) }
+    var rankOpen by remember { mutableStateOf(false) }
+    var styleOpen by rememberSaveable { mutableStateOf(false) }
     val doc = state.document
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val ready = !state.busy
+    BackHandler(enabled = page != PODCAST_PAGE_MAIN) { page = PODCAST_PAGE_MAIN }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp).testTag("podcast_settings_page"),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Subscriptions", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
-            Button(onClick = { vm.clearPreview(); add = "pick" }, enabled = doc != null && !state.busy) { Text("Add") }
+            IconButton(onClick = { if (page == PODCAST_PAGE_MAIN) onBack() else page = PODCAST_PAGE_MAIN }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
+            }
+            Text(if (page == PODCAST_PAGE_MAIN) "Settings" else "Podcasts", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(state.meter, style = MaterialTheme.typography.bodySmall)
+        Text(when (page) { PODCAST_PAGE_SITES -> "Briefing sites"; PODCAST_PAGE_DEVOTIONALS -> "Devotionals"; else -> "Podcasts" },
+            Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineLarge)
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (doc != null) {
-            Text("Daily briefing", style = MaterialTheme.typography.titleLarge)
-            if (doc.sites.isEmpty()) Text("Add a website or follow one in Sites.")
-            doc.sites.sortedBy { it.priority }.forEachIndexed { index, site ->
-                val last = state.lastRun?.episodes?.lastOrNull { site.id in it.siteIds }
-                SubscriptionCard(site.name, if (site.delivery == "briefing") "Part of your daily briefing" else "A podcast for each story",
-                    subscriptionArrival(state.nextRunAt, doc.schedule), last?.title,
-                    library.find { it.id == last?.jobId && it.status == "ready" }, site.mode == "top", !state.busy,
-                    onToggle = { enabled -> vm.edit { d -> d.copy(sites = d.sites.map { if (it.id == site.id) it.copy(mode = if (enabled) "top" else "off", count = if (enabled) it.count ?: 1 else null) else it }) } },
-                    onEdit = { editSite = if (editSite == site.id) null else site.id },
-                    onRemove = { vm.edit { d -> d.copy(sites = d.sites.filterNot { it.id == site.id }) } }, onPlay = { onPlay(listOf(it)) })
-                if (editSite == site.id) Card {
-                    Column(Modifier.padding(12.dp)) {
-                        OutlinedTextField(site.name, { name -> vm.edit { d -> d.copy(sites = d.sites.map { if (it.id == site.id) it.copy(name = name) else it }) } }, label = { Text("Name") })
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            (1..5).forEach { n -> FilterChip(site.count == n, { vm.edit { d -> d.copy(sites = d.sites.map { if (it.id == site.id) it.copy(count = n, mode = "top") else it }) } }, { Text("Top $n") }) }
+        when (page) {
+            PODCAST_PAGE_SITES -> if (doc != null) {
+                if (doc.sites.isEmpty()) Text("Add a website or follow one in Sites.")
+                doc.sites.sortedBy { it.priority }.forEachIndexed { index, site ->
+                    SubscriptionCard(site.name, if (site.delivery == "briefing") "Part of your daily briefing" else "A podcast for each story",
+                        subscriptionArrival(state.nextRunAt, doc.schedule), state.lastRun?.episodes?.lastOrNull { site.id in it.siteIds }?.title, site.mode == "top", ready,
+                        onToggle = { enabled -> vm.commit { d -> d.copy(sites = d.sites.map { if (it.id == site.id) it.copy(mode = if (enabled) "top" else "off", count = if (enabled) it.count ?: 1 else null) else it }) } },
+                        onEdit = { editSite = if (editSite == site.id) null else site.id },
+                        onRemove = { vm.commit { d -> d.copy(sites = d.sites.filterNot { it.id == site.id }) } })
+                    if (editSite == site.id) Card {
+                        Column(Modifier.padding(12.dp)) {
+                            OutlinedTextField(site.name, { name -> vm.edit { d -> d.copy(sites = d.sites.map { if (it.id == site.id) it.copy(name = name) else it }) } }, label = { Text("Name") })
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                (1..5).forEach { n -> FilterChip(site.count == n, { vm.commit { d -> d.copy(sites = d.sites.map { if (it.id == site.id) it.copy(count = n, mode = "top") else it }) } }, { Text("Top $n") }) }
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("briefing" to "Briefing", "separate" to "Separate").forEach { (value, label) -> FilterChip(site.delivery == value, { vm.commit { d -> d.copy(sites = d.sites.map { if (it.id == site.id) it.copy(delivery = value) else it }) } }, { Text(label) }) }
+                            }
+                            Row { TextButton({ vm.move(site.id, -1); vm.save() }, enabled = index > 0) { Text("Move up") }; TextButton({ vm.move(site.id, 1); vm.save() }, enabled = index < doc.sites.lastIndex) { Text("Move down") } }
                         }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("briefing" to "Briefing", "separate" to "Separate").forEach { (value, label) -> FilterChip(site.delivery == value, { vm.edit { d -> d.copy(sites = d.sites.map { if (it.id == site.id) it.copy(delivery = value) else it }) } }, { Text(label) }) }
-                        }
-                        Row { TextButton({ vm.move(site.id, -1) }, enabled = index > 0) { Text("Move up") }; TextButton({ vm.move(site.id, 1) }, enabled = index < doc.sites.lastIndex) { Text("Move down") } }
                     }
                 }
+                OutlinedButton({ vm.clearPreview(); add = "website" }, enabled = ready, modifier = Modifier.heightIn(min = 48.dp)) { Text("Add a site") }
+                state.lastRun?.skipped?.forEach { Text("${it.siteId}: ${it.reason.replace('_', ' ')}", style = MaterialTheme.typography.bodySmall) }
+                if (state.dirty) Button({ vm.save() }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text("Save changes") }
             }
-            Text("Devotionals", style = MaterialTheme.typography.titleLarge)
-            if (doc.devotionals.isEmpty()) Text("A Bible lesson for your daily walk.")
-            doc.devotionals.forEach { d ->
-                val last = state.lastDevotionals[d.id]
-                SubscriptionCard(d.name, if (d.kind == "site") "Bible lesson from today's devotion" else "Daily Bible lesson on this topic",
-                    subscriptionArrival(state.nextDevotionalAt, doc.devotionalSchedule), last?.title,
-                    library.find { it.id == last?.jobId && it.status == "ready" }, d.enabled, !state.busy,
-                    onToggle = { enabled -> vm.edit { doc -> doc.copy(devotionals = doc.devotionals.map { if (it.id == d.id) it.copy(enabled = enabled) else it }) } },
-                    onEdit = { editing = d; vm.clearPreview(); add = if (d.kind == "site") "devotional" else "topic" },
-                    onRemove = { vm.edit { doc -> doc.copy(devotionals = doc.devotionals.filterNot { it.id == d.id }) } }, onPlay = { onPlay(listOf(it)) })
+            PODCAST_PAGE_DEVOTIONALS -> if (doc != null) {
+                if (doc.devotionals.isEmpty()) Text("A Bible lesson for your daily walk.")
+                doc.devotionals.forEach { d ->
+                    SubscriptionCard(d.name, if (d.kind == "site") "Bible lesson from today's devotion" else "Daily Bible lesson on this topic",
+                        subscriptionArrival(state.nextDevotionalAt, doc.devotionalSchedule), state.lastDevotionals[d.id]?.title, d.enabled, ready,
+                        onToggle = { enabled -> vm.commit { doc -> doc.copy(devotionals = doc.devotionals.map { if (it.id == d.id) it.copy(enabled = enabled) else it }) } },
+                        onEdit = { editing = d; vm.clearPreview(); add = if (d.kind == "site") "devotional" else "topic" },
+                        onRemove = { vm.commit { doc -> doc.copy(devotionals = doc.devotionals.filterNot { it.id == d.id }) } })
+                }
+                Button({ onStartDaily(DAILY_SITE) }, enabled = ready && doc.devotionals.size < 5, modifier = Modifier.heightIn(min = 48.dp)) { Text("Start a daily devotional") }
+                OutlinedButton({ vm.clearPreview(); editing = null; add = "devotional" }, enabled = ready && doc.devotionals.size < 5, modifier = Modifier.heightIn(min = 48.dp)) { Text("Add a site") }
+                OutlinedButton({ vm.clearPreview(); editing = null; add = "topic" }, enabled = ready && doc.devotionals.size < 5, modifier = Modifier.heightIn(min = 48.dp)) { Text("Add a topic") }
             }
-            Text("Delivery", style = MaterialTheme.typography.titleLarge)
-            ScheduleCard("Briefing delivery", doc.schedule, !state.busy, { timeFor = "briefing" }) { s -> vm.edit { it.copy(schedule = s) } }
-            ScheduleCard("Devotional delivery", doc.devotionalSchedule, !state.busy, { timeFor = "devotional" }) { s -> vm.edit { it.copy(devotionalSchedule = s) } }
-            Text("Keep episodes for ${doc.keepDays} days")
-            Slider(doc.keepDays.toFloat(), { n -> vm.edit { it.copy(keepDays = n.toInt()) } }, valueRange = 1f..30f, steps = 28, enabled = !state.busy)
-            ToggleRow("Use backup voices if needed", doc.engine == "auto", !state.busy) { on -> vm.edit { it.copy(engine = if (on) "auto" else "notebooklm") } }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("newest" to "Newest stories", "important" to "Most important").forEach { (rank, label) -> FilterChip(doc.rank == rank, { vm.edit { it.copy(rank = rank) } }, { Text(label) }) }
+            else -> {
+                Text(state.meter, style = MaterialTheme.typography.bodyLarge)
+                state.usage?.takeIf { it.limit > 0 }?.let { LinearProgressIndicator(progress = { (it.used.toFloat() / it.limit).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth()) }
+                if (doc != null) {
+                    ScheduleCard("Briefing delivery", doc.schedule, ready, { timeFor = "briefing" }) { s -> vm.commit { it.copy(schedule = s) } }
+                    ScheduleCard("Devotional delivery", doc.devotionalSchedule, ready, { timeFor = "devotional" }) { s -> vm.commit { it.copy(devotionalSchedule = s) } }
+                    var keep by remember(doc.keepDays) { mutableFloatStateOf(doc.keepDays.toFloat()) }
+                    Text("Keep episodes for ${keep.toInt()} days")
+                    Slider(keep, { keep = it }, valueRange = 1f..30f, steps = 28, enabled = ready,
+                        onValueChangeFinished = { vm.commit { it.copy(keepDays = keep.toInt()) } })
+                    HorizontalDivider()
+                    NavRow("Briefing sites", doc.sites.size.toString()) { page = PODCAST_PAGE_SITES }
+                    NavRow("Devotionals", doc.devotionals.size.toString()) { page = PODCAST_PAGE_DEVOTIONALS }
+                    NavRow("Stories first", rankLabels[doc.rank] ?: doc.rank) { rankOpen = true }
+                    ToggleRow("Use backup voices if needed", doc.engine == "auto", ready) { on -> vm.commit { it.copy(engine = if (on) "auto" else "notebooklm") } }
+                    HorizontalDivider()
+                    ToggleRow("Telegram notifications", doc.notify.telegram, ready) { on -> vm.commit { it.copy(notify = SubscriptionNotify(on)) } }
+                    HorizontalDivider()
+                }
+                NavRow("Default style and length", styleLabel, expanded = styleOpen) { styleOpen = !styleOpen }
+                if (styleOpen) styleSection()
+                if (doc != null) TextButton({ vm.runNow() }, enabled = ready && !state.dirty, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("Run briefing now", style = MaterialTheme.typography.titleMedium)
+                }
             }
-            ToggleRow("Telegram notifications", doc.notify.telegram, !state.busy) { on -> vm.edit { it.copy(notify = SubscriptionNotify(on)) } }
-            Button({ vm.save() }, enabled = state.dirty && !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Save subscriptions") }
         }
-        HorizontalDivider()
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("Today", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge); TextButton({ vm.refresh() }, enabled = !state.busy) { Text("Refresh") } }
-        val ready = state.episodes.filter { it.status == "ready" }
-        Button({ onPlay(ready) }, enabled = ready.isNotEmpty()) { Text("Play all (${ready.size})") }
-        state.episodes.forEach { job -> Card(onClick = { onDetails(job) }) { Column(Modifier.padding(12.dp)) { Text(job.title); Text(if (job.terminal) episodeSubtitle(job) else stageLabel(job)); if (job.status == "ready") TextButton({ onPlay(listOf(job)) }) { Text("Play") } } } }
-        Button({ vm.runNow() }, enabled = doc != null && !state.busy && !state.dirty) { Text("Run briefing now") }
-        state.lastRun?.skipped?.forEach { Text("${it.siteId}: ${it.reason.replace('_', ' ')}", style = MaterialTheme.typography.bodySmall) }
     }
     if (timeFor != null && doc != null) {
         val devotional = timeFor == "devotional"
         val schedule = if (devotional) doc.devotionalSchedule else doc.schedule
-        val time = rememberTimePickerState(schedule.readyBy.substringBefore(':').toInt(), schedule.readyBy.substringAfter(':').toInt(), false)
-        Dialog({ timeFor = null }) { Surface(shape = MaterialTheme.shapes.extraLarge) { Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Ready by"); TimePicker(time)
-            Row { TextButton({ timeFor = null }) { Text("Cancel") }; TextButton({
-                val next = schedule.copy(enabled = true, readyBy = String.format(Locale.ROOT, "%02d:%02d", time.hour, time.minute))
-                vm.edit { if (devotional) it.copy(devotionalSchedule = next) else it.copy(schedule = next) }; timeFor = null
-            }) { Text("Set time") } }
-        } } }
+        ReadyByDialog(schedule, onDismiss = { timeFor = null }) { readyBy ->
+            val next = schedule.copy(enabled = true, readyBy = readyBy)
+            vm.commit { if (devotional) it.copy(devotionalSchedule = next) else it.copy(schedule = next) }; timeFor = null
+        }
     }
+    if (rankOpen && doc != null) AlertDialog(onDismissRequest = { rankOpen = false }, title = { Text("Stories first") }, text = {
+        Column { rankLabels.forEach { (rank, label) ->
+            Row(Modifier.fillMaxWidth().selectable(doc.rank == rank, role = Role.RadioButton) { vm.commit { it.copy(rank = rank) }; rankOpen = false }.heightIn(min = 48.dp),
+                verticalAlignment = Alignment.CenterVertically) { RadioButton(doc.rank == rank, null); Spacer(Modifier.width(12.dp)); Text(label) }
+        } }
+    }, confirmButton = { TextButton({ rankOpen = false }) { Text("Close") } })
     if (add != null) ModalBottomSheet(onDismissRequest = { add = null; editing = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        if (add == "pick") Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Add a subscription", style = MaterialTheme.typography.headlineSmall)
-            listOf("website" to "Website", "devotional" to "Devotional site", "topic" to "Topic").forEach { (kind, label) ->
-                Card(onClick = { add = kind }, modifier = Modifier.fillMaxWidth()) { Text(label, Modifier.padding(20.dp), style = MaterialTheme.typography.titleMedium) }
-            }
-        } else SubscriptionEditor(add!!, editing, state, vm) { add = null; editing = null }
+        SubscriptionEditor(add!!, editing, state, vm) { add = null; editing = null }
         Spacer(Modifier.height(24.dp))
     }
 }
 
+private val rankLabels = linkedMapOf("newest" to "Newest", "important" to "Most important")
+
 @Composable
-private fun SubscriptionCard(name: String, description: String, arrival: String, last: String?, playable: PodcastJob?, checked: Boolean, enabled: Boolean,
-                             onToggle: (Boolean) -> Unit, onEdit: () -> Unit, onRemove: () -> Unit, onPlay: (PodcastJob) -> Unit) {
+private fun NavRow(label: String, value: String?, expanded: Boolean? = null, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).heightIn(min = 56.dp).testTag("podcast_row_$label"),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        value?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Spacer(Modifier.width(8.dp))
+        Icon(when (expanded) { true -> Icons.Outlined.ExpandLess; false -> Icons.Outlined.ExpandMore; null -> Icons.AutoMirrored.Outlined.KeyboardArrowRight },
+            contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ReadyByDialog(schedule: SubscriptionSchedule, onDismiss: () -> Unit, onSet: (String) -> Unit) {
+    val time = rememberTimePickerState(schedule.readyBy.substringBefore(':').toInt(), schedule.readyBy.substringAfter(':').toInt(), false)
+    Dialog(onDismiss) { Surface(shape = MaterialTheme.shapes.extraLarge) { Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Ready by"); TimePicker(time)
+        Row { TextButton(onDismiss) { Text("Cancel") }; TextButton({ onSet(String.format(Locale.ROOT, "%02d:%02d", time.hour, time.minute)) }) { Text("Set time") } }
+    } } }
+}
+
+@Composable
+private fun SubscriptionCard(name: String, description: String, arrival: String, last: String?, checked: Boolean, enabled: Boolean,
+                             onToggle: (Boolean) -> Unit, onEdit: () -> Unit, onRemove: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) { Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Switch(checked, onToggle, enabled = enabled)
-            Box { TextButton({ menu = true }, enabled = enabled) { Text("⋮") }; DropdownMenu(menu, { menu = false }) {
+            Box { IconButton({ menu = true }, enabled = enabled) { Icon(Icons.Outlined.MoreVert, contentDescription = "Options for $name") }; DropdownMenu(menu, { menu = false }) {
                 DropdownMenuItem({ Text("Edit") }, { menu = false; onEdit() }); DropdownMenuItem({ Text("Remove") }, { menu = false; onRemove() })
             } }
         }
         Text(description, style = MaterialTheme.typography.bodyMedium)
         Text(if (checked) arrival else "Paused", style = MaterialTheme.typography.bodySmall)
         last?.let { Text("Last episode: $it", style = MaterialTheme.typography.bodySmall) }
-        playable?.let { TextButton({ onPlay(it) }) { Text("Play") } }
     } }
 }
 
@@ -143,12 +204,17 @@ private fun SubscriptionCard(name: String, description: String, arrival: String,
 @Composable
 private fun ScheduleCard(title: String, schedule: SubscriptionSchedule, enabled: Boolean, time: () -> Unit, change: (SubscriptionSchedule) -> Unit) {
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) {
-        ToggleRow(title, schedule.enabled, enabled) { change(schedule.copy(enabled = it)) }
-        TextButton(time, enabled = enabled, modifier = Modifier.testTag(title)) { Text("Ready by ${java.time.LocalTime.parse(schedule.readyBy).format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))}") }
+        ToggleRow(title, schedule.enabled, enabled, MaterialTheme.typography.titleMedium) { change(schedule.copy(enabled = it)) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(time, enabled = enabled, modifier = Modifier.testTag(title), contentPadding = PaddingValues(horizontal = 0.dp)) {
+                Text("Ready by ${readyByLabel(schedule.readyBy)}", style = MaterialTheme.typography.titleMedium)
+            }
+            Spacer(Modifier.weight(1f))
+            Text(schedule.timezone, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) { subscriptionDays.forEach { day ->
             FilterChip(day in schedule.days, { change(schedule.copy(days = subscriptionDays.filter { if (it == day) it !in schedule.days else it in schedule.days })) }, { Text(day.replaceFirstChar { it.titlecase() }) }, enabled = enabled)
         } }
-        Text(schedule.timezone, style = MaterialTheme.typography.bodySmall)
     } }
 }
 
@@ -192,6 +258,7 @@ internal fun SubscriptionEditor(kind: String, editing: DevotionalRule?, state: P
     }
 }
 @Composable
-private fun ToggleRow(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(label, Modifier.weight(1f)); Switch(checked, onChange, enabled = enabled) }
+private fun ToggleRow(label: String, checked: Boolean, enabled: Boolean, style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyLarge, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically) { Text(label, Modifier.weight(1f), style = style); Switch(checked, null, enabled = enabled) }
 }

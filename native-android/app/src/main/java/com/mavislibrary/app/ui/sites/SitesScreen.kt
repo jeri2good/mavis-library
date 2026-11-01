@@ -101,7 +101,7 @@ fun SitesScreen(
         }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = onOpenLounge, modifier = Modifier.fillMaxWidth()) {
-            Text("Podcast subscriptions in Lounge")
+            Text("Podcast subscriptions in Settings")
         }
         state.error?.let {
             Spacer(Modifier.height(8.dp))
@@ -168,7 +168,7 @@ fun SitesScreen(
         AlertDialog(
             onDismissRequest = { removing = null },
             title = { Text("Stop following ${source.name}?") },
-            text = { Text("Its posts leave this page. Podcast subscriptions sync when connected. Podcasts already made stay in Podcast Lounge.") },
+            text = { Text("Its posts leave this page. Podcast subscriptions sync when connected. Podcasts already made stay on Listen.") },
             confirmButton = { TextButton(onClick = { vm.remove(source.id); removing = null }) { Text("Unfollow") } },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep") } },
         )

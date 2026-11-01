@@ -33,32 +33,45 @@ class Subscriptions084Test {
         override suspend fun runNow() = SubscriptionRun("now", status = "ok")
         override suspend fun previewDevotional(url: String) = DevotionalPreview("Faith today", "Hebrews 12:1-3", url)
     }
+    private val daily = mutableListOf<String>()
     private fun show(api: Api): PodsubViewModel {
         val migration = object : MigrationState { override suspend fun followed(account: String) = emptyList<String>(); override suspend fun complete(account: String, ids: List<String>) {} }
         val vm = PodsubViewModel(PodsubRepository(api, migration, { "owner" }, { emptyList() }, { BriefingSettings() }))
-        compose.setContent { val state by vm.state.collectAsState(); Column(Modifier.verticalScroll(rememberScrollState())) { PodsubSection(state, vm, onPlay = {}) } }
+        compose.setContent { val state by vm.state.collectAsState(); PodcastSettingsContent(state, vm, onBack = {}, onStartDaily = { daily += it }) }
         compose.runOnIdle { vm.refresh() }; compose.waitUntil { vm.state.value.document != null && !vm.state.value.busy }
         return vm
     }
-    @Test fun sectionsAndTopicFlowSaveThroughApi() {
+    @Test fun settingsPageHoldsScheduleRowsAndTopicFlowSavesWithoutASaveButton() {
         val api = Api(); val vm = show(api)
-        compose.onNodeWithText("Daily briefing").assertExists(); compose.onNodeWithText("Devotionals").assertExists(); compose.onNodeWithText("Delivery").assertExists()
-        compose.onNodeWithText("Add").performClick(); compose.onNodeWithText("Topic").performClick()
+        compose.onNodeWithText("Today: usage unavailable").assertExists()
+        compose.onNodeWithTag("Briefing delivery").assertExists(); compose.onNodeWithTag("Devotional delivery").assertExists()
+        compose.onNodeWithText("Keep episodes for 7 days").assertExists()
+        compose.onNodeWithTag("podcast_row_Briefing sites").performScrollTo().assertExists()
+        compose.onNodeWithText("Save subscriptions").assertDoesNotExist()
+        compose.onNodeWithTag("podcast_row_Devotionals").performScrollTo().performClick()
+        compose.onNodeWithText("A Bible lesson for your daily walk.").assertExists()
+        compose.onNodeWithText("Start a daily devotional").performScrollTo().performClick()
+        assertEquals(listOf(DAILY_SITE), daily)
+        compose.onNodeWithText("Add a topic").performScrollTo().performClick()
         compose.onNodeWithText("Anxiety").performClick(); compose.onNodeWithText("Add subscription").performScrollTo().performClick()
-        compose.onNodeWithText("Save subscriptions").performScrollTo().performClick()
-        compose.waitUntil { !vm.state.value.busy && !vm.state.value.dirty }
+        compose.waitUntil { !vm.state.value.busy && !vm.state.value.dirty && api.document.devotionals.isNotEmpty() }
         assertEquals("Anxiety", api.document.devotionals.single().topic)
     }
-    @Test fun devotionalPreviewAndIndependentSchedule() {
+    @Test fun devotionalPreviewAndIndependentScheduleSaveImmediately() {
         val api = Api(); val vm = show(api)
-        compose.onNodeWithText("Add").performClick(); compose.onNodeWithText("Devotional site").performClick()
+        compose.onNodeWithTag("podcast_row_Devotionals").performScrollTo().performClick()
+        compose.onNodeWithText("Add a site").performScrollTo().performClick()
         compose.onNodeWithText("Today Daily Devotional").performClick()
         compose.waitUntil { vm.state.value.devotionalPreview != null && !vm.state.value.busy }
         compose.onNodeWithText("Hebrews 12:1-3").assertExists(); compose.onNodeWithText("Add subscription").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(1, vm.state.value.document!!.devotionals.size) }
+        compose.waitUntil { !vm.state.value.busy && api.document.devotionals.size == 1 }
+        compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithTag("Devotional delivery").performScrollTo().performClick(); compose.onNodeWithText("Set time").performClick()
-        compose.onNodeWithText("Save subscriptions").performScrollTo().performClick(); compose.waitUntil { !vm.state.value.busy && !vm.state.value.dirty }
+        compose.waitUntil { !vm.state.value.busy && !vm.state.value.dirty }
         assertEquals("site", api.document.devotionals.single().kind); assertTrue(api.document.devotionalSchedule.enabled); assertFalse(api.document.schedule.enabled)
+        compose.onNodeWithText("Telegram notifications").performScrollTo()
+        compose.onNode(isToggleable() and hasText("Telegram notifications")).performClick() // saved on tap, no Save button
+        compose.waitUntil { !vm.state.value.busy && api.document.notify.telegram }
     }
     @Test fun labelsUseScriptureAndMetadataAndArrivalUsesDeliveryTime() {
         fun job(title: String) = PodcastJob("a", "ready", title = title, kind = "chapter", style = "deep-dive")

@@ -86,7 +86,8 @@ private data class PickerBook(val key: String, val title: String, val author: St
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun PodcastSourcePicker(kind: String, container: AppContainer, shelf: List<Book>, imported: List<ImportedBook>, webView: WebView?, onDismiss: () -> Unit, onPick: (PodcastDraft) -> Unit, onImported: (ImportedBook) -> Unit) {
+fun PodcastSourcePicker(kind: String, container: AppContainer, shelf: List<Book>, imported: List<ImportedBook>, webView: WebView?, onDismiss: () -> Unit, onPick: (PodcastDraft) -> Unit, onImported: (ImportedBook) -> Unit,
+                        onDaily: ((String) -> Unit)? = null, todayDevotionalRunning: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
@@ -158,7 +159,8 @@ fun PodcastSourcePicker(kind: String, container: AppContainer, shelf: List<Book>
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
             item {
-                Text(sourceTypes[kind].orEmpty(), style = MaterialTheme.typography.headlineSmall)
+                Text(if (kind == "bible") "Bible" else sourceTypes[kind].orEmpty(), style = MaterialTheme.typography.headlineSmall)
+                if (kind == "bible" && bibleBook == null && onDaily != null) DailyDevotionalCard(todayDevotionalRunning, onDaily)
                 OutlinedTextField(query, { query = it.take(120) }, label = { Text("Search (optional)") }, modifier = Modifier.fillMaxWidth())
                 if (bibleBook != null || book != null || site != null || classics || paste) TextButton(onClick = { bibleBook = null; book = null; site = null; classics = false; paste = false; query = "" }) { Text("Back to sources") }
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -172,7 +174,8 @@ fun PodcastSourcePicker(kind: String, container: AppContainer, shelf: List<Book>
                         }
                     } }
                 } else {
-                    item { Text("From your notes & highlights", style = MaterialTheme.typography.titleMedium) }
+                    item { Text("Or make one lesson now", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium) }
+                    item { Text("From your notes & highlights", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     val notes = groupedBibleAnnotations(annotations)
                     if (notes.isEmpty()) item { Text("Highlight a verse in the Bible and it will show here.") }
                     notes.forEach { (_, group) ->
@@ -184,9 +187,8 @@ fun PodcastSourcePicker(kind: String, container: AppContainer, shelf: List<Book>
                             }
                         }
                     }
-                    item { Text("Any chapter", style = MaterialTheme.typography.titleMedium) }
                     listOf("OT" to "Old Testament", "NT" to "New Testament").forEach { (testament, title) ->
-                        item { Text(title) }
+                        item { Text("Any chapter · $title", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         items(bible.filter { it.testament == testament && matches(it.name) }) { b -> PickerRow(b.name, "${b.chapters} chapters") { bibleBook = b; query = "" } }
                     }
                 }
@@ -229,6 +231,27 @@ fun PodcastSourcePicker(kind: String, container: AppContainer, shelf: List<Book>
                     suggestions.filter(::matches).forEach { title -> SuggestionChip(onClick = { topic = title }, label = { Text(title) }) }
                     Button(enabled = topic.isNotBlank(), onClick = { onPick(PodcastDraft("topic", text = topic)) }) { Text("Use topic") }
                 }
+            }
+        }
+    }
+}
+
+/** Top of the Bible picker (mock C): turns "one chapter" into a daily devotional. */
+@Composable
+fun DailyDevotionalCard(todayRunning: Boolean, onDaily: (String) -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("bible_daily_card"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Outlined.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text("Make it a daily devotional", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            }
+            Text("Get a new Bible lesson every day, without picking a chapter each time.", style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = { onDaily(DAILY_SITE) }, enabled = !todayRunning, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Text(if (todayRunning) "Already daily" else TODAY_DEVOTIONAL_LABEL, maxLines = 1)
+                }
+                OutlinedButton(onClick = { onDaily(DAILY_TOPIC) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Pick a topic", maxLines = 1) }
             }
         }
     }

@@ -34,6 +34,22 @@ class PodcastSourcePickerTest {
             assertEquals(row.key, picked)
         }
     }
+    @Test fun biblePickerOpensWithDailyDevotionalCardThatStartsFlowD() {
+        val container = AppContainer(ApplicationProvider.getApplicationContext<Application>(), onlineOverride = { false })
+        val daily = mutableListOf<String>()
+        compose.setContent { MaterialTheme { PodcastSourcePicker("bible", container, emptyList(), emptyList(), null, {}, {}, {}, onDaily = { daily += it }) } }
+        compose.onNodeWithTag("bible_daily_card").assertExists()
+        compose.onNodeWithText("Make it a daily devotional").assertExists()
+        compose.onNodeWithText("Or make one lesson now").assertExists()
+        compose.onNodeWithText("Today Devotional").performClick()
+        compose.onNodeWithText("Pick a topic").performClick()
+        assertEquals(listOf(DAILY_SITE, DAILY_TOPIC), daily)
+    }
+    @Test fun dailyCardDisablesTodayDevotionalOnceRunning() {
+        compose.setContent { MaterialTheme { DailyDevotionalCard(todayRunning = true) {} } }
+        compose.onNodeWithText("Already daily").assertIsNotEnabled()
+        compose.onNodeWithText("Pick a topic").assertIsEnabled()
+    }
     @Test fun topicCanBePickedWithoutWebViewOrNetwork() {
         val container = AppContainer(ApplicationProvider.getApplicationContext<Application>(), onlineOverride = { false })
         var draft: PodcastDraft? = null

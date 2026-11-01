@@ -418,7 +418,8 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     picker?.let { kind ->
         PodcastSourcePicker(kind, container, seenBooks, imported, pickerWebView, onDismiss = { picker = null }, onPick = {
             draft = it; confirmed = true; editingSource = false; picker = null
-        }, onImported = ::chooseImported)
+        }, onImported = ::chooseImported, onDaily = { key -> picker = null; composing = false; startDaily(key) },
+            todayDevotionalRunning = todayDevotionalRunning(subscriptionState))
     }
     details?.let { target ->
         EpisodeDetailsSheet(

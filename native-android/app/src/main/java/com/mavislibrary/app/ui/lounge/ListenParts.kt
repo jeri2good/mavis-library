@@ -31,6 +31,12 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+const val TODAY_DEVOTIONAL_URL = "https://todaydevotional.com/daily-devotional-library"
+const val TODAY_DEVOTIONAL_LABEL = "Today Devotional"
+
+/** True once the Today Devotional preset is one of the devotional rules. */
+fun todayDevotionalRunning(state: PodsubUiState) = state.document?.devotionals?.any { it.url == TODAY_DEVOTIONAL_URL } == true
+
 /** One "Your Daily" card on Listen: the briefing, or one devotional rule. */
 data class DailyCard(val id: String, val briefing: Boolean, val title: String, val time: String, val next: String, val playable: PodcastJob?)
 

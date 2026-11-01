@@ -154,7 +154,7 @@ private fun ScheduleCard(title: String, schedule: SubscriptionSchedule, enabled:
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SubscriptionEditor(kind: String, editing: DevotionalRule?, state: PodsubUiState, vm: PodsubViewModel, close: () -> Unit) {
+internal fun SubscriptionEditor(kind: String, editing: DevotionalRule?, state: PodsubUiState, vm: PodsubViewModel, close: () -> Unit) {
     var value by remember { mutableStateOf(if (kind == "topic") editing?.topic.orEmpty() else editing?.url.orEmpty()) }
     var name by remember { mutableStateOf(editing?.name.orEmpty()) }
     var surprise by remember { mutableStateOf(editing?.surprise ?: false) }

@@ -8,9 +8,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import coil3.compose.AsyncImage
@@ -25,21 +29,58 @@ import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 
-val sourceTypes = linkedMapOf("bible" to "Bible", "book" to "Book", "chapter" to "Chapter", "article" to "Website / Article", "topic" to "Topic")
+val sourceTypes = linkedMapOf("bible" to "Bible chapter", "book" to "Book", "chapter" to "Chapter", "article" to "Article", "topic" to "Topic")
+
+/** Rows of the ＋ New sheet. [key] is a source kind for one-time episodes, or a [DAILY_SITE]/[DAILY_TOPIC]/[DAILY_BRIEFING] action. */
+data class NewRow(val key: String, val title: String, val subtitle: String, val icon: ImageVector)
+data class NewLane(val title: String, val subtitle: String, val daily: Boolean, val rows: List<NewRow>)
+const val DAILY_SITE = "daily-site"
+const val DAILY_TOPIC = "daily-topic"
+const val DAILY_BRIEFING = "daily-briefing"
+
+/** Lanes of the ＋ New sheet, in order: "Every day" first (approved change), then "Make one now". */
+val newSheetLanes: List<NewLane> = listOf(
+    NewLane("Every day", "Arrives on its own at the time you pick", true, listOf(
+        NewRow(DAILY_SITE, "Daily devotional from a site", "A Bible lesson from that day's devotion", Icons.Outlined.CalendarMonth),
+        NewRow(DAILY_TOPIC, "Devotional on a topic", "A daily Bible lesson on what you choose", Icons.Outlined.Bedtime),
+        NewRow(DAILY_BRIEFING, "Daily briefing", "The latest from the sites you follow", Icons.Outlined.Article),
+    )),
+    NewLane("Make one now", "One episode, one time", false, sourceTypes.map { (kind, title) ->
+        NewRow(kind, title, when (kind) {
+            "bible" -> "A lesson from a Bible chapter"; "book" -> "Explore a book from your library"; "chapter" -> "Talk through one chapter of a book"
+            "article" -> "Choose a story from your sites or paste a link"; else -> "Tell the hosts what interests you"
+        }, when (kind) {
+            "bible" -> Icons.Outlined.AutoStories; "book" -> Icons.Outlined.MenuBook; "chapter" -> Icons.Outlined.BookmarkBorder
+            "article" -> Icons.Outlined.Language; else -> Icons.Outlined.ChatBubbleOutline
+        })
+    }),
+)
+
+/** The ＋ New sheet body: labelled lanes; daily rows are filled cards, one-time rows outlined. */
 @Composable
-fun PodcastTypeCards(onChoose: (String) -> Unit) {
-    sourceTypes.forEach { (kind, title) ->
-        OutlinedCard(onClick = { onChoose(kind) }, modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Icon(when(kind) { "bible" -> Icons.Outlined.AutoStories; "book" -> Icons.Outlined.MenuBook; "chapter" -> Icons.Outlined.BookmarkBorder; "article" -> Icons.Outlined.Language; else -> Icons.Outlined.ChatBubbleOutline }, contentDescription = null)
-                Column {
-                    Text(title, style = MaterialTheme.typography.titleMedium)
-                    Text(when(kind) { "bible" -> "A lesson from a Bible chapter"; "book" -> "Explore a book from your library"; "chapter" -> "Talk through one chapter"; "article" -> "Choose a story from your sites"; else -> "Tell the hosts what interests you" })
+fun NewSheetLanes(onChoose: (String) -> Unit) {
+    newSheetLanes.forEach { lane ->
+        Column(Modifier.padding(top = 8.dp).semantics(mergeDescendants = true) { heading() }.testTag("new_lane_${if (lane.daily) "daily" else "now"}")) {
+            Text(lane.title, style = MaterialTheme.typography.titleMedium)
+            Text(lane.subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        lane.rows.forEach { row ->
+            val content: @Composable ColumnScope.() -> Unit = {
+                Row(Modifier.heightIn(min = 48.dp).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(row.icon, contentDescription = null)
+                    Column {
+                        Text(row.title, style = MaterialTheme.typography.titleMedium)
+                        Text(row.subtitle, style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
+            if (lane.daily) Card(onClick = { onChoose(row.key) }, modifier = Modifier.fillMaxWidth().testTag("new_row_${row.key}"),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), content = content)
+            else OutlinedCard(onClick = { onChoose(row.key) }, modifier = Modifier.fillMaxWidth().testTag("new_row_${row.key}"), content = content)
         }
     }
 }
+
 private data class BibleBook(val id: String, val name: String, val testament: String, val chapters: Int)
 private data class PickerBook(val key: String, val title: String, val author: String, val cover: String?, val book: Book? = null, val imported: ImportedBook? = null)
 

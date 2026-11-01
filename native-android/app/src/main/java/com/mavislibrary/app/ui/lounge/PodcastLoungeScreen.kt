@@ -121,6 +121,11 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     var exportProgress by remember { mutableStateOf<ExportProgressState?>(null) }
     val snackbar = remember { SnackbarHostState() }
     var sharedConfirm by remember(initial) { mutableStateOf(initial?.confirmShare == true) }
+    var subscriptionAdd by remember { mutableStateOf<String?>(null) }
+    fun startDaily(key: String) {
+        subscription.clearPreview()
+        subscriptionAdd = when (key) { DAILY_SITE -> "devotional"; DAILY_TOPIC -> "topic"; else -> "website" }
+    }
     val jobs = visiblePodcasts(all, identity, loaded.address, loaded.cleanupDays)
     val nowPlaying by playback.state.collectAsStateWithLifecycle()
     val shelves = gallery(jobs, positions)
@@ -359,8 +364,11 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     if (composing) ModalBottomSheet(onDismissRequest = { composing = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp).testTag("new_podcast_sheet"),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("New podcast", style = MaterialTheme.typography.headlineSmall)
-            if (!confirmed) PodcastTypeCards { picker = it; chosenKind = it }
+            Text(if (confirmed) "New podcast" else "New", style = MaterialTheme.typography.headlineSmall)
+            if (!confirmed) NewSheetLanes { key ->
+                if (key in setOf(DAILY_SITE, DAILY_TOPIC, DAILY_BRIEFING)) { composing = false; startDaily(key) }
+                else { picker = key; chosenKind = key }
+            }
             else {
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -399,6 +407,12 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
             } }) { Text(if (busy) "Working…" else "Make podcast") }
             if (!accessReady) Text("Waiting for your studio to connect.", style = MaterialTheme.typography.bodySmall)
             }
+        }
+    }
+    subscriptionAdd?.let { kind ->
+        if (subscriptionState.document != null) ModalBottomSheet(onDismissRequest = { subscriptionAdd = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            SubscriptionEditor(kind, null, subscriptionState, subscription) { subscriptionAdd = null }
+            Spacer(Modifier.height(24.dp))
         }
     }
     picker?.let { kind ->

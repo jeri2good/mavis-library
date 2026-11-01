@@ -2,6 +2,7 @@ package com.mavislibrary.app.ui.lounge
 
 import android.app.Application
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -19,12 +20,18 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class PodcastSourcePickerTest {
     @get:Rule val compose = createComposeRule()
-    @Test fun typeCardsOfferFiveAccessibleChoices() {
+    @Test fun newSheetPutsEveryDayFirstThenFiveOneTimeChoices() {
+        assertEquals(listOf("Every day", "Make one now"), newSheetLanes.map { it.title })
+        assertEquals(listOf(DAILY_SITE, DAILY_TOPIC, DAILY_BRIEFING), newSheetLanes.first().rows.map { it.key })
+        assertEquals(sourceTypes.keys.toList(), newSheetLanes.last().rows.map { it.key })
         var picked = ""
-        compose.setContent { MaterialTheme { Column { PodcastTypeCards { picked = it } } } }
-        sourceTypes.forEach { (kind, title) ->
-            compose.onNodeWithText(title).performClick()
-            assertEquals(kind, picked)
+        compose.setContent { MaterialTheme { Column(androidx.compose.ui.Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { NewSheetLanes { picked = it } } } }
+        val daily = compose.onNodeWithTag("new_lane_daily").fetchSemanticsNode().positionInRoot.y
+        val now = compose.onNodeWithTag("new_lane_now").fetchSemanticsNode().positionInRoot.y
+        assertTrue("Every day is drawn above Make one now", daily < now)
+        newSheetLanes.flatMap { it.rows }.forEach { row ->
+            compose.onNodeWithTag("new_row_${row.key}").performScrollTo().performClick()
+            assertEquals(row.key, picked)
         }
     }
     @Test fun topicCanBePickedWithoutWebViewOrNetwork() {

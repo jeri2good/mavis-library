@@ -104,6 +104,10 @@ enum class Tab(val route: String, val label: String, val icon: ImageVector, val 
 const val ROUTE_WEB_SHELF = "web_shelf"
 
 const val ROUTE_SHOWCASE = "showcase"
+const val ROUTE_LOUNGE = "lounge"
+
+/** Where a podcast route lands: the old Lounge route is the Listen tab now; anything else is unchanged. */
+fun loungeDestination(route: String): String = if (route == ROUTE_LOUNGE) Tab.LISTEN.route else route
 const val ROUTE_SCAN = "scan"
 
 /**
@@ -187,11 +191,12 @@ fun MavisRoot(
     val scope = rememberCoroutineScope()
     var podcastDraft by remember { mutableStateOf<com.mavislibrary.app.data.podcast.PodcastDraft?>(null) }
     var podcastRequest by remember { mutableIntStateOf(0) }
+    // The Lounge lives on the Listen tab now; every podcast entry point lands there with its draft.
     val openLounge: (com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit = { draft ->
         if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) {
             podcastDraft = draft
             podcastRequest++
-            nav.navigate("lounge") { launchSingleTop = true }
+            goTab(loungeDestination(ROUTE_LOUNGE))
         }
     }
     var article by remember { mutableStateOf<com.mavislibrary.app.data.podcast.PodcastDraft?>(null) }
@@ -231,20 +236,11 @@ fun MavisRoot(
         val destination = widgetDestination ?: return@LaunchedEffect
         if (loadedKids.enabled) return@LaunchedEffect
         when {
-            destination == com.mavislibrary.app.MainActivity.LOUNGE -> {
-                goTab(Tab.LISTEN.route)
-                openLounge(com.mavislibrary.app.data.podcast.PodcastDraft())
-            }
-            destination == "new-podcast" -> {
-                goTab(Tab.LISTEN.route)
-                openLounge(com.mavislibrary.app.data.podcast.PodcastDraft(pickSource = true))
-            }
+            destination == com.mavislibrary.app.MainActivity.LOUNGE -> openLounge(com.mavislibrary.app.data.podcast.PodcastDraft())
+            destination == "new-podcast" -> openLounge(com.mavislibrary.app.data.podcast.PodcastDraft(pickSource = true))
             destination.startsWith("lesson:") -> {
                 val draft = com.mavislibrary.app.work.widgetLessonDraft(context, destination.removePrefix("lesson:"))
-                if (draft != null) {
-                    goTab(Tab.LISTEN.route)
-                    openLounge(draft)
-                }
+                if (draft != null) openLounge(draft)
             }
             destination.startsWith("read:") || destination.startsWith("listen:") -> {
                 goTab(Tab.SHELF.route)
@@ -412,18 +408,23 @@ fun MavisRoot(
                         com.mavislibrary.app.ui.reader.ReaderScreen(container, it, onBack = { nav.popBackStack() }, onPodcast = openLounge, onOpenOriginal = openArticle)
                     } ?: LaunchedEffect(Unit) { nav.popBackStack() }
                 }
-                composable(Tab.LISTEN.route) { ListenScreen(container, playback, onFirstAudio, voice, onLounge = { openLounge(com.mavislibrary.app.data.podcast.PodcastDraft()) }, onOpenReader = openReader) }
+                composable(Tab.LISTEN.route) {
+                    key(podcastRequest) {
+                        ListenScreen(container, playback, onFirstAudio, voice, initial = podcastDraft, onSettings = { goTab(Tab.SETTINGS.route) },
+                            onOpenArticle = openArticle, onOpenReader = openReader, pickerWebView = webHost?.also { it.warm() }?.webView)
+                    }
+                }
                 composable("article") {
                     article?.takeIf { com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled) }?.let {
                         ArticleScreen(it, onBack = { nav.popBackStack() }, onPodcast = openLounge)
                     } ?: LaunchedEffect(Unit) { nav.popBackStack() }
                 }
-                composable("lounge") {
-                    if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) key(podcastRequest) {
-                        com.mavislibrary.app.ui.lounge.PodcastLoungeScreen(
-                            container, playback, podcastDraft, onSettings = { goTab(Tab.SETTINGS.route) }, onBack = { nav.popBackStack() }, onFirstPlay = onFirstAudio, onOpenArticle = openArticle, onOpenReader = openReader, pickerWebView = webHost?.also { it.warm() }?.webView,
-                        )
-                    } else LaunchedEffect(Unit) { nav.popBackStack() }
+                // Old Lounge route: restored back stacks and deep links still land, on Listen.
+                composable(ROUTE_LOUNGE) {
+                    LaunchedEffect(Unit) {
+                        if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled)) goTab(loungeDestination(ROUTE_LOUNGE))
+                        else nav.popBackStack()
+                    }
                 }
                 composable(Tab.SETTINGS.route) { SettingsScreen(container, voice = voice, onOpenShowcase = { nav.navigate(ROUTE_SHOWCASE) }, onDriveModeChange = onDriveModeChange, onEnableReminder = onEnableReminder, onOpenStats = { nav.navigate("stats") }, onAppLockChange = onAppLockChange) }
                 composable("stats") { StatsScreen(stats, onBack = { nav.popBackStack() }) }

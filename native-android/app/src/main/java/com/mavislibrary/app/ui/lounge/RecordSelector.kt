@@ -172,7 +172,8 @@ fun RecordSelector(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     val spinning = playing && isLoaded(centred)
-                    Button(onClick = { primary(centred) }, enabled = enabled && job.status == "ready",
+                    // Tonal: ＋ New is the Listen screen's only filled control.
+                    FilledTonalButton(onClick = { primary(centred) }, enabled = enabled && job.status == "ready",
                         modifier = Modifier.weight(1f).height(56.dp).testTag("record_play")) {
                         Icon(if (spinning) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(8.dp))

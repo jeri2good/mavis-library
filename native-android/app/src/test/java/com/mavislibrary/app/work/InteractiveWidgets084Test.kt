@@ -297,7 +297,6 @@ class InteractiveWidgets084Test {
                         playback = playback,
                         initial = PodcastDraft(pickSource = true),
                         onSettings = {},
-                        onBack = {},
                         onFirstPlay = {},
                     )
                 }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,7 +49,8 @@ private data class ExportProgressState(val label: String, val fraction: Float?)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onBack: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null, onOpenReader: ((ReaderTarget) -> Unit)? = null, pickerWebView: android.webkit.WebView? = null) {
+fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null, onOpenReader: ((ReaderTarget) -> Unit)? = null, pickerWebView: android.webkit.WebView? = null,
+                        onPodcastSettings: () -> Unit = onSettings, footer: LazyListScope.() -> Unit = {}) {
     val context = LocalContext.current
     val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
     if (!loungeRouteAllowed(kids?.enabled)) return
@@ -57,11 +59,15 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val owner by container.secureStore.has(com.mavislibrary.app.data.secure.Secret.OWNER_ACCESS_CODE).collectAsStateWithLifecycle(initialValue = null)
     if (signedIn == null || owner == null) return
     if (signedIn != true && owner != true) {
-        Column(Modifier.fillMaxSize().padding(16.dp).testTag("podcast_lounge"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(onClick = onBack) { Text("Back") }
-            Text("Podcast Lounge", style = MaterialTheme.typography.headlineLarge)
-            Text("Sign in to use Podcast Lounge")
-            Button(onClick = onSettings) { Text("Sign in in Settings") }
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("podcast_lounge"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { ListenTitle(onPodcastSettings) }
+            item {
+                Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Sign in to make and hear podcasts")
+                    Button(onClick = onSettings) { Text("Sign in in Settings") }
+                } }
+            }
+            footer()
         }
         return
     }
@@ -263,18 +269,15 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("podcast_lounge"), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("podcast_lounge"), contentPadding = PaddingValues(bottom = 104.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onBack) { Text("Back") }
-                    Text("Podcast Lounge", style = MaterialTheme.typography.headlineLarge)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    ListenTitle(onPodcastSettings)
+                    // Status only when something needs attention; a connected studio stays out of the way.
+                    if (wakingStudio || !accessReady) Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(if (wakingStudio) "Waking up the studio…" else status, style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                         TextButton(onClick = { active.values.forEach { it.cancel() }; active.clear(); refresh++ }) { Text("Refresh") }
-                    }
-                    Button(onClick = { composing = true; confirmed = false; chosenKind = null; editingSource = false }, modifier = Modifier.fillMaxWidth().testTag("new_podcast")) {
-                        Icon(Icons.Outlined.Add, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("New podcast")
                     }
                     if (message == "Request access" || message == "Sign in to use Podcast Lounge") Button(onClick = onSettings) { Text(message!!) }
                     message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -288,11 +291,16 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                     }
                 }
             }
-            item {
-                PodsubSection(subscriptionState, subscription, library = jobs.map { it.job }, onDetails = { job -> details = DetailsTarget(savedFor(job)) { playToday(listOf(job)) } }, onPlay = ::playToday)
+            shelves[PodcastShelf.CONTINUE]?.firstOrNull()?.let { resume ->
+                item(key = "continue") {
+                    val loadedNow = nowPlaying.mediaId == resume.saved.resumeKey
+                    ContinueListeningRow(resume, playing = loadedNow && nowPlaying.playing, enabled = !busy,
+                        onPlay = { if (loadedNow) playback.toggle() else play(resume) })
+                }
             }
+            item { SectionHeading("New episodes", trailing = shelves[PodcastShelf.NEW]?.size?.let { "$it new" }) }
             if (jobs.isEmpty()) item {
-                Text("Your podcasts will appear here. Make one with New podcast, or set a subscription schedule above.",
+                Text("Your podcasts will appear here. Tap New to make one, or start something that arrives every day.",
                     Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyLarge)
             }
             if (jobs.isNotEmpty()) item(key = "records") {
@@ -301,7 +309,6 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                     onPlay = ::play,
                     onToggle = playback::toggle,
                     onDetails = { episode -> details = DetailsTarget(episode.saved) { play(episode) } },
-                    modifier = Modifier.padding(top = 16.dp),
                     polling = pollingMessages,
                     menu = { episode, close ->
                         val job = episode.job
@@ -323,7 +330,26 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                     },
                 )
             }
+            val daily = dailyCards(subscriptionState, jobs.map { it.job })
+            if (subscriptionState.document != null) {
+                item(key = "daily") { SectionHeading("Your Daily") }
+                if (daily.isEmpty()) item { Text("Nothing arrives on its own yet. Tap New, then Every day.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(daily, key = { "daily_${it.id}" }) { card -> YourDailyCard(card, !busy, onOpen = onPodcastSettings, onPlay = { playToday(listOf(it)) }) }
+            }
+            item {
+                PodsubSection(subscriptionState, subscription, library = jobs.map { it.job }, onDetails = { job -> details = DetailsTarget(savedFor(job)) { playToday(listOf(job)) } }, onPlay = ::playToday)
+            }
+            footer()
         }
+        ExtendedFloatingActionButton(
+            onClick = { composing = true; confirmed = false; chosenKind = null; editingSource = false },
+            icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+            text = { Text("New", style = MaterialTheme.typography.titleMedium) },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).testTag("new_podcast"),
+        )
         SnackbarHost(
             hostState = snackbar,
             modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).testTag("podcast_lounge_snackbar"),

@@ -10,8 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Download
@@ -60,90 +61,57 @@ import com.mavislibrary.app.audio.PlaybackController
 import com.mavislibrary.app.data.api.LibriVoxVersion
 import com.mavislibrary.app.data.model.Book
 import com.mavislibrary.app.data.model.BookSource
-import android.net.Uri
-import androidx.compose.material3.TextButton
-import com.mavislibrary.app.BuildConfig
-import com.mavislibrary.app.data.kids.kidsPrefs
-import com.mavislibrary.app.data.podcast.loungeRouteAllowed
-import com.mavislibrary.app.ui.lounge.Episode
-import com.mavislibrary.app.ui.lounge.PodcastShelf
-import com.mavislibrary.app.ui.lounge.RecordSelector
-import com.mavislibrary.app.ui.lounge.gallery
-import com.mavislibrary.app.ui.lounge.playableQueue
-import com.mavislibrary.app.ui.lounge.upNext
-import com.mavislibrary.app.ui.lounge.visiblePodcasts
-import com.mavislibrary.app.ui.podcast.EpisodeDetailsSheet
-import kotlinx.coroutines.flow.first
-import androidx.compose.runtime.produceState
 import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
 
+/**
+ * The Listen tab is the Podcast Lounge (BRIEF-085 A): podcasts first, then the audiobook player and
+ * free audiobook search below Your Daily.
+ */
 @Composable
-fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirstPlay: () -> Unit, voice: com.mavislibrary.app.voice.VoiceUi? = null, onLounge: (() -> Unit)? = null, onOpenReader: ((com.mavislibrary.app.ui.reader.ReaderTarget) -> Unit)? = null) {
+fun ListenScreen(
+    container: AppContainer,
+    controller: PlaybackController,
+    onFirstPlay: () -> Unit,
+    voice: com.mavislibrary.app.voice.VoiceUi? = null,
+    initial: com.mavislibrary.app.data.podcast.PodcastDraft? = null,
+    onSettings: () -> Unit = {},
+    onPodcastSettings: () -> Unit = onSettings,
+    onOpenArticle: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null,
+    onOpenReader: ((com.mavislibrary.app.ui.reader.ReaderTarget) -> Unit)? = null,
+    pickerWebView: android.webkit.WebView? = null,
+) {
     val playback by controller.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    var query by remember { mutableStateOf("") }
-    var books by remember { mutableStateOf<List<Book>>(emptyList()) }
-    var selected by remember { mutableStateOf<Book?>(null) }
-    var versions by remember { mutableStateOf<List<LibriVoxVersion>>(emptyList()) }
-    var busy by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
-    var downloadProgress by remember { mutableStateOf<String?>(null) }
+    val audiobooks = remember { AudiobookSearch() }
     ShakeToExtend(controller)
-    val podcasts by container.podcastSettings.library.collectAsStateWithLifecycle(initialValue = emptyList())
-    val positionFlow = remember { container.resumePositionStore.podcastPositions() }
-    val positions by positionFlow.collectAsStateWithLifecycle(initialValue = emptyMap())
-    val identity by produceState<String?>(null) { value = container.podcastAccountId() }
-    val podcastPrefs by container.podcastSettings.preferences.collectAsStateWithLifecycle(initialValue = null)
-    val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
-    val shelves = gallery(visiblePodcasts(podcasts, identity, BuildConfig.API_BASE, podcastPrefs?.cleanupDays ?: 0), positions)
-    val api = remember(identity) { container.podcastApi() }
-    var details by remember { mutableStateOf<Episode?>(null) }
-    fun playEpisode(episode: Episode, next: List<Episode> = upNext(episode, shelves)) {
-        scope.launch {
-            val queue = playableQueue(next) { saved ->
-                container.audioFiles.podcastLocal(saved.studio, saved.job.id)?.let(Uri::fromFile)
-                    ?: Uri.parse(api.audioUrl(saved.job.id)).takeIf { saved.studio == BuildConfig.API_BASE }
-            }
-            if (queue.firstOrNull()?.first?.key != episode.saved.key || !loungeRouteAllowed(context.kidsPrefs().state.first().enabled)) {
-                message = "Open Podcast Lounge to play this one."
-                return@launch
-            }
-            val resume = container.resumePositionStore.load(episode.saved.resumeKey)?.takeIf { episode.shelf == PodcastShelf.CONTINUE }
-            onFirstPlay(); controller.playPodcasts(queue, resume)
-        }
-    }
-    val podcastSummary = listOfNotNull(
-        shelves[PodcastShelf.NEW]?.let { "${it.size} new" },
-        shelves[PodcastShelf.CONTINUE]?.let { "${it.size} in progress" },
-        shelves[PodcastShelf.MAKING]?.let { "${it.size} being made" },
-    ).joinToString(" · ")
+    com.mavislibrary.app.ui.lounge.PodcastLoungeScreen(
+        container, controller, initial, onSettings = onSettings, onFirstPlay = onFirstPlay, onOpenArticle = onOpenArticle,
+        onOpenReader = onOpenReader, pickerWebView = pickerWebView, onPodcastSettings = onPodcastSettings,
+        footer = { audiobookItems(audiobooks, container, controller, playback, scope, onFirstPlay, voice) },
+    )
+}
 
-    LazyColumn(
-        Modifier.fillMaxSize().padding(horizontal = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        item { Spacer(Modifier.height(4.dp)); Text("Listen", style = MaterialTheme.typography.headlineLarge) }
-        if (onLounge != null) item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Podcasts", style = MaterialTheme.typography.titleLarge)
-                        Text(podcastSummary.ifEmpty { "Turn a book, chapter, article or topic into a two-host podcast." },
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    TextButton(onClick = onLounge) { Text("Open Podcast Lounge") }
-                }
-                if (shelves.isNotEmpty() && loungeRouteAllowed(kids?.enabled)) RecordSelector(
-                    shelves, playback.mediaId, playback.playing, enabled = true,
-                    onPlay = ::playEpisode,
-                    onToggle = controller::toggle,
-                    onDetails = { details = it },
-                    menu = { _, close -> DropdownMenuItem({ Text("Manage in Podcast Lounge") }, { close(); onLounge() }) },
-                )
-            }
-        }
+/** Audiobook search state, hoisted so its rows can live inside the Listen list. */
+class AudiobookSearch {
+    var query by mutableStateOf("")
+    var books by mutableStateOf<List<Book>>(emptyList())
+    var selected by mutableStateOf<Book?>(null)
+    var versions by mutableStateOf<List<LibriVoxVersion>>(emptyList())
+    var busy by mutableStateOf(false)
+    var message by mutableStateOf<String?>(null)
+    var downloadProgress by mutableStateOf<String?>(null)
+}
+
+fun LazyListScope.audiobookItems(
+    state: AudiobookSearch,
+    container: AppContainer,
+    controller: PlaybackController,
+    playback: com.mavislibrary.app.audio.PlaybackUiState,
+    scope: CoroutineScope,
+    onFirstPlay: () -> Unit,
+    voice: com.mavislibrary.app.voice.VoiceUi?,
+) = with(state) {
         item { com.mavislibrary.app.voice.VoiceMic(voice) }
         if (playback.chapterCount > 0) item {
             NativePlayer(
@@ -233,8 +201,6 @@ fun ListenScreen(container: AppContainer, controller: PlaybackController, onFirs
             }
         }
         item { Spacer(Modifier.height(12.dp)) }
-    }
-    details?.let { episode -> EpisodeDetailsSheet(episode.job, onDismiss = { details = null }, onPlay = { playEpisode(episode) }, onOpenReader = onOpenReader) }
 }
 
 @Composable

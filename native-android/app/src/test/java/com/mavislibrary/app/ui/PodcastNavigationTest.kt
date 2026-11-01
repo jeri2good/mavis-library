@@ -24,12 +24,25 @@ class PodcastNavigationTest {
     }
     @Test fun listenOpensSignInGateAndSixTabs() {
         waitFor("tab_listen"); compose.onNodeWithTag("tab_listen").performClick()
-        compose.onNodeWithText("Open Podcast Lounge").performClick(); waitFor("podcast_lounge")
-        compose.onNodeWithText("Sign in to use Podcast Lounge").assertExists()
+        waitFor("podcast_lounge")
+        compose.onNodeWithText("Open Podcast Lounge").assertDoesNotExist()
+        compose.onNodeWithText("Sign in to make and hear podcasts").assertExists()
+        compose.onNodeWithText("Find a free human-read audiobook").performScrollTo().assertExists()
         assertEquals(listOf("shelf", "search", "bible", "sites", "listen", "settings"), Tab.entries.map { it.route })
         compose.onNodeWithText("Sign in in Settings").performClick(); waitFor("settings")
         compose.onNodeWithTag("account_settings").performScrollTo().assertExists()
         compose.onNodeWithTag("podcast_settings").performScrollTo().assertExists()
+    }
+    @Test fun loungeRouteAndNotificationDestinationRedirectToListen() {
+        assertEquals("listen", loungeDestination(ROUTE_LOUNGE))
+        assertEquals("settings", loungeDestination("settings"))
+        waitFor("tab_settings"); compose.onNodeWithTag("tab_settings").performClick(); waitFor("settings")
+        compose.activityRule.scenario.onActivity { activity ->
+            MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
+                .invoke(activity, Intent(activity, MainActivity::class.java).putExtra(MainActivity.WIDGET_DESTINATION, MainActivity.LOUNGE))
+        }
+        waitFor("podcast_lounge")
+        compose.onNodeWithTag("tab_listen").assertIsSelected()
     }
     @Test fun sitesTabLinksToSubscriptionsAndKeepsFeedReading() {
         waitFor("tab_sites"); compose.onNodeWithTag("tab_sites").performClick(); waitFor("sites")
@@ -57,7 +70,8 @@ class PodcastNavigationTest {
     }
     @Test fun httpsShareRequiresSignInAndKidsNeverReachLounge() {
         waitFor("tab_listen"); compose.waitForIdle(); share("https://example.org/article"); compose.waitForIdle()
-        waitFor("podcast_lounge"); compose.onNodeWithText("Sign in to use Podcast Lounge").assertExists()
+        waitFor("podcast_lounge"); compose.onNodeWithTag("tab_listen").assertIsSelected()
+        compose.onNodeWithText("Sign in to make and hear podcasts").assertExists()
         compose.onNodeWithText("Make podcast").assertDoesNotExist()
         val prefs = compose.activity.kidsPrefs()
         runBlocking { prefs.start("Sam", 15, "1234") }

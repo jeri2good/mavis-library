@@ -172,18 +172,18 @@ class EpisodeDetailsSheetTest {
                         playback = playback,
                         initial = null,
                         onSettings = {},
-                        onBack = {},
                         onFirstPlay = {},
                     )
                 }
             }
             compose.waitUntil(5_000) {
-                compose.onAllNodesWithText("Studio connected").fetchSemanticsNodes().isNotEmpty()
+                // A connected studio hides the status line; wait for it to clear and the records to show.
+                compose.onAllNodesWithText("Connecting to your studio…").fetchSemanticsNodes().isEmpty() &&
+                    compose.onAllNodes(androidx.compose.ui.test.hasTestTag("record_info"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithTag("podcast_lounge").performScrollToKey("records")
-            compose.onNodeWithTag("podcast_lounge").performTouchInput { swipeUp() }
             // Open details sheet -> tap Save MP3 -> snackbar "Saved to Downloads/Mavis Podcasts" with Open action.
-            compose.onNodeWithTag("record_info").performClick()
+            compose.onNodeWithTag("record_info").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
             compose.onNodeWithTag("episode_details_save_mp3").performClick()
             compose.waitUntil(5_000) {
                 compose.onAllNodesWithText(SAVED_MP3_SNACKBAR).fetchSemanticsNodes().isNotEmpty()
@@ -201,9 +201,9 @@ class EpisodeDetailsSheetTest {
 
             // Share from Up next row overflow menu -> launches ACTION_CHOOSER wrapping ACTION_SEND audio/mpeg.
             Shadows.shadowOf(app).clearNextStartedActivities()
-            compose.onNodeWithTag("podcast_lounge").performTouchInput { swipeUp() }
+            compose.onNodeWithTag("podcast_lounge").performScrollToKey("records")
             compose.waitForIdle()
-            compose.onNodeWithTag("record_next_menu_ep2").performClick()
+            compose.onNodeWithTag("record_next_menu_ep2").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
             compose.waitForIdle()
             compose.onNodeWithText("Share").performClick()
             compose.waitUntil(5_000) {

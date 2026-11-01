@@ -26,6 +26,9 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     suspend fun setReminderTime(time: LocalTime) = store.edit { it[REMINDER_HOUR] = time.hour; it[REMINDER_MINUTE] = time.minute }
     suspend fun setLastOpenedBook(key: String) = store.edit { it[LAST_OPENED_BOOK] = key }
     suspend fun setMatchRoomLight(enabled: Boolean) = store.edit { it[MATCH_ROOM_LIGHT] = enabled }
+    /** The Listen first-run guide (BRIEF-085 G) is shown once; Skip and Done both mark it seen. */
+    val listenGuideSeen: Flow<Boolean> = store.data.map { it[LISTEN_GUIDE_SEEN] ?: false }
+    suspend fun markListenGuideSeen() = store.edit { it[LISTEN_GUIDE_SEEN] = true }
     val playback: Flow<PlaybackSettings> = store.data.map { prefs ->
         PlaybackSettings(
             defaultSleepMinutes = prefs[DEFAULT_SLEEP] ?: 30,
@@ -62,6 +65,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         val HEADSET_PAGE_TURNS = booleanPreferencesKey("reader_headset_page_turns")
         val HAPTIC_PAGE_TURNS = booleanPreferencesKey("reader_haptic_page_turns")
         val DEFAULT_SPEED = floatPreferencesKey("audio_default_speed")
+        val LISTEN_GUIDE_SEEN = booleanPreferencesKey("listen_guide_085_seen")
     }
 }
 

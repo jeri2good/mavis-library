@@ -18,12 +18,14 @@ import org.robolectric.annotation.Config
 class PodcastNavigationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private fun waitFor(tag: String) = compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty() }
+    /** The first-run guide covers Listen; tests that aren't about it mark it seen first. */
+    private fun guideSeen() = runBlocking { (compose.activity.application as com.mavislibrary.app.MavisApp).container.settings.markListenGuideSeen() }
     private fun share(text: String) = compose.activityRule.scenario.onActivity { activity ->
         MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
             .invoke(activity, Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text))
     }
     @Test fun listenOpensSignInGateAndSixTabs() {
-        waitFor("tab_listen"); compose.onNodeWithTag("tab_listen").performClick()
+        waitFor("tab_listen"); guideSeen(); compose.onNodeWithTag("tab_listen").performClick()
         waitFor("podcast_lounge")
         compose.onNodeWithText("Open Podcast Lounge").assertDoesNotExist()
         compose.onNodeWithText("Sign in to make and hear podcasts").assertExists()
@@ -40,7 +42,7 @@ class PodcastNavigationTest {
     @Test fun loungeRouteAndNotificationDestinationRedirectToListen() {
         assertEquals("listen", loungeDestination(ROUTE_LOUNGE))
         assertEquals("settings", loungeDestination("settings"))
-        waitFor("tab_settings"); compose.onNodeWithTag("tab_settings").performClick(); waitFor("settings")
+        waitFor("tab_settings"); guideSeen(); compose.onNodeWithTag("tab_settings").performClick(); waitFor("settings")
         compose.activityRule.scenario.onActivity { activity ->
             MainActivity::class.java.getDeclaredMethod("onNewIntent", Intent::class.java).apply { isAccessible = true }
                 .invoke(activity, Intent(activity, MainActivity::class.java).putExtra(MainActivity.WIDGET_DESTINATION, MainActivity.LOUNGE))
@@ -73,7 +75,7 @@ class PodcastNavigationTest {
         compose.onNodeWithTag("owner_approvals").assertDoesNotExist()
     }
     @Test fun httpsShareRequiresSignInAndKidsNeverReachLounge() {
-        waitFor("tab_listen"); compose.waitForIdle(); share("https://example.org/article"); compose.waitForIdle()
+        waitFor("tab_listen"); guideSeen(); compose.waitForIdle(); share("https://example.org/article"); compose.waitForIdle()
         waitFor("podcast_lounge"); compose.onNodeWithTag("tab_listen").assertIsSelected()
         compose.onNodeWithText("Sign in to make and hear podcasts").assertExists()
         compose.onNodeWithText("Make podcast").assertDoesNotExist()

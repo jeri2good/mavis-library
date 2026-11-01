@@ -62,6 +62,7 @@ import com.mavislibrary.app.data.api.LibriVoxVersion
 import com.mavislibrary.app.data.model.Book
 import com.mavislibrary.app.data.model.BookSource
 import androidx.compose.foundation.clickable
+import com.mavislibrary.app.data.kids.kidsPrefs
 import kotlinx.coroutines.launch
 
 /**
@@ -86,12 +87,15 @@ fun ListenScreen(
     val playback by controller.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val audiobooks = remember { AudiobookSearch() }
+    val context = LocalContext.current
     ShakeToExtend(controller)
     com.mavislibrary.app.ui.lounge.PodcastLoungeScreen(
         container, controller, initial, onSettings = onSettings, onFirstPlay = onFirstPlay, onOpenArticle = onOpenArticle,
         onOpenReader = onOpenReader, pickerWebView = pickerWebView, onPodcastSettings = onPodcastSettings, onStartDaily = onStartDaily, onBriefingSites = onBriefingSites,
         footer = { audiobookItems(audiobooks, container, controller, playback, scope, onFirstPlay, voice) },
     )
+    val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
+    if (kids?.enabled == false) ListenGuideHost(container.settings)
 }
 
 /** Audiobook search state, hoisted so its rows can live inside the Listen list. */

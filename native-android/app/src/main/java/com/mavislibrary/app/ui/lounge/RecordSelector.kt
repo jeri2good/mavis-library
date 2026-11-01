@@ -52,6 +52,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import com.mavislibrary.app.ui.podcast.episodeHeadline
@@ -154,8 +157,9 @@ fun RecordSelector(
             }
             val job = centred.job
             Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(episodeHeadline(job), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 2,
-                    overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("record_headline"))
+                // Full title, never cut: the record label above may have shrunk or ellipsized it.
+                Text(episodeHeadline(job), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag("record_headline"))
                 when (centred.shelf) {
                     PodcastShelf.MAKING -> {
                         Text(stageLabel(job), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
@@ -270,6 +274,9 @@ private fun UpNextRow(
 
 private val LabelInk = Color(0xFF1E140C)
 
+/** Largest label font for a record of [size]; long titles step down from here to 7sp before ellipsizing. */
+internal fun labelMaxFontSize(size: Dp) = (size.value / 24f).coerceIn(8f, 12f).sp
+
 /** Front board of the record crate; the records stand behind it. */
 @Composable
 private fun CrateLip(modifier: Modifier = Modifier) {
@@ -367,9 +374,11 @@ private fun Record(
             // Headline above the spindle hole, date or status below it, like a pressed label.
             Column(Modifier.fillMaxSize().padding(horizontal = size * .05f), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.weight(1f).padding(top = size * .04f), contentAlignment = Alignment.BottomCenter) {
-                    Text(headline, color = LabelInk, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = (size.value / 24f).coerceIn(8f, 12f).sp,
-                            lineHeight = (size.value / 20f).coerceIn(10f, 14f).sp))
+                    // Long titles step down in size to fit the label, then ellipsize; the full title is under the crate.
+                    BasicText(headline, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(color = LabelInk, textAlign = TextAlign.Center, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, lineHeight = 1.15.em),
+                        autoSize = TextAutoSize.StepBased(minFontSize = 7.sp, maxFontSize = labelMaxFontSize(size), stepSize = .5.sp),
+                        modifier = Modifier.testTag("record_label_text_${job.id}"))
                 }
                 Spacer(Modifier.height(14.dp))
                 Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {

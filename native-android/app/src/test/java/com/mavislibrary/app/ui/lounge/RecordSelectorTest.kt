@@ -203,6 +203,22 @@ class RecordSelectorTest {
         assertEquals("delete" to "m5", actions.last())
     }
 
+    @Test fun longTitlesAreCappedOnTheLabelAndShowInFullBelow() {
+        val long = "Input Lag Is So Bad in Call of Duty: Modern Warfare That Players Are Building Their Own Controllers To Fix It"
+        val one = gallery(listOf(saved("n1").let { it.copy(job = it.job.copy(title = long)) }, saved("n2").let { it.copy(job = it.job.copy(title = "Short")) }), emptyMap())
+        compose.setContent { RecordSelector(one, nowPlaying = null, playing = false, enabled = true, onPlay = { _, _ -> }, onToggle = {}, onDetails = {},
+            modifier = androidx.compose.ui.Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) }
+        compose.onNodeWithTag("record_headline").assertTextEquals(long)
+        fun label(id: String): androidx.compose.ui.text.TextLayoutResult {
+            val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            compose.onNodeWithTag("record_label_text_$id", useUnmergedTree = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(results) }
+            return results.single()
+        }
+        // Robolectric's text metrics are synthetic, so the auto-size step-down itself is checked on device.
+        compose.onNodeWithTag("record_label_text_n1", useUnmergedTree = true).assertTextEquals(long)
+        assertTrue("long title is capped at 3 label lines", label("n1").lineCount <= 3)
+    }
+
     private fun show(onPlay: (Episode, List<Episode>) -> Unit = { _, _ -> }, onDetails: (Episode) -> Unit = {}) = compose.setContent {
         RecordSelector(shelves, nowPlaying = null, playing = false, enabled = true, onPlay = onPlay, onToggle = {}, onDetails = onDetails,
             modifier = androidx.compose.ui.Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()))

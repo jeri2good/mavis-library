@@ -50,7 +50,7 @@ private data class ExportProgressState(val label: String, val fraction: Float?)
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, initial: PodcastDraft?, onSettings: () -> Unit, onFirstPlay: () -> Unit, onOpenArticle: ((PodcastDraft) -> Unit)? = null, onOpenReader: ((ReaderTarget) -> Unit)? = null, pickerWebView: android.webkit.WebView? = null,
-                        onPodcastSettings: () -> Unit = onSettings, footer: LazyListScope.() -> Unit = {}) {
+                        onPodcastSettings: () -> Unit = onSettings, onStartDaily: ((String) -> Unit)? = null, footer: LazyListScope.() -> Unit = {}) {
     val context = LocalContext.current
     val kids by remember { context.kidsPrefs() }.state.collectAsStateWithLifecycle(initialValue = null)
     if (!loungeRouteAllowed(kids?.enabled)) return
@@ -123,6 +123,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     var sharedConfirm by remember(initial) { mutableStateOf(initial?.confirmShare == true) }
     var subscriptionAdd by remember { mutableStateOf<String?>(null) }
     fun startDaily(key: String) {
+        if (key != DAILY_BRIEFING && onStartDaily != null) return onStartDaily(key)
         subscription.clearPreview()
         subscriptionAdd = when (key) { DAILY_SITE -> "devotional"; DAILY_TOPIC -> "topic"; else -> "website" }
     }

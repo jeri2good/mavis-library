@@ -80,6 +80,7 @@ fun ListenScreen(
     onOpenArticle: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null,
     onOpenReader: ((com.mavislibrary.app.ui.reader.ReaderTarget) -> Unit)? = null,
     pickerWebView: android.webkit.WebView? = null,
+    onStartDaily: ((String) -> Unit)? = null,
 ) {
     val playback by controller.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -87,7 +88,7 @@ fun ListenScreen(
     ShakeToExtend(controller)
     com.mavislibrary.app.ui.lounge.PodcastLoungeScreen(
         container, controller, initial, onSettings = onSettings, onFirstPlay = onFirstPlay, onOpenArticle = onOpenArticle,
-        onOpenReader = onOpenReader, pickerWebView = pickerWebView, onPodcastSettings = onPodcastSettings,
+        onOpenReader = onOpenReader, pickerWebView = pickerWebView, onPodcastSettings = onPodcastSettings, onStartDaily = onStartDaily,
         footer = { audiobookItems(audiobooks, container, controller, playback, scope, onFirstPlay, voice) },
     )
 }

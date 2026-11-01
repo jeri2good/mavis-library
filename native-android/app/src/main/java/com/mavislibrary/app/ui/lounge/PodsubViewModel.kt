@@ -66,8 +66,34 @@ class PodsubViewModel(private val repository: PodsubRepository) : ViewModel() {
         val episodes = repository.today()
         mutable.update { it.copy(episodes = episodes) }
     }
-    fun save() = act {
-        val doc = state.value.document ?: return@act
+    /**
+     * One-step Start (BRIEF-085 D): [addDevotional] (reusing an existing rule for the same site or topic), then
+     * deliver every devotional at [readyBy] in [zone] with delivery switched on even when it is not the first
+     * devotional, then save. [onSaved] runs once the server has the document.
+     */
+    fun startDevotional(rule: DevotionalRule, readyBy: String, zone: String, onSaved: () -> Unit = {}) {
+        val doc = state.value.document ?: return
+        if (state.value.busy) return
+        val existing = doc.devotionals.firstOrNull { d ->
+            if (rule.kind == "site") d.kind == "site" && d.url == rule.url else d.kind == "topic" && !d.surprise && d.topic.equals(rule.topic, ignoreCase = true)
+        }
+        if (existing == null && doc.devotionals.size >= 5) {
+            mutable.update { it.copy(error = "You can have up to 5 devotionals. Remove one in Settings → Podcasts first.") }
+            return
+        }
+        try {
+            addDevotional(existing?.let { rule.copy(id = it.id) } ?: rule)
+            edit { d -> d.copy(devotionalSchedule = d.devotionalSchedule.copy(enabled = true, readyBy = readyBy, timezone = zone,
+                days = d.devotionalSchedule.days.ifEmpty { subscriptionDays })).validated() }
+        } catch (e: IllegalArgumentException) {
+            mutable.update { it.copy(error = e.message?.takeUnless { m -> m.startsWith("Failed requirement") } ?: "Check the devotional details.") }
+            return
+        }
+        act { persist(); onSaved() }
+    }
+    fun save() = act { persist() }
+    private suspend fun persist() {
+        val doc = state.value.document ?: return
         val response = repository.save(doc)
         mutable.update { it.copy(document = response.document(), dirty = false, nextRunAt = response.nextRunAt) }
         refreshData()

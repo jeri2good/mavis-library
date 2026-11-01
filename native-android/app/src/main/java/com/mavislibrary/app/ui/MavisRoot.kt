@@ -105,6 +105,7 @@ const val ROUTE_WEB_SHELF = "web_shelf"
 
 const val ROUTE_SHOWCASE = "showcase"
 const val ROUTE_LOUNGE = "lounge"
+const val ROUTE_DAILY = "daily"
 
 /** Where a podcast route lands: the old Lounge route is the Listen tab now; anything else is unchanged. */
 fun loungeDestination(route: String): String = if (route == ROUTE_LOUNGE) Tab.LISTEN.route else route
@@ -290,7 +291,7 @@ fun MavisRoot(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (current?.route != ROUTE_SCAN) Column {
+            if (current?.route != ROUTE_SCAN && current?.route != "$ROUTE_DAILY/{mode}") Column {
                 MiniPlayer(playback, Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh), voice,
                     onOpen = { if (current?.route != Tab.LISTEN.route) goTab(Tab.LISTEN.route) })
                 NavigationBar {
@@ -411,8 +412,15 @@ fun MavisRoot(
                 composable(Tab.LISTEN.route) {
                     key(podcastRequest) {
                         ListenScreen(container, playback, onFirstAudio, voice, initial = podcastDraft, onSettings = { goTab(Tab.SETTINGS.route) },
-                            onOpenArticle = openArticle, onOpenReader = openReader, pickerWebView = webHost?.also { it.warm() }?.webView)
+                            onOpenArticle = openArticle, onOpenReader = openReader, pickerWebView = webHost?.also { it.warm() }?.webView,
+                            onStartDaily = { mode -> nav.navigate("$ROUTE_DAILY/$mode") { launchSingleTop = true } })
                     }
+                }
+                composable("$ROUTE_DAILY/{mode}") { route ->
+                    if (com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled))
+                        com.mavislibrary.app.ui.lounge.DailyDevotionalScreen(container, route.arguments?.getString("mode").orEmpty(),
+                            onBack = { nav.popBackStack() }, onSignIn = { goTab(Tab.SETTINGS.route) })
+                    else LaunchedEffect(Unit) { nav.popBackStack() }
                 }
                 composable("article") {
                     article?.takeIf { com.mavislibrary.app.data.podcast.loungeRouteAllowed(loadedKids.enabled) }?.let {

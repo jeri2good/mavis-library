@@ -26,6 +26,9 @@ android {
     namespace = "com.mavislibrary.app"
     compileSdk = 36
 
+    // Test-only: -PmavisUpdateTestBase=<release tag> points a DEBUG build's update check at that tag for on-device
+    // auto-update proofs. Downloads stay locked to this repository's releases; release builds are unaffected.
+    val updateTestBase = providers.gradleProperty("mavisUpdateTestBase").orNull
     defaultConfig {
         applicationId = "com.mavislibrary.app"
         minSdk = 26
@@ -35,6 +38,7 @@ android {
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         buildConfigField("String", "API_BASE", "\"https://mavis-library.netlify.app\"")
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"https://github.com/jeri2good/mavis-library/releases/latest/download/update.json\"")
+        buildConfigField("String", "UPDATE_DOWNLOADS", "\"https://github.com/jeri2good/mavis-library/releases/download/\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -50,6 +54,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Point a DEBUG build at one GitHub release tag's update.json (e.g. a pre-release, which /latest ignores).
+            if (updateTestBase != null) buildConfigField("String", "UPDATE_MANIFEST_URL",
+                "\"https://github.com/jeri2good/mavis-library/releases/download/${updateTestBase}/update.json\"")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

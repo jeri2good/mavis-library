@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Installs its own published updates (GitHub releases); Android asks the user to confirm. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 12+: lets Mavis update ITSELF without a confirmation once it is the app's installer (normal permission). -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- Declared so the first-use microphone prompt can appear; Android never grants it at install. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Voice features in the hosted web screens (getUserMedia); asked at first use. -->

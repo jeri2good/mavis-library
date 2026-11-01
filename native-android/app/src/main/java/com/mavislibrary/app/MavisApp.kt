@@ -123,10 +123,11 @@ class AppContainer internal constructor(
     /** No HTTP cache: update checks must see the newest release, and APKs are too big to cache. */
     private val updateHttp by lazy { okHttp.newBuilder().cache(null).readTimeout(60, TimeUnit.SECONDS).build() }
     val updateChecker by lazy { com.mavislibrary.app.update.UpdateChecker(updateHttp, BuildConfig.UPDATE_MANIFEST_URL, BuildConfig.VERSION_CODE) }
+    val updateDownloader by lazy { com.mavislibrary.app.update.UpdateDownloader(updateHttp, app.cacheDir.resolve("updates")) }
     val updateNotices by lazy { com.mavislibrary.app.update.UpdateNotices(settingsPrefs) }
     val appUpdater by lazy {
         com.mavislibrary.app.update.AppUpdater(
-            updateChecker, com.mavislibrary.app.update.UpdateDownloader(updateHttp, app.cacheDir.resolve("updates")), scope,
+            updateChecker, updateDownloader, scope,
             canInstall = { com.mavislibrary.app.update.UpdateInstaller.canInstall(app) },
             installApk = { com.mavislibrary.app.update.UpdateInstaller.install(app, it) },
         )
@@ -153,6 +154,11 @@ class MavisApp : Application(), Configuration.Provider, SingletonImageLoader.Fac
             }.distinctUntilChanged().collect { com.mavislibrary.app.work.BriefingScheduler.syncSoon(this@MavisApp) }
         }
         com.mavislibrary.app.update.UpdateScheduler.schedule(this)
+        container.scope.launch {
+            container.updateNotices.consumeAutoInstalled(BuildConfig.VERSION_CODE)?.let {
+                com.mavislibrary.app.update.UpdateNotifications.updated(this@MavisApp, BuildConfig.VERSION_NAME, it)
+            }
+        }
         container.scope.launch { kidsPrefs().state.map { it.enabled }.distinctUntilChanged().collect { WidgetUpdater.refresh(this@MavisApp) } }
     }
 

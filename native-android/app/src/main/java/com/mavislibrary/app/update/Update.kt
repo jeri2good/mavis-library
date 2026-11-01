@@ -23,8 +23,8 @@ data class UpdateInfo(
     val publishedAt: String = "",
 )
 
-/** Published APKs only ever come from this repository's GitHub releases. */
-const val RELEASE_DOWNLOADS = "https://github.com/jeri2good/mavis-library/releases/download/"
+/** Published APKs only ever come from this repository's GitHub releases (a debug-only test build may point elsewhere). */
+val RELEASE_DOWNLOADS: String = com.mavislibrary.app.BuildConfig.UPDATE_DOWNLOADS
 const val RELEASES_PAGE = "https://github.com/jeri2good/mavis-library/releases"
 private const val MAX_MANIFEST_BYTES = 64 * 1024L
 private const val MAX_APK_BYTES = 200L * 1024 * 1024

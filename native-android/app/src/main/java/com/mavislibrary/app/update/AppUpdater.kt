@@ -16,7 +16,9 @@ import androidx.core.net.toUri
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -36,7 +38,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -139,64 +143,161 @@ class UpdateReceiver : BroadcastReceiver() {
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             val confirm = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                 else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
-            confirm?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            // From the background Android drops startActivity, so the confirmation also rides a notification.
+            confirm?.let {
+                UpdateNotifications.confirm(context, Intent(it))
+                try { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) { }
+            }
             return
         }
         (context.applicationContext as MavisApp).container.appUpdater.installFinished(status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))
     }
 }
 
-/** Remembers which version was announced, so each update is notified once. */
+/** Remembers which version was announced, so each update is notified once; also holds the auto-install choice. */
 class UpdateNotices(private val store: DataStore<Preferences>) {
     private val key = intPreferencesKey("update_notified_version")
+    private val autoKey = booleanPreferencesKey("update_auto_install")
+    /** The version an automatic install was started for; cleared once the new build reports itself running. */
+    private val pendingKey = intPreferencesKey("update_auto_pending_version")
+    val autoInstall: Flow<Boolean> = store.data.map { it[autoKey] ?: false }
+    suspend fun setAutoInstall(on: Boolean) { store.edit { it[autoKey] = on } }
     suspend fun shouldNotify(versionCode: Int): Boolean {
         var fresh = false
         store.edit { if ((it[key] ?: 0) < versionCode) { it[key] = versionCode; fresh = true } }
         return fresh
     }
+    private val notesKey = stringPreferencesKey("update_auto_pending_notes")
+    suspend fun markAutoPending(versionCode: Int, notes: String) { store.edit { it[pendingKey] = versionCode; it[notesKey] = notes.take(300) } }
+    /** The release notes, exactly once, on the first launch of a build that an automatic install put in place. */
+    suspend fun consumeAutoInstalled(running: Int): String? {
+        var done: String? = null
+        store.edit { val p = it[pendingKey] ?: 0; if (p in 1..running) { done = it[notesKey].orEmpty(); it.remove(pendingKey); it.remove(notesKey) } }
+        return done
+    }
+}
+
+/** Android installs only builds signed like the running app; check first so a bad file fails quietly, never prompts. */
+object UpdateSignature {
+    @Suppress("DEPRECATION")
+    private fun signers(info: android.content.pm.PackageInfo?): Set<String> =
+        info?.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet().orEmpty()
+    fun matchesInstalled(context: Context, apk: File): Boolean {
+        val pm = context.packageManager
+        val flag = PackageManager.GET_SIGNING_CERTIFICATES
+        val mine = signers(pm.getPackageInfo(context.packageName, flag))
+        val theirs = signers(pm.getPackageArchiveInfo(apk.path, flag))
+        val name = pm.getPackageArchiveInfo(apk.path, 0)?.packageName
+        return name == context.packageName && mine.isNotEmpty() && mine == theirs
+    }
 }
 
 object UpdateScheduler {
-    private const val DAILY = "mavis-update-check"
+    private const val PERIODIC = "mavis-update-check"
     private const val ON_OPEN = "mavis-update-check-open"
     private val online = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
-    /** A check shortly after each launch, plus a daily one. Skipped under Robolectric so tests never reach GitHub. */
+    /** A check shortly after each launch, plus one every 6 hours. Skipped under Robolectric so tests never reach GitHub. */
     fun schedule(context: Context) {
         if (Build.FINGERPRINT == "robolectric") return
         val work = WorkManager.getInstance(context)
-        work.enqueueUniquePeriodicWork(DAILY, ExistingPeriodicWorkPolicy.KEEP,
-            PeriodicWorkRequestBuilder<UpdateCheckWorker>(1, TimeUnit.DAYS).setConstraints(online).build())
-        work.enqueueUniqueWork(ON_OPEN, ExistingWorkPolicy.KEEP,
-            OneTimeWorkRequestBuilder<UpdateCheckWorker>().setInitialDelay(20, TimeUnit.SECONDS).setConstraints(online).build())
+        // UPDATE replaces the old once-a-day request on existing installs.
+        work.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<UpdateCheckWorker>(6, TimeUnit.HOURS).setConstraints(online).build())
+        work.enqueueUniqueWork(ON_OPEN, ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<UpdateCheckWorker>().setInitialDelay(15, TimeUnit.SECONDS).setConstraints(online)
+                .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS).build())
+    }
+    /** Run a check right away, e.g. when auto-install is switched on. */
+    fun checkSoon(context: Context) {
+        if (Build.FINGERPRINT == "robolectric") return
+        WorkManager.getInstance(context).enqueueUniqueWork(ON_OPEN, ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<UpdateCheckWorker>().setConstraints(online).build())
+    }
+}
+
+object UpdateNotifications {
+    const val CHANNEL = "app_updates"
+    const val READY_ID = 30003
+    const val DONE_ID = 30004
+    fun allowed(context: Context) = Build.VERSION.SDK_INT < 33 ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    private fun manager(context: Context) = context.getSystemService(NotificationManager::class.java).also {
+        it.createNotificationChannel(NotificationChannel(CHANNEL, "App updates", NotificationManager.IMPORTANCE_DEFAULT))
+    }
+    private fun openUpdates(context: Context) = PendingIntent.getActivity(context, READY_ID,
+        Intent(context, MainActivity::class.java).putExtra(MainActivity.WIDGET_DESTINATION, MainActivity.UPDATES)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    fun ready(context: Context, info: UpdateInfo) {
+        if (!allowed(context)) return
+        manager(context).notify(READY_ID, NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("Mavis update ready")
+            .setContentText("Version ${info.versionName}. Tap to install.")
+            .setContentIntent(openUpdates(context)).setAutoCancel(true).build())
+    }
+    /** Android wants one tap for this install: hand its own confirmation screen to a notification. */
+    fun confirm(context: Context, confirm: Intent) {
+        if (!allowed(context)) return
+        val pending = PendingIntent.getActivity(context, READY_ID, confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        manager(context).notify(READY_ID, NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("Mavis update downloaded")
+            .setContentText("Tap to finish installing. Android asks once; later updates install on their own.")
+            .addAction(0, "Install", pending)
+            .setContentIntent(pending).setAutoCancel(true).build())
+    }
+    fun updated(context: Context, versionName: String, notes: String?) {
+        if (!allowed(context)) return
+        val text = "Mavis updated to $versionName" + notes?.takeIf(String::isNotBlank)?.let { ": $it" }.orEmpty()
+        manager(context).notify(DONE_ID, NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("Mavis updated to $versionName")
+            .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(openUpdates(context)).setAutoCancel(true).build())
+    }
+}
+
+/** Auto-install policy, separate from Android so it is unit-testable. */
+object AutoUpdatePolicy {
+    enum class Action { NOTIFY, INSTALL, NONE }
+    fun decide(autoOn: Boolean, canInstall: Boolean, kidsMode: Boolean): Action = when {
+        kidsMode -> Action.NONE
+        autoOn && canInstall -> Action.INSTALL
+        else -> Action.NOTIFY
     }
 }
 
 class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val container = (applicationContext as MavisApp).container
-        if (applicationContext.kidsPrefs().state.first().enabled) return Result.success()
-        val info = try { container.updateChecker.check() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
-            ?: return Result.success()
-        if (container.updateNotices.shouldNotify(info.versionCode)) announce(info)
+        val notices = container.updateNotices
+        val action = AutoUpdatePolicy.decide(notices.autoInstall.first(), UpdateInstaller.canInstall(applicationContext),
+            applicationContext.kidsPrefs().state.first().enabled)
+        android.util.Log.i("MavisUpdate", "check: action=$action")
+        if (action == AutoUpdatePolicy.Action.NONE) return Result.success()
+        val info = try { container.updateChecker.check() } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                // Network not ready yet (e.g. DNS right after boot/launch): try again with WorkManager's backoff.
+                android.util.Log.w("MavisUpdate", "check failed: $e")
+                return if (runAttemptCount < 5) Result.retry() else Result.success()
+            } ?: return Result.success().also { android.util.Log.i("MavisUpdate", "no newer version") }
+        android.util.Log.i("MavisUpdate", "found ${info.versionCode}")
+        if (action == AutoUpdatePolicy.Action.INSTALL) {
+            val apk = try { container.updateDownloader.download(info) } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { android.util.Log.w("MavisUpdate", "download failed: $e"); null }
+            val signed = apk != null && UpdateSignature.matchesInstalled(applicationContext, apk)
+            android.util.Log.i("MavisUpdate", "downloaded=${apk != null} signatureMatches=$signed")
+            if (apk != null && signed) {
+                notices.markAutoPending(info.versionCode, info.notes)
+                try { UpdateInstaller.install(applicationContext, apk); android.util.Log.i("MavisUpdate", "install session committed"); return Result.success() }
+                catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("MavisUpdate", "install failed: $e") }
+            }
+            if (apk == null) return Result.retry()
+        }
+        if (notices.shouldNotify(info.versionCode)) UpdateNotifications.ready(applicationContext, info)
         return Result.success()
-    }
-
-    private fun announce(info: UpdateInfo) {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val manager = applicationContext.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("app_updates", "App updates", NotificationManager.IMPORTANCE_DEFAULT))
-        val intent = Intent(applicationContext, MainActivity::class.java)
-            .putExtra(MainActivity.WIDGET_DESTINATION, MainActivity.UPDATES)
-            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        val pending = PendingIntent.getActivity(applicationContext, 30003, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        manager.notify(30003, NotificationCompat.Builder(applicationContext, "app_updates")
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("Mavis update ready")
-            .setContentText("Version ${info.versionName}. Tap to install.")
-            .setContentIntent(pending)
-            .setAutoCancel(true)
-            .build())
     }
 }

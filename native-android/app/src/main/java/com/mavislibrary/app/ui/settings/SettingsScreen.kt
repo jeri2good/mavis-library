@@ -94,7 +94,7 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
         TextButton(onClick = onOpenStats, modifier = Modifier.testTag("open_stats")) { Text("Reading stats") }
 
         Section("App updates", Icons.Outlined.SystemUpdate) {
-            com.mavislibrary.app.update.UpdateSection(container.appUpdater)
+            com.mavislibrary.app.update.UpdateSection(container.appUpdater, container.updateNotices)
         }
 
         Section("Kids mode", Icons.Outlined.Lock) {

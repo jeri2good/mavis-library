@@ -1,0 +1,2690 @@
+{
+  "version": 1,
+  "kind": "longlisten",
+  "audioOnly": true,
+  "credits": "Audiobooks from LibriVox (librivox.org). LibriVox recordings are in the public domain; read by volunteers named per section. Audio hosted by the Internet Archive.",
+  "books": [
+    {
+      "id": "librivox-1392",
+      "librivoxId": 1392,
+      "title": "Hurlbut's Story of the Bible Part 1",
+      "author": "Jesse Lyman Hurlbut",
+      "readers": [
+        "Eric Ray",
+        "Esther",
+        "Ezwa",
+        "Kalynda",
+        "Kirsten Ferreri",
+        "Laura Caldwell",
+        "Robert Scott",
+        "Sam Stinson",
+        "Sean McGaughey",
+        "Sibella Denton",
+        "Sophie",
+        "Tamara Hamilton"
+      ],
+      "totaltime": "4:46:48",
+      "totalSeconds": 17208,
+      "cover": "https://archive.org/download/story_bible1_0710/Hurlbuts_Story_Bible_P1_1110.jpg",
+      "librivoxUrl": "https://librivox.org/hurlbuts-story-of-the-bible-part-one/",
+      "archiveUrl": "https://archive.org/details/story_bible1_0710",
+      "license": "Public domain (LibriVox recording)",
+      "ageHint": "6+",
+      "sections": [
+        {
+          "title": "Introduction",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-00_hurlbut_64kb.mp3",
+          "seconds": 661,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 5293162
+        },
+        {
+          "title": "The Story of a Beautiful Garden",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-01_hurlbut_64kb.mp3",
+          "seconds": 598,
+          "readers": [
+            "Sam Stinson"
+          ],
+          "bytes": 4785072
+        },
+        {
+          "title": "The First Baby in the World and His Brother",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-02_hurlbut_64kb.mp3",
+          "seconds": 243,
+          "readers": [
+            "Sam Stinson"
+          ],
+          "bytes": 1951530
+        },
+        {
+          "title": "The Great Ship That Saved Eight People",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-03_hurlbut_64kb.mp3",
+          "seconds": 687,
+          "readers": [
+            "Sam Stinson"
+          ],
+          "bytes": 5497909
+        },
+        {
+          "title": "The Tower That Was Never Finished",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-04_hurlbut_64kb.mp3",
+          "seconds": 525,
+          "readers": [
+            "Robert Scott"
+          ],
+          "bytes": 4201812
+        },
+        {
+          "title": "The Story of a Long Journey",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-05_hurlbut_64kb.mp3",
+          "seconds": 479,
+          "readers": [
+            "Kalynda"
+          ],
+          "bytes": 3834838
+        },
+        {
+          "title": "How Abram's Choice Brought Blessing",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-06_hurlbut_64kb.mp3",
+          "seconds": 393,
+          "readers": [
+            "Kalynda"
+          ],
+          "bytes": 3145004
+        },
+        {
+          "title": "The Angel by the Well",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-07_hurlbut_64kb.mp3",
+          "seconds": 242,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 1937158
+        },
+        {
+          "title": "The Rain of Fire That Fell on a City",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-08_hurlbut_64kb.mp3",
+          "seconds": 557,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 4459905
+        },
+        {
+          "title": "The Boy Who Became an Archer",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-09_hurlbut_64kb.mp3",
+          "seconds": 273,
+          "readers": [
+            "Sophie"
+          ],
+          "bytes": 2194558
+        },
+        {
+          "title": "How an Angel's Voice Saved a Boy's Life",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-10_hurlbut_64kb.mp3",
+          "seconds": 407,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3263918
+        },
+        {
+          "title": "The Story of a Journey after a Wife",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-11_hurlbut_64kb.mp3",
+          "seconds": 362,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2897782
+        },
+        {
+          "title": "How Jacob Stole His Brother's Blessing",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-12_hurlbut_64kb.mp3",
+          "seconds": 602,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 4829174
+        },
+        {
+          "title": "Jacob's Wonderful Dream",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-13_hurlbut_64kb.mp3",
+          "seconds": 408,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 3274837
+        },
+        {
+          "title": "A Midnight Wrestling Match",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-14_hurlbut_64kb.mp3",
+          "seconds": 463,
+          "readers": [
+            "Eric Ray"
+          ],
+          "bytes": 3705479
+        },
+        {
+          "title": "The Rich Man's Son Who Was Sold as a Slave",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-15_hurlbut_64kb.mp3",
+          "seconds": 445,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 3561298
+        },
+        {
+          "title": "From the Prison to the Palace",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-16_hurlbut_64kb.mp3",
+          "seconds": 634,
+          "readers": [
+            "Tamara Hamilton"
+          ],
+          "bytes": 5077224
+        },
+        {
+          "title": "How Joseph's Dream Came True",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-17_hurlbut_64kb.mp3",
+          "seconds": 483,
+          "readers": [
+            "Tamara Hamilton"
+          ],
+          "bytes": 3866604
+        },
+        {
+          "title": "A Lost Brother Found",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-18_hurlbut_64kb.mp3",
+          "seconds": 563,
+          "readers": [
+            "Tamara Hamilton"
+          ],
+          "bytes": 4511160
+        },
+        {
+          "title": "From the Land of Famine to the Land of Plenty",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-19_hurlbut_64kb.mp3",
+          "seconds": 378,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3024851
+        },
+        {
+          "title": "The Beautiful Baby Who Was Found in a River",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-20_hurlbut_64kb.mp3",
+          "seconds": 450,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3601842
+        },
+        {
+          "title": "The Voice from the Burning Bush",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-21_hurlbut_64kb.mp3",
+          "seconds": 493,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3947064
+        },
+        {
+          "title": "The River That Ran Blood",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-22_hurlbut_64kb.mp3",
+          "seconds": 463,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3712022
+        },
+        {
+          "title": "The Night When a Nation Was Born",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-23_hurlbut_64kb.mp3",
+          "seconds": 358,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2867686
+        },
+        {
+          "title": "How the Sea Became Dry Land and the Sky Rained Bread",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-24_hurlbut_64kb.mp3",
+          "seconds": 555,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 4448428
+        },
+        {
+          "title": "The Mountain That Smoked and Words That Were Spoke",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-25_hurlbut_64kb.mp3",
+          "seconds": 446,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 3571965
+        },
+        {
+          "title": "How Aaron Made a Golden Calf and What Became of It",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-26_hurlbut_64kb.mp3",
+          "seconds": 514,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 4113013
+        },
+        {
+          "title": "The Tent Where God Lived Among His People",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-27_hurlbut_64kb.mp3",
+          "seconds": 573,
+          "readers": [
+            "Kirsten Ferreri"
+          ],
+          "bytes": 4590313
+        },
+        {
+          "title": "How They Worshipped God in the Tabernacle",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-28_hurlbut_64kb.mp3",
+          "seconds": 367,
+          "readers": [
+            "Kirsten Ferreri"
+          ],
+          "bytes": 2942300
+        },
+        {
+          "title": "What Strong Drink Brought to Aaron's Sons",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-29_hurlbut_64kb.mp3",
+          "seconds": 207,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 1664390
+        },
+        {
+          "title": "The Scapegoat in the Wilderness",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-30_hurlbut_64kb.mp3",
+          "seconds": 247,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 1983492
+        },
+        {
+          "title": "The Cluster of Grapes from the Land of Canaan",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-31_hurlbut_64kb.mp3",
+          "seconds": 482,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 3863068
+        },
+        {
+          "title": "How the Long Journey of the Israelites Came to an End",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-32_hurlbut_64kb.mp3",
+          "seconds": 550,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 4418126
+        },
+        {
+          "title": "What a Wise Man Learned from an Ass",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-33_hurlbut_64kb.mp3",
+          "seconds": 869,
+          "readers": [
+            "Eric Ray"
+          ],
+          "bytes": 6952613
+        },
+        {
+          "title": "How Moses Looked upon the Promised Land",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-34_hurlbut_64kb.mp3",
+          "seconds": 475,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 3813743
+        },
+        {
+          "title": "The Story of Job",
+          "mp3": "https://archive.org/download/story_bible1_0710/story_bible_1-35_hurlbut_64kb.mp3",
+          "seconds": 756,
+          "readers": [
+            "Robert Scott"
+          ],
+          "bytes": 6053220
+        }
+      ]
+    },
+    {
+      "id": "librivox-1461",
+      "librivoxId": 1461,
+      "title": "Hurlbut's Story of the Bible Part 2",
+      "author": "Jesse Lyman Hurlbut",
+      "readers": [
+        "Eric Ray",
+        "Esther",
+        "Ezwa",
+        "Kalynda",
+        "Laura Caldwell",
+        "Missie",
+        "Sibella Denton"
+      ],
+      "totaltime": "2:22:33",
+      "totalSeconds": 8553,
+      "cover": "https://archive.org/download/story_bible2_0711_librivox/Hurlbuts_Story_Bible_P2_1110.jpg",
+      "librivoxUrl": "https://librivox.org/hurlbuts-story-of-the-bible-part-two/",
+      "archiveUrl": "https://archive.org/details/story_bible2_0711_librivox",
+      "license": "Public domain (LibriVox recording)",
+      "ageHint": "6+",
+      "sections": [
+        {
+          "title": "The Story of a Scarlet Cord",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-01_hurlbut_64kb.mp3",
+          "seconds": 337,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 2706775
+        },
+        {
+          "title": "How the River Jordan Became Dry",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-02_hurlbut_64kb.mp3",
+          "seconds": 578,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 4630227
+        },
+        {
+          "title": "The Story of a Wedge of Gold",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-03_hurlbut_64kb.mp3",
+          "seconds": 347,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2782636
+        },
+        {
+          "title": "How Joshua Conquered the Land of Canaan",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-04_hurlbut_64kb.mp3",
+          "seconds": 499,
+          "readers": [
+            "Eric Ray"
+          ],
+          "bytes": 3995564
+        },
+        {
+          "title": "The Old Man Who Fought Against the Giants",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-05_hurlbut_64kb.mp3",
+          "seconds": 433,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 3474371
+        },
+        {
+          "title": "The Avenger of Blook and the Cities of Refuge",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-06_hurlbut_64kb.mp3",
+          "seconds": 406,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3253693
+        },
+        {
+          "title": "The Story of an Altar Beside the River",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-07_hurlbut_64kb.mp3",
+          "seconds": 432,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 3457650
+        },
+        {
+          "title": "The Present That Ehud Brought to King Eglon",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-08_hurlbut_64kb.mp3",
+          "seconds": 392,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3139170
+        },
+        {
+          "title": "How a Woman Won a Great Victory",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-09_hurlbut_64kb.mp3",
+          "seconds": 442,
+          "readers": [
+            "Kalynda"
+          ],
+          "bytes": 3546459
+        },
+        {
+          "title": "Gideon and His Brave Three Hundred",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-10_hurlbut_64kb.mp3",
+          "seconds": 879,
+          "readers": [
+            "Missie"
+          ],
+          "bytes": 7036630
+        },
+        {
+          "title": "Jephthah's Rash Promise and What Came from It",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-11_hurlbut_64kb.mp3",
+          "seconds": 259,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2079645
+        },
+        {
+          "title": "The Strong Man: How He Lived and How He Died",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-12_hurlbut_64kb.mp3",
+          "seconds": 999,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 8016964
+        },
+        {
+          "title": "The Idol Temple at Dan and Its Priest",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-13_hurlbut_64kb.mp3",
+          "seconds": 509,
+          "readers": [
+            "Eric Ray"
+          ],
+          "bytes": 4078109
+        },
+        {
+          "title": "How Ruth Gleaned in the Field of Boaz",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-14_hurlbut_64kb.mp3",
+          "seconds": 421,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 3377192
+        },
+        {
+          "title": "The Little Boy with a Linen Coat",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-15_hurlbut_64kb.mp3",
+          "seconds": 377,
+          "readers": [
+            "Eric Ray"
+          ],
+          "bytes": 3021086
+        },
+        {
+          "title": "How the Idol Fell Down Before the Ark",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-16_hurlbut_64kb.mp3",
+          "seconds": 314,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2518286
+        },
+        {
+          "title": "The Last of the Judges",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-17_hurlbut_64kb.mp3",
+          "seconds": 350,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 2810633
+        },
+        {
+          "title": "The Tall Man Who Was Chosen King",
+          "mp3": "https://archive.org/download/story_bible2_0711_librivox/story_bible_2-18_hurlbut_64kb.mp3",
+          "seconds": 579,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 4650081
+        }
+      ]
+    },
+    {
+      "id": "librivox-1637",
+      "librivoxId": 1637,
+      "title": "Hurlbut's Story of the Bible Part 3",
+      "author": "Jesse Lyman Hurlbut",
+      "readers": [
+        "Eric Ray",
+        "Esther",
+        "Ezwa",
+        "Jezebelle",
+        "Kalynda",
+        "Laura Caldwell",
+        "Sean McGaughey",
+        "Sibella Denton"
+      ],
+      "totaltime": "2:35:42",
+      "totalSeconds": 9342,
+      "cover": "https://archive.org/download/story_bible3_0801_librivox/Hurlbuts_Story_Bible_P3_1110.jpg",
+      "librivoxUrl": "https://librivox.org/hurlbuts-story-of-the-bible-part-three/",
+      "archiveUrl": "https://archive.org/details/story_bible3_0801_librivox",
+      "license": "Public domain (LibriVox recording)",
+      "ageHint": "6+",
+      "sections": [
+        {
+          "title": "How Saul Saved the Eyes of the Men of Jabesh",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-01_hurlbut_64kb.mp3",
+          "seconds": 357,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 2866245
+        },
+        {
+          "title": "The Brave Young Prince",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-02_hurlbut_64kb.mp3",
+          "seconds": 465,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 3721158
+        },
+        {
+          "title": "Saul's Great Sin and His Great Loss",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-03_hurlbut_64kb.mp3",
+          "seconds": 329,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 2633432
+        },
+        {
+          "title": "The Shepherd Boy of Bethlehem",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-04_hurlbut_64kb.mp3",
+          "seconds": 503,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 4025021
+        },
+        {
+          "title": "The Shepherd Boy's Fight with the Giant",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-05_hurlbut_64kb.mp3",
+          "seconds": 487,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 3899643
+        },
+        {
+          "title": "The Little Boy Looking for the Arrows",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-06_hurlbut_64kb.mp3",
+          "seconds": 673,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 5391965
+        },
+        {
+          "title": "Where David Found the Giant's Sword",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-07_hurlbut_64kb.mp3",
+          "seconds": 476,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 3808734
+        },
+        {
+          "title": "How David Spared Saul's Life",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-08_hurlbut_64kb.mp3",
+          "seconds": 421,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 3383243
+        },
+        {
+          "title": "The Last Days of King Saul",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-09_hurlbut_64kb.mp3",
+          "seconds": 580,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 4641299
+        },
+        {
+          "title": "The Shepherd Boy Becomes a King",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-10_hurlbut_64kb.mp3",
+          "seconds": 348,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2786610
+        },
+        {
+          "title": "The Sound in the Treetops",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-11_hurlbut_64kb.mp3",
+          "seconds": 458,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3668080
+        },
+        {
+          "title": "The Cripple at the King's Table",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-12_hurlbut_64kb.mp3",
+          "seconds": 313,
+          "readers": [
+            "Eric Ray"
+          ],
+          "bytes": 2508877
+        },
+        {
+          "title": "The Prophet's Story of the Little Lamb",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-13_hurlbut_64kb.mp3",
+          "seconds": 549,
+          "readers": [
+            "Eric Ray"
+          ],
+          "bytes": 4400560
+        },
+        {
+          "title": "David's Handsome Son and How He Stole the Kingdom",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-14_hurlbut_64kb.mp3",
+          "seconds": 769,
+          "readers": [
+            "Kalynda"
+          ],
+          "bytes": 6174188
+        },
+        {
+          "title": "Absalom in the Wood; David on the Throne",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-15_hurlbut_64kb.mp3",
+          "seconds": 887,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 7098077
+        },
+        {
+          "title": "The Angel with the Drawn Sword on Mount Moriah",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-16_hurlbut_64kb.mp3",
+          "seconds": 349,
+          "readers": [
+            "Jezebelle"
+          ],
+          "bytes": 2799582
+        },
+        {
+          "title": "Solomon on David's Throne",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-17_hurlbut_64kb.mp3",
+          "seconds": 276,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2213373
+        },
+        {
+          "title": "The Wise Young King",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-18_hurlbut_64kb.mp3",
+          "seconds": 329,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 2641776
+        },
+        {
+          "title": "The House of God on Mount Moriah",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-19_hurlbut_64kb.mp3",
+          "seconds": 365,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 2931225
+        },
+        {
+          "title": "The Last Days of Solomon's Reign",
+          "mp3": "https://archive.org/download/story_bible3_0801_librivox/story_bible_3-20_hurlbut_64kb.mp3",
+          "seconds": 408,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3266846
+        }
+      ]
+    },
+    {
+      "id": "librivox-1748",
+      "librivoxId": 1748,
+      "title": "Hurlbut's Story of the Bible Part 4",
+      "author": "Jesse Lyman Hurlbut",
+      "readers": [
+        "Esther",
+        "Ezwa",
+        "Laura Caldwell",
+        "Sean McGaughey",
+        "Sibella Denton",
+        "soapturtle"
+      ],
+      "totaltime": "2:04:26",
+      "totalSeconds": 7466,
+      "cover": "https://archive.org/download/story_bible_4_0803_librivox/Hurlbuts_Story_Bible_P4_1110.jpg",
+      "librivoxUrl": "https://librivox.org/hurlbuts-story-of-the-bible-part-four/",
+      "archiveUrl": "https://archive.org/details/story_bible_4_0803_librivox",
+      "license": "Public domain (LibriVox recording)",
+      "ageHint": "6+",
+      "sections": [
+        {
+          "title": "The Breaking Up of a Great Kingdom",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-01_hurlbut_64kb.mp3",
+          "seconds": 345,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 3055997
+        },
+        {
+          "title": "The King Who Led Israel to Sin",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-02_hurlbut_64kb.mp3",
+          "seconds": 541,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 4329085
+        },
+        {
+          "title": "The Prophet Who Raised a Boy to Life",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-03_hurlbut_64kb.mp3",
+          "seconds": 447,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3583670
+        },
+        {
+          "title": "The Prayer That Was Answered in Fire",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-04_hurlbut_64kb.mp3",
+          "seconds": 514,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 4113215
+        },
+        {
+          "title": "The Voice That Spoke to Elijah in the Mount",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-05_hurlbut_64kb.mp3",
+          "seconds": 540,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 4320948
+        },
+        {
+          "title": "The Wounded Prophet and His Story",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-06_hurlbut_64kb.mp3",
+          "seconds": 222,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 1778074
+        },
+        {
+          "title": "What Ahab Paid for His Vineyard",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-07_hurlbut_64kb.mp3",
+          "seconds": 304,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 2435103
+        },
+        {
+          "title": "The Arrow That Killed a King",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-08_hurlbut_64kb.mp3",
+          "seconds": 398,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 3194115
+        },
+        {
+          "title": "Elijah's Chariot of Fire",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-09_hurlbut_64kb.mp3",
+          "seconds": 342,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 2738953
+        },
+        {
+          "title": "A Spring Sweetened by Salt",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-10_hurlbut_64kb.mp3",
+          "seconds": 343,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2750658
+        },
+        {
+          "title": "The Pot of Oil and the Pot of Poison",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-11_hurlbut_64kb.mp3",
+          "seconds": 389,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 3114292
+        },
+        {
+          "title": "The Little Boy at Shunem",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-12_hurlbut_64kb.mp3",
+          "seconds": 357,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 2861833
+        },
+        {
+          "title": "How a Little Girl Helped to Cure a Leper",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-13_hurlbut_64kb.mp3",
+          "seconds": 603,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 4826257
+        },
+        {
+          "title": "The Chariots of Fire around Elisha",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-14_hurlbut_64kb.mp3",
+          "seconds": 255,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 2049121
+        },
+        {
+          "title": "What the Lepers Found in the Camp",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-15_hurlbut_64kb.mp3",
+          "seconds": 310,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2487978
+        },
+        {
+          "title": "Jehu, the Furious Driver of His Chariot",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-16_hurlbut_64kb.mp3",
+          "seconds": 651,
+          "readers": [
+            "soapturtle"
+          ],
+          "bytes": 5227079
+        },
+        {
+          "title": "Elisha and the Bow; Jonah and Nineveh",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-17_hurlbut_64kb.mp3",
+          "seconds": 613,
+          "readers": [
+            "soapturtle"
+          ],
+          "bytes": 4923848
+        },
+        {
+          "title": "How the Ten Tribes Were Lost",
+          "mp3": "https://archive.org/download/story_bible_4_0803_librivox/story_bible_4-18_hurlbut_64kb.mp3",
+          "seconds": 292,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 2346493
+        }
+      ]
+    },
+    {
+      "id": "librivox-1996",
+      "librivoxId": 1996,
+      "title": "Hurlbut's Story of the Bible Part 5",
+      "author": "Jesse Lyman Hurlbut",
+      "readers": [
+        "Chrystian J. Gonzalez",
+        "Denny Sayers (d. 2015)",
+        "Esther",
+        "Ezwa",
+        "John Lieder",
+        "Laura Caldwell",
+        "Megan Kunkel",
+        "Sean McGaughey",
+        "Sibella Denton",
+        "dolce",
+        "webround"
+      ],
+      "totaltime": "2:54:21",
+      "totalSeconds": 10461,
+      "cover": "https://archive.org/download/story_bible5_0805_librivox/Hurlbuts_Story_Bible_P5_1110.jpg",
+      "librivoxUrl": "https://librivox.org/hurlbuts-story-of-the-bible-part-five/",
+      "archiveUrl": "https://archive.org/details/story_bible5_0805_librivox",
+      "license": "Public domain (LibriVox recording)",
+      "ageHint": "6+",
+      "sections": [
+        {
+          "title": "The First Four Kings of Judah",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-01_hurlbut_64kb.mp3",
+          "seconds": 568,
+          "readers": [
+            "dolce"
+          ],
+          "bytes": 4544742
+        },
+        {
+          "title": "The Little Boy Who Was Crowned King",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-02_hurlbut_64kb.mp3",
+          "seconds": 424,
+          "readers": [
+            "Chrystian J. Gonzalez"
+          ],
+          "bytes": 3407281
+        },
+        {
+          "title": "Three Kings and a Great Prophet",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-03_hurlbut_64kb.mp3",
+          "seconds": 868,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 6962020
+        },
+        {
+          "title": "The Good King Hezekiah",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-04_hurlbut_64kb.mp3",
+          "seconds": 840,
+          "readers": [
+            "Denny Sayers (d. 2015)"
+          ],
+          "bytes": 6721266
+        },
+        {
+          "title": "The Lost Book Found in the Temple",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-05_hurlbut_64kb.mp3",
+          "seconds": 676,
+          "readers": [
+            "Denny Sayers (d. 2015)"
+          ],
+          "bytes": 5409303
+        },
+        {
+          "title": "The Last Four Kings of Judah and the Weeping Prophet",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-06_hurlbut_64kb.mp3",
+          "seconds": 810,
+          "readers": [
+            "John Lieder"
+          ],
+          "bytes": 6483477
+        },
+        {
+          "title": "What Ezekiel Saw in the Valley",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-07_hurlbut_64kb.mp3",
+          "seconds": 454,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 3633810
+        },
+        {
+          "title": "The Jewish Captives in the Court of the King",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-08_hurlbut_64kb.mp3",
+          "seconds": 524,
+          "readers": [
+            "Megan Kunkel"
+          ],
+          "bytes": 4193262
+        },
+        {
+          "title": "The Golden Image and the Fiery Furnace",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-09_hurlbut_64kb.mp3",
+          "seconds": 374,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 2999971
+        },
+        {
+          "title": "The Tree That Was Cut Down and Grew Again",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-10_hurlbut_64kb.mp3",
+          "seconds": 345,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2768018
+        },
+        {
+          "title": "The Writing upon the Wall",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-11_hurlbut_64kb.mp3",
+          "seconds": 437,
+          "readers": [
+            "John Lieder"
+          ],
+          "bytes": 3501103
+        },
+        {
+          "title": "Daniel in the Den of Lions",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-12_hurlbut_64kb.mp3",
+          "seconds": 440,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 3527853
+        },
+        {
+          "title": "The Story of a Joyous Journey",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-13_hurlbut_64kb.mp3",
+          "seconds": 519,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 4153123
+        },
+        {
+          "title": "The New Temple on Mount Moriah",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-14_hurlbut_64kb.mp3",
+          "seconds": 553,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 4437754
+        },
+        {
+          "title": "The Beautiful Queen of Persia",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-15_hurlbut_64kb.mp3",
+          "seconds": 1056,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 8473776
+        },
+        {
+          "title": "The Scribe Who Wrote the Old Testament",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-16_hurlbut_64kb.mp3",
+          "seconds": 446,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3574676
+        },
+        {
+          "title": "The Nobleman Who Built the Wall of Jerusalem",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-17_hurlbut_64kb.mp3",
+          "seconds": 705,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 5656329
+        },
+        {
+          "title": "Ezra's Great Bible Class in Jerusalem",
+          "mp3": "https://archive.org/download/story_bible5_0805_librivox/story_bible_5-18_hurlbut_64kb.mp3",
+          "seconds": 422,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 3383459
+        }
+      ]
+    },
+    {
+      "id": "librivox-2185",
+      "librivoxId": 2185,
+      "title": "Hurlbut's Story of the Bible Part 6",
+      "author": "Jesse Lyman Hurlbut",
+      "readers": [
+        "Esther",
+        "Ezwa",
+        "Janelle Parham",
+        "John Lieder",
+        "Megan Kunkel",
+        "Sean McGaughey",
+        "Sibella Denton",
+        "T. Wellington",
+        "humeangel",
+        "peaceuntoyou",
+        "webround"
+      ],
+      "totaltime": "5:31:15",
+      "totalSeconds": 19875,
+      "cover": "https://archive.org/download/story_bible6_0807_librivox/Hurlbuts_Story_Bible_P6_1110.jpg",
+      "librivoxUrl": "https://librivox.org/hurlbuts-story-of-the-bible-part-six/",
+      "archiveUrl": "https://archive.org/details/story_bible6_0807_librivox",
+      "license": "Public domain (LibriVox recording)",
+      "ageHint": "6+",
+      "sections": [
+        {
+          "title": "01 - The Angel by the Altar",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-01_hurlbut_64kb.mp3",
+          "seconds": 568,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 4551639
+        },
+        {
+          "title": "02 - The Manger of Bethlehem",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-02_hurlbut_64kb.mp3",
+          "seconds": 488,
+          "readers": [
+            "John Lieder"
+          ],
+          "bytes": 3911118
+        },
+        {
+          "title": "03 - The Star and the Wise Men",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-03_hurlbut_64kb.mp3",
+          "seconds": 403,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 3235280
+        },
+        {
+          "title": "04 - The Boy in his Father's House",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-04_hurlbut_64kb.mp3",
+          "seconds": 335,
+          "readers": [
+            "T. Wellington"
+          ],
+          "bytes": 2689638
+        },
+        {
+          "title": "05 - The Prophet in the Wilderness",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-05_hurlbut_64kb.mp3",
+          "seconds": 343,
+          "readers": [
+            "T. Wellington"
+          ],
+          "bytes": 2752750
+        },
+        {
+          "title": "06 - Jesus in the Desert, and beside the River",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-06_hurlbut_64kb.mp3",
+          "seconds": 557,
+          "readers": [
+            "T. Wellington"
+          ],
+          "bytes": 4473918
+        },
+        {
+          "title": "07 - The Water Jars at the Wedding Feast",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-07_hurlbut_64kb.mp3",
+          "seconds": 441,
+          "readers": [
+            "T. Wellington"
+          ],
+          "bytes": 3539355
+        },
+        {
+          "title": "08 - The Stranger at the Well",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-08_hurlbut_64kb.mp3",
+          "seconds": 510,
+          "readers": [
+            "T. Wellington"
+          ],
+          "bytes": 4097737
+        },
+        {
+          "title": "09 - The Story of a Boy in Capernaum and a Riot",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-09_hurlbut_64kb.mp3",
+          "seconds": 414,
+          "readers": [
+            "T. Wellington"
+          ],
+          "bytes": 3321605
+        },
+        {
+          "title": "10 - A Net Full of Fishes",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-10_hurlbut_64kb.mp3",
+          "seconds": 322,
+          "readers": [
+            "T. Wellington"
+          ],
+          "bytes": 2588065
+        },
+        {
+          "title": "11 - The Leper and the Man Let Down through the Roof",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-11_hurlbut_64kb.mp3",
+          "seconds": 515,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 4136631
+        },
+        {
+          "title": "12 - The Cripple at the Pool and the Withered Hand",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-12_hurlbut_64kb.mp3",
+          "seconds": 546,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 4384687
+        },
+        {
+          "title": "13 - The Twelve Disciples and the Sermon on the Mount",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-13_hurlbut_64kb.mp3",
+          "seconds": 800,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 6420570
+        },
+        {
+          "title": "14 - The Captain's Servant, the Widow's Son, and a Sinner",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-14_hurlbut_64kb.mp3",
+          "seconds": 644,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 5165024
+        },
+        {
+          "title": "15 - Some Stories Jesus Told by the Sea",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-15_hurlbut_64kb.mp3",
+          "seconds": 653,
+          "readers": [
+            "peaceuntoyou"
+          ],
+          "bytes": 5244000
+        },
+        {
+          "title": "16 - Peace, Be Still",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-16_hurlbut_64kb.mp3",
+          "seconds": 364,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 2927234
+        },
+        {
+          "title": "17 - The Little Girl Who Was Raised to Life",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-17_hurlbut_64kb.mp3",
+          "seconds": 352,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2823603
+        },
+        {
+          "title": "18 - A Dancing Girl and What Was Given Her",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-18_hurlbut_64kb.mp3",
+          "seconds": 322,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2577633
+        },
+        {
+          "title": "19 - The Feast beside the Sea and What Followed It",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-19_hurlbut_64kb.mp3",
+          "seconds": 446,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3574682
+        },
+        {
+          "title": "20 - The Answer to a Mother's Prayer",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-20_hurlbut_64kb.mp3",
+          "seconds": 381,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3049085
+        },
+        {
+          "title": "21 - The Glory of Jesus on the Mountain",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-21_hurlbut_64kb.mp3",
+          "seconds": 481,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3853241
+        },
+        {
+          "title": "22 - The Little Child in the Arms of Jesus",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-22_hurlbut_64kb.mp3",
+          "seconds": 277,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2218815
+        },
+        {
+          "title": "23 - At the Feast of Tabernacles",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-23_hurlbut_64kb.mp3",
+          "seconds": 295,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 2366135
+        },
+        {
+          "title": "24 - The Man with Clay on His Face",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-24_hurlbut_64kb.mp3",
+          "seconds": 460,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 3696084
+        },
+        {
+          "title": "25 - The Good Shepherd and the Good Samaritan",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-25_hurlbut_64kb.mp3",
+          "seconds": 401,
+          "readers": [
+            "Megan Kunkel"
+          ],
+          "bytes": 3216486
+        },
+        {
+          "title": "26 - Lazarus Raised to Life",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-26_hurlbut_64kb.mp3",
+          "seconds": 364,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 2926196
+        },
+        {
+          "title": "27 - Some Parables in Perea",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-27_hurlbut_64kb.mp3",
+          "seconds": 969,
+          "readers": [
+            "peaceuntoyou"
+          ],
+          "bytes": 7754251
+        },
+        {
+          "title": "28 - The Poor Rich Man and the Rich Poor Man",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-28_hurlbut_64kb.mp3",
+          "seconds": 668,
+          "readers": [
+            "humeangel"
+          ],
+          "bytes": 5348495
+        },
+        {
+          "title": "29 - Jesus at Jericho",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-29_hurlbut_64kb.mp3",
+          "seconds": 457,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 3665351
+        },
+        {
+          "title": "30 - Palm Sunday",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-30_hurlbut_64kb.mp3",
+          "seconds": 419,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 3355220
+        },
+        {
+          "title": "31 - The Last Vistis of Jesus to the Temple",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-31_hurlbut_64kb.mp3",
+          "seconds": 547,
+          "readers": [
+            "Janelle Parham"
+          ],
+          "bytes": 4392831
+        },
+        {
+          "title": "32 - The Parables on the Mount of Olives",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-32_hurlbut_64kb.mp3",
+          "seconds": 469,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 3762336
+        },
+        {
+          "title": "33 - The Last Supper",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-33_hurlbut_64kb.mp3",
+          "seconds": 592,
+          "readers": [
+            "John Lieder"
+          ],
+          "bytes": 4742012
+        },
+        {
+          "title": "34 - The Olive Orchard and the High Priests Hall",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-34_hurlbut_64kb.mp3",
+          "seconds": 566,
+          "readers": [
+            "John Lieder"
+          ],
+          "bytes": 4529090
+        },
+        {
+          "title": "35 - The Crown of Thorns",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-35_hurlbut_64kb.mp3",
+          "seconds": 881,
+          "readers": [
+            "peaceuntoyou"
+          ],
+          "bytes": 7064825
+        },
+        {
+          "title": "36 - The Darkest Day of All the World",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-36_hurlbut_64kb.mp3",
+          "seconds": 863,
+          "readers": [
+            "peaceuntoyou"
+          ],
+          "bytes": 6922105
+        },
+        {
+          "title": "37 - The Brightest Day of All the World",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-37_hurlbut_64kb.mp3",
+          "seconds": 993,
+          "readers": [
+            "peaceuntoyou"
+          ],
+          "bytes": 7967422
+        },
+        {
+          "title": "38 - The Stranger on the Shore",
+          "mp3": "https://archive.org/download/story_bible6_0807_librivox/story_bible_6-38_hurlbut_64kb.mp3",
+          "seconds": 769,
+          "readers": [
+            "peaceuntoyou"
+          ],
+          "bytes": 6172070
+        }
+      ]
+    },
+    {
+      "id": "librivox-2384",
+      "librivoxId": 2384,
+      "title": "Hurlbut's Story of the Bible Part 7",
+      "author": "Jesse Lyman Hurlbut",
+      "readers": [
+        "David Lawrence",
+        "Esther",
+        "Ezwa",
+        "John Lieder",
+        "Kristine Bekere",
+        "Laura Caldwell",
+        "Sean McGaughey",
+        "Sibella Denton",
+        "humeangel",
+        "webround"
+      ],
+      "totaltime": "2:55:07",
+      "totalSeconds": 10507,
+      "cover": "https://archive.org/download/story_bible7_0810_librivox/Hurlbuts_Story_Bible_P7_1110.jpg",
+      "librivoxUrl": "https://librivox.org/hurlbuts-story-of-the-bible-part-seven/",
+      "archiveUrl": "https://archive.org/details/story_bible7_0810_librivox",
+      "license": "Public domain (LibriVox recording)",
+      "ageHint": "6+",
+      "sections": [
+        {
+          "title": "The Church of the First Days",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-01_hurlbut_64kb.mp3",
+          "seconds": 318,
+          "readers": [
+            "Esther"
+          ],
+          "bytes": 2555265
+        },
+        {
+          "title": "The Man at the Beautiful Gate",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-02_hurlbut_64kb.mp3",
+          "seconds": 493,
+          "readers": [
+            "Kristine Bekere"
+          ],
+          "bytes": 3947070
+        },
+        {
+          "title": "The Right Way to Give, and the Wrong Way",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-03_hurlbut_64kb.mp3",
+          "seconds": 443,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3552110
+        },
+        {
+          "title": "Stephen with the Shining Face",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-04_hurlbut_64kb.mp3",
+          "seconds": 429,
+          "readers": [
+            "Ezwa"
+          ],
+          "bytes": 3440504
+        },
+        {
+          "title": "The Man Reading in the Chariot",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-05_hurlbut_64kb.mp3",
+          "seconds": 506,
+          "readers": [
+            "Kristine Bekere"
+          ],
+          "bytes": 4050934
+        },
+        {
+          "title": "The Voice That Spoke to Saul",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-06_hurlbut_64kb.mp3",
+          "seconds": 680,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 5444822
+        },
+        {
+          "title": "What Peter Saw by the Sea",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-07_hurlbut_64kb.mp3",
+          "seconds": 546,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 4374429
+        },
+        {
+          "title": "How the Iron Gate Was Opened",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-08_hurlbut_64kb.mp3",
+          "seconds": 349,
+          "readers": [
+            "David Lawrence"
+          ],
+          "bytes": 2802906
+        },
+        {
+          "title": "The Earliest Missionaries",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-09_hurlbut_64kb.mp3",
+          "seconds": 661,
+          "readers": [
+            "humeangel"
+          ],
+          "bytes": 5301881
+        },
+        {
+          "title": "The Song in the Prison",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-10_hurlbut_64kb.mp3",
+          "seconds": 613,
+          "readers": [
+            "humeangel"
+          ],
+          "bytes": 4917351
+        },
+        {
+          "title": "Paul's Speech on the Hill",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-11_hurlbut_64kb.mp3",
+          "seconds": 445,
+          "readers": [
+            "Esther",
+            "Sean McGaughey"
+          ],
+          "bytes": 3572366
+        },
+        {
+          "title": "Paul at Corinth",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-12_hurlbut_64kb.mp3",
+          "seconds": 333,
+          "readers": [
+            "David Lawrence"
+          ],
+          "bytes": 2673743
+        },
+        {
+          "title": "Paul at Ephesus",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-13_hurlbut_64kb.mp3",
+          "seconds": 693,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 5560379
+        },
+        {
+          "title": "Paul's Last Journey to Jerusalem",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-14_hurlbut_64kb.mp3",
+          "seconds": 635,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 5098343
+        },
+        {
+          "title": "The Speech on the Stairs",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-15_hurlbut_64kb.mp3",
+          "seconds": 578,
+          "readers": [
+            "webround"
+          ],
+          "bytes": 4636489
+        },
+        {
+          "title": "Two Years in Prison",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-16_hurlbut_64kb.mp3",
+          "seconds": 484,
+          "readers": [
+            "Sibella Denton"
+          ],
+          "bytes": 3875589
+        },
+        {
+          "title": "The Story That Paul Told to the King",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-17_hurlbut_64kb.mp3",
+          "seconds": 503,
+          "readers": [
+            "Laura Caldwell"
+          ],
+          "bytes": 4025444
+        },
+        {
+          "title": "Paul in the Storm",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-18_hurlbut_64kb.mp3",
+          "seconds": 498,
+          "readers": [
+            "John Lieder"
+          ],
+          "bytes": 3989899
+        },
+        {
+          "title": "How Paul Came to Rome and How He Lived There",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-19_hurlbut_64kb.mp3",
+          "seconds": 584,
+          "readers": [
+            "John Lieder"
+          ],
+          "bytes": 4679768
+        },
+        {
+          "title": "The Throne of God",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-20_hurlbut_64kb.mp3",
+          "seconds": 333,
+          "readers": [
+            "David Lawrence"
+          ],
+          "bytes": 2673536
+        },
+        {
+          "title": "The City of God",
+          "mp3": "https://archive.org/download/story_bible7_0810_librivox/story_bible_7-21_hurlbut_64kb.mp3",
+          "seconds": 383,
+          "readers": [
+            "Sean McGaughey"
+          ],
+          "bytes": 3068715
+        }
+      ]
+    },
+    {
+      "id": "librivox-13629",
+      "librivoxId": 13629,
+      "title": "Hurlbut's Life of Christ For Young and Old",
+      "author": "Jesse Lyman Hurlbut",
+      "readers": [
+        "Bill Mosley",
+        "Bruce Kachuk",
+        "Chris Scudder",
+        "Cy Young",
+        "David Lawrence",
+        "Devorah Allen",
+        "Elijah Fisher",
+        "Elisabeth Holland",
+        "Greg Giordano",
+        "Jakub Tuček",
+        "Jane Manning",
+        "Jennifer Borkowski",
+        "Larry Wilson",
+        "M.L. Wize",
+        "MajorToast",
+        "Mari Patterson",
+        "Maria de Fátima da Silva",
+        "Slix32",
+        "SlowCyclist1",
+        "Sophia Field",
+        "elandem",
+        "htamayo",
+        "pattymarie"
+      ],
+      "totaltime": "12:05:40",
+      "totalSeconds": 43540,
+      "cover": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/hurlbuts_life_christ_1906.jpg",
+      "librivoxUrl": "https://librivox.org/hurlbuts-life-of-christ-for-young-and-old-by-jesse-lyman-hurlbut/",
+      "archiveUrl": "https://archive.org/details/hurlbuts_life_of_christ_1906_librivox",
+      "license": "Public domain (LibriVox recording)",
+      "ageHint": "6+",
+      "sections": [
+        {
+          "title": "Preface & Introduction",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_000_hurlbut_64kb.mp3",
+          "seconds": 907,
+          "readers": [
+            "Devorah Allen"
+          ],
+          "bytes": 7266197
+        },
+        {
+          "title": "The Lord's Land",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_001_hurlbut_64kb.mp3",
+          "seconds": 568,
+          "readers": [
+            "elandem"
+          ],
+          "bytes": 4547161
+        },
+        {
+          "title": "The People in the Lord's Land",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_002_hurlbut_64kb.mp3",
+          "seconds": 575,
+          "readers": [
+            "Cy Young"
+          ],
+          "bytes": 4606584
+        },
+        {
+          "title": "The Stranger by the Golden Altar",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_003_hurlbut_64kb.mp3",
+          "seconds": 510,
+          "readers": [
+            "Cy Young"
+          ],
+          "bytes": 4083616
+        },
+        {
+          "title": "The Angel Visits Nazareth",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_004_hurlbut_64kb.mp3",
+          "seconds": 549,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 4399692
+        },
+        {
+          "title": "A Young Girl's Journey",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_005_hurlbut_64kb.mp3",
+          "seconds": 612,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 4898604
+        },
+        {
+          "title": "The Boy Who Never Tasted Wine",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_006_hurlbut_64kb.mp3",
+          "seconds": 409,
+          "readers": [
+            "Jane Manning"
+          ],
+          "bytes": 3279074
+        },
+        {
+          "title": "The Child-King in His Cradle",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_007_hurlbut_64kb.mp3",
+          "seconds": 716,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 5734528
+        },
+        {
+          "title": "The Baby Brought to the Temple",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_008_hurlbut_64kb.mp3",
+          "seconds": 409,
+          "readers": [
+            "Jane Manning"
+          ],
+          "bytes": 3279493
+        },
+        {
+          "title": "The Followers of the Star",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_009_hurlbut_64kb.mp3",
+          "seconds": 583,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 4671430
+        },
+        {
+          "title": "Safe in Egypt",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_010_hurlbut_64kb.mp3",
+          "seconds": 431,
+          "readers": [
+            "Jane Manning"
+          ],
+          "bytes": 3453522
+        },
+        {
+          "title": "A Child's Life in Nazareth",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_011_hurlbut_64kb.mp3",
+          "seconds": 565,
+          "readers": [
+            "Elisabeth Holland"
+          ],
+          "bytes": 4524789
+        },
+        {
+          "title": "The Boy Lost and Found",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_012_hurlbut_64kb.mp3",
+          "seconds": 695,
+          "readers": [
+            "Elisabeth Holland"
+          ],
+          "bytes": 5570310
+        },
+        {
+          "title": "The Young Woodworker",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_013_hurlbut_64kb.mp3",
+          "seconds": 328,
+          "readers": [
+            "David Lawrence"
+          ],
+          "bytes": 2629326
+        },
+        {
+          "title": "The Voice by the River",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_014_hurlbut_64kb.mp3",
+          "seconds": 419,
+          "readers": [
+            "Elisabeth Holland"
+          ],
+          "bytes": 3357723
+        },
+        {
+          "title": "The Carpenter Leaves His Shop",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_015_hurlbut_64kb.mp3",
+          "seconds": 349,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 2793548
+        },
+        {
+          "title": "Alone in the Desert",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_016_hurlbut_64kb.mp3",
+          "seconds": 618,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 4951319
+        },
+        {
+          "title": "The Earliest Followers of Jesus",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_017_hurlbut_64kb.mp3",
+          "seconds": 499,
+          "readers": [
+            "Elisabeth Holland"
+          ],
+          "bytes": 3994501
+        },
+        {
+          "title": "The Water Turned to Wine",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_018_hurlbut_64kb.mp3",
+          "seconds": 360,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 2884331
+        },
+        {
+          "title": "The Lord in His Temple",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_019_hurlbut_64kb.mp3",
+          "seconds": 568,
+          "readers": [
+            "Jakub Tuček"
+          ],
+          "bytes": 4547378
+        },
+        {
+          "title": "At the Old Well",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_020_hurlbut_64kb.mp3",
+          "seconds": 759,
+          "readers": [
+            "Bill Mosley"
+          ],
+          "bytes": 6080304
+        },
+        {
+          "title": "The Nobleman's Boy",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_021_hurlbut_64kb.mp3",
+          "seconds": 246,
+          "readers": [
+            "Cy Young"
+          ],
+          "bytes": 1970798
+        },
+        {
+          "title": "The Carpenter in His Home-town",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_022_hurlbut_64kb.mp3",
+          "seconds": 402,
+          "readers": [
+            "Chris Scudder"
+          ],
+          "bytes": 3222804
+        },
+        {
+          "title": "Four Fishermen Called",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_023_hurlbut_64kb.mp3",
+          "seconds": 335,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 2688105
+        },
+        {
+          "title": "Jesus in the Church, in the House, and in the Street&nbsp;&nbsp;",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_024_hurlbut_64kb.mp3",
+          "seconds": 342,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 2740442
+        },
+        {
+          "title": "The Leper and the Palsied Man",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_025_hurlbut_64kb.mp3",
+          "seconds": 436,
+          "readers": [
+            "Chris Scudder"
+          ],
+          "bytes": 3495584
+        },
+        {
+          "title": "How the Tax-Collector Became a Disciple",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_026_hurlbut_64kb.mp3",
+          "seconds": 420,
+          "readers": [
+            "pattymarie"
+          ],
+          "bytes": 3363806
+        },
+        {
+          "title": "The Cripple at the Bath",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_027_hurlbut_64kb.mp3",
+          "seconds": 380,
+          "readers": [
+            "Mari Patterson"
+          ],
+          "bytes": 3048543
+        },
+        {
+          "title": "The Lord of the Sabbath",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_028_hurlbut_64kb.mp3",
+          "seconds": 310,
+          "readers": [
+            "Mari Patterson"
+          ],
+          "bytes": 2483315
+        },
+        {
+          "title": "Jesus on the Mountain",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_029_hurlbut_64kb.mp3",
+          "seconds": 556,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 4454497
+        },
+        {
+          "title": "The Good Army Captain",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_030_hurlbut_64kb.mp3",
+          "seconds": 234,
+          "readers": [
+            "Slix32"
+          ],
+          "bytes": 1872901
+        },
+        {
+          "title": "How Jesus Stopped a Funeral",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_031_hurlbut_64kb.mp3",
+          "seconds": 537,
+          "readers": [
+            "Bill Mosley"
+          ],
+          "bytes": 4298658
+        },
+        {
+          "title": "The Sinful Woman Forgiven",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_032_hurlbut_64kb.mp3",
+          "seconds": 370,
+          "readers": [
+            "Jennifer Borkowski"
+          ],
+          "bytes": 2966543
+        },
+        {
+          "title": "Jesus and His Enemies",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_033_hurlbut_64kb.mp3",
+          "seconds": 363,
+          "readers": [
+            "Bruce Kachuk"
+          ],
+          "bytes": 2905874
+        },
+        {
+          "title": "The Story-teller by the Sea",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_034_hurlbut_64kb.mp3",
+          "seconds": 305,
+          "readers": [
+            "Chris Scudder"
+          ],
+          "bytes": 2441690
+        },
+        {
+          "title": "More Stories Told by the Sea",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_035_hurlbut_64kb.mp3",
+          "seconds": 406,
+          "readers": [
+            "MajorToast"
+          ],
+          "bytes": 3249575
+        },
+        {
+          "title": "Sailing Across the Sea",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_036_hurlbut_64kb.mp3",
+          "seconds": 600,
+          "readers": [
+            "Bill Mosley"
+          ],
+          "bytes": 4806563
+        },
+        {
+          "title": "The Sick Woman Made Well, and the Dead Girl Brought to Life",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_037_hurlbut_64kb.mp3",
+          "seconds": 459,
+          "readers": [
+            "M.L. Wize"
+          ],
+          "bytes": 3674471
+        },
+        {
+          "title": "Sight to the Blind and Voice to the Dumb",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_038_hurlbut_64kb.mp3",
+          "seconds": 217,
+          "readers": [
+            "Slix32"
+          ],
+          "bytes": 1739876
+        },
+        {
+          "title": "Twelve Preachers Sent Out",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_039_hurlbut_64kb.mp3",
+          "seconds": 472,
+          "readers": [
+            "Bill Mosley"
+          ],
+          "bytes": 3782170
+        },
+        {
+          "title": "A Dance; and How It Was Paid For",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_040_hurlbut_64kb.mp3",
+          "seconds": 292,
+          "readers": [
+            "Slix32"
+          ],
+          "bytes": 2341076
+        },
+        {
+          "title": "The Boy with His Five Loaves",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_041_hurlbut_64kb.mp3",
+          "seconds": 581,
+          "readers": [
+            "Bill Mosley"
+          ],
+          "bytes": 4654698
+        },
+        {
+          "title": "How the Sea Became a Floor",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_042_hurlbut_64kb.mp3",
+          "seconds": 306,
+          "readers": [
+            "SlowCyclist1"
+          ],
+          "bytes": 2452567
+        },
+        {
+          "title": "The Bread of Life",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_043_hurlbut_64kb.mp3",
+          "seconds": 422,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 3384701
+        },
+        {
+          "title": "Jesus in a Strange Country",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_044_hurlbut_64kb.mp3",
+          "seconds": 425,
+          "readers": [
+            "Bill Mosley"
+          ],
+          "bytes": 3408345
+        },
+        {
+          "title": "In the Land of the Ten Cities",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_045_hurlbut_64kb.mp3",
+          "seconds": 361,
+          "readers": [
+            "Bill Mosley"
+          ],
+          "bytes": 2894795
+        },
+        {
+          "title": "Again on the Sea of Galilee",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_046_hurlbut_64kb.mp3",
+          "seconds": 404,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 3238281
+        },
+        {
+          "title": "The Great Confession",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_047_hurlbut_64kb.mp3",
+          "seconds": 405,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 3243294
+        },
+        {
+          "title": "The Vision on the Mountain",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_048_hurlbut_64kb.mp3",
+          "seconds": 321,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 2573479
+        },
+        {
+          "title": "The Boy with the Dumb Spirit",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_049_hurlbut_64kb.mp3",
+          "seconds": 286,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 2292750
+        },
+        {
+          "title": "The Last Visit to Capernaum",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_050_hurlbut_64kb.mp3",
+          "seconds": 544,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 4358903
+        },
+        {
+          "title": "Good-bye to Galilee",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_051_hurlbut_64kb.mp3",
+          "seconds": 277,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 2220361
+        },
+        {
+          "title": "Passing Through Samaria",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_052_hurlbut_64kb.mp3",
+          "seconds": 327,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 2621171
+        },
+        {
+          "title": "The Scribe's Question; and Mary's Choice",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_053_hurlbut_64kb.mp3",
+          "seconds": 544,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 4357872
+        },
+        {
+          "title": "Jesus at the Feast of Tents",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_054_hurlbut_64kb.mp3",
+          "seconds": 301,
+          "readers": [
+            "SlowCyclist1"
+          ],
+          "bytes": 2407803
+        },
+        {
+          "title": "Jesus and the Sinful Woman",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_055_hurlbut_64kb.mp3",
+          "seconds": 395,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 3162344
+        },
+        {
+          "title": "The Blind Man at the Pool of Siloam",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_056_hurlbut_64kb.mp3",
+          "seconds": 574,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 4599270
+        },
+        {
+          "title": "The Good Shepherd",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_057_hurlbut_64kb.mp3",
+          "seconds": 351,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 2815709
+        },
+        {
+          "title": "Sending Out the Seventy&nbsp;&nbsp;",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_058_hurlbut_64kb.mp3",
+          "seconds": 392,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 3138084
+        },
+        {
+          "title": "Lazarus Called Out of His Tomb",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_059_hurlbut_64kb.mp3",
+          "seconds": 745,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 5964848
+        },
+        {
+          "title": "Jesus Preaching in Perea",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_060_hurlbut_64kb.mp3",
+          "seconds": 468,
+          "readers": [
+            "Bill Mosley"
+          ],
+          "bytes": 3749535
+        },
+        {
+          "title": "In the Church and at the Feast",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_061_hurlbut_64kb.mp3",
+          "seconds": 455,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 3646411
+        },
+        {
+          "title": "On Counting the Cost",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_062_hurlbut_64kb.mp3",
+          "seconds": 276,
+          "readers": [
+            "Bruce Kachuk"
+          ],
+          "bytes": 2209483
+        },
+        {
+          "title": "Seeking the Lost",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_063_hurlbut_64kb.mp3",
+          "seconds": 330,
+          "readers": [
+            "Bruce Kachuk"
+          ],
+          "bytes": 2645221
+        },
+        {
+          "title": "The Parable of the Lost Son Found",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_064_hurlbut_64kb.mp3",
+          "seconds": 474,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 3799536
+        },
+        {
+          "title": "The Parable of the Dishonest Steward",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_065_hurlbut_64kb.mp3",
+          "seconds": 295,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 2362832
+        },
+        {
+          "title": "A Parable for the Lovers of Money",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_066_hurlbut_64kb.mp3",
+          "seconds": 299,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 2392535
+        },
+        {
+          "title": "Two Parables Upon Prayer",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_067_hurlbut_64kb.mp3",
+          "seconds": 225,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 1806378
+        },
+        {
+          "title": "The Little Children; and the Rich Young Man",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_068_hurlbut_64kb.mp3",
+          "seconds": 345,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 2761974
+        },
+        {
+          "title": "The Workers in the Vineyard",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_069_hurlbut_64kb.mp3",
+          "seconds": 462,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 3700170
+        },
+        {
+          "title": "The Blind Man at the Gate",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_070_hurbult_64kb.mp3",
+          "seconds": 281,
+          "readers": [
+            "htamayo"
+          ],
+          "bytes": 2249442
+        },
+        {
+          "title": "In the Rich Man's Home at Jericho",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_071_hurlbut_64kb.mp3",
+          "seconds": 389,
+          "readers": [
+            "Greg Giordano"
+          ],
+          "bytes": 3118631
+        },
+        {
+          "title": "The Alabaster Jar",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_072_hurlbut_64kb.mp3",
+          "seconds": 556,
+          "readers": [
+            "pattymarie"
+          ],
+          "bytes": 4450932
+        },
+        {
+          "title": "Palm Sunday",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_073_hurlbut_64kb.mp3",
+          "seconds": 396,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 3173626
+        },
+        {
+          "title": "Monday on the Mount and in the Temple",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_074_hurlbut_64kb.mp3",
+          "seconds": 405,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 3245818
+        },
+        {
+          "title": "Tuesday Morning in the Temple",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_075_hurlbut_64kb.mp3",
+          "seconds": 255,
+          "readers": [
+            "Elijah Fisher"
+          ],
+          "bytes": 2045069
+        },
+        {
+          "title": "Three Parables of Warning",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_076_hurlbut_64kb.mp3",
+          "seconds": 453,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 3628625
+        },
+        {
+          "title": "The Head on the Coin",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_077_hurlbut_64kb.mp3",
+          "seconds": 258,
+          "readers": [
+            "SlowCyclist1"
+          ],
+          "bytes": 2068906
+        },
+        {
+          "title": "The Woman with Seven Husbands",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_078_hurlbut_64kb.mp3",
+          "seconds": 279,
+          "readers": [
+            "Bruce Kachuk"
+          ],
+          "bytes": 2233132
+        },
+        {
+          "title": "The Greatest of All the Commandments&nbsp;",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_079_hurlbut_64kb.mp3",
+          "seconds": 294,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 2354469
+        },
+        {
+          "title": "The Greatest Gift; and the Strangers from Afar",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_080_hurlbut_64kb.mp3",
+          "seconds": 323,
+          "readers": [
+            "Bruce Kachuk"
+          ],
+          "bytes": 2590023
+        },
+        {
+          "title": "Jesus Telling of Dark Days to Come",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_081_hurlbut_64kb.mp3",
+          "seconds": 409,
+          "readers": [
+            "Bruce Kachuk"
+          ],
+          "bytes": 3280122
+        },
+        {
+          "title": "The Parable of the Ten Bridesmaids",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_082_hurlbut_64kb.mp3",
+          "seconds": 200,
+          "readers": [
+            "Bruce Kachuk"
+          ],
+          "bytes": 1605776
+        },
+        {
+          "title": "The Parable of the Talents",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_083_hurlbut_64kb.mp3",
+          "seconds": 388,
+          "readers": [
+            "Maria de Fátima da Silva"
+          ],
+          "bytes": 3112135
+        },
+        {
+          "title": "The Last Great Day",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_084_hurlbut_64kb.mp3",
+          "seconds": 268,
+          "readers": [
+            "SlowCyclist1"
+          ],
+          "bytes": 2147770
+        },
+        {
+          "title": "Washing the Disciples' Feet",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_085_hurlbut_64kb.mp3",
+          "seconds": 544,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 4358483
+        },
+        {
+          "title": "The Lord's Supper '",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_086_hurlbut_64kb.mp3",
+          "seconds": 219,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 1755961
+        },
+        {
+          "title": "The Vine and the Branches",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_087_hurlbut_64kb.mp3",
+          "seconds": 407,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 3261287
+        },
+        {
+          "title": "The Last Words of Jesus to His Disciples",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_088_hurlbut_64kb.mp3",
+          "seconds": 352,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 2821170
+        },
+        {
+          "title": "In the Garden of Gethsemane",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_089_hurlbut_64kb.mp3",
+          "seconds": 500,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 4006208
+        },
+        {
+          "title": "Jesus Before Annas",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_090_hurlbut_64kb.mp3",
+          "seconds": 245,
+          "readers": [
+            "Sophia Field"
+          ],
+          "bytes": 1964523
+        },
+        {
+          "title": "Jesus Before Caiaphas",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_091_hurlbut_64kb.mp3",
+          "seconds": 462,
+          "readers": [
+            "Sophia Field"
+          ],
+          "bytes": 3704763
+        },
+        {
+          "title": "Jesus Before the Roman Governor",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_092_hurlbut_64kb.mp3",
+          "seconds": 343,
+          "readers": [
+            "Sophia Field"
+          ],
+          "bytes": 2748153
+        },
+        {
+          "title": "Jesus Before Herod",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_093_hurlbut_64kb.mp3",
+          "seconds": 320,
+          "readers": [
+            "Sophia Field"
+          ],
+          "bytes": 2564263
+        },
+        {
+          "title": "Jesus Sentenced to Death",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_094_hurlbut_64kb.mp3",
+          "seconds": 686,
+          "readers": [
+            "Sophia Field"
+          ],
+          "bytes": 5496259
+        },
+        {
+          "title": "Jesus Led to Calvary",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_095_hurlbut_64kb.mp3",
+          "seconds": 459,
+          "readers": [
+            "Sophia Field"
+          ],
+          "bytes": 3678823
+        },
+        {
+          "title": "Jesus on the Cross",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_096_hurlbut_64kb.mp3",
+          "seconds": 625,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 5007170
+        },
+        {
+          "title": "The Tomb in the Garden",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_097_hurlbut_64kb.mp3",
+          "seconds": 370,
+          "readers": [
+            "Cy Young"
+          ],
+          "bytes": 2963612
+        },
+        {
+          "title": "The Risen Christ and the Empty Tomb",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_098_hurlbut_64kb.mp3",
+          "seconds": 421,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 3373423
+        },
+        {
+          "title": "Jesus and Mary Magdalene",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_099_hurlbut_64kb.mp3",
+          "seconds": 376,
+          "readers": [
+            "Jane Manning"
+          ],
+          "bytes": 3011099
+        },
+        {
+          "title": "A Walk with the Risen Christ",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_100_hurlbut_64kb.mp3",
+          "seconds": 326,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 2612807
+        },
+        {
+          "title": "Two Sunday Evenings with the Risen Christ",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_101_hurlbut_64kb.mp3",
+          "seconds": 293,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 2348408
+        },
+        {
+          "title": "The Breakfast by the Sea",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_102_hurlbut_64kb.mp3",
+          "seconds": 442,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 3541389
+        },
+        {
+          "title": "Jesus Rising up from Earth to Heaven",
+          "mp3": "https://archive.org/download/hurlbuts_life_of_christ_1906_librivox/lifeofchrist_103_hurlbut_64kb.mp3",
+          "seconds": 295,
+          "readers": [
+            "Larry Wilson"
+          ],
+          "bytes": 2364508
+        }
+      ]
+    }
+  ]
+}

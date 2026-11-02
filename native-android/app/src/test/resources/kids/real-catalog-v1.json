@@ -1,0 +1,231 @@
+{
+  "version": 1,
+  "credits": "Stories adapted from Open Bible Stories. The original work by unfoldingWord is available from https://openbiblestories.org (CC BY-SA 4.0). Changes: retold for young children at three reading levels and narrated. Illustrations © Sweet Publishing (www.sweetpublishing.com), CC BY-SA 3.0, revised by Distant Shores Media / Door43. These adapted stories are shared under CC BY-SA 4.0. Recorded narration by Brad Harrington, unfoldingWord Open Bible Stories audio (CC BY-SA).",
+  "voices": [
+    {
+      "id": "host",
+      "label": "Cheerful host",
+      "default": true
+    },
+    {
+      "id": "dad",
+      "label": "Friendly dad"
+    },
+    {
+      "id": "grandma",
+      "label": "British accent"
+    },
+    {
+      "id": "storyteller",
+      "label": "Storyteller (recorded)",
+      "tiers": [
+        "t3"
+      ]
+    }
+  ],
+  "tiers": [
+    {
+      "id": "t1",
+      "label": "Ages 2-4",
+      "minAge": 2,
+      "maxAge": 4
+    },
+    {
+      "id": "t2",
+      "label": "Ages 5-7",
+      "minAge": 5,
+      "maxAge": 7
+    },
+    {
+      "id": "t3",
+      "label": "Ages 8-10",
+      "minAge": 8,
+      "maxAge": 10,
+      "defaultVoice": "storyteller"
+    }
+  ],
+  "stories": [
+    {
+      "id": "creation",
+      "title": "God Makes Everything",
+      "ref": "Genesis 1-2",
+      "obs": 1,
+      "obsChapters": [
+        1
+      ],
+      "cover": "cover-creation.jpg",
+      "zip": "story-creation.zip",
+      "bytes": 17660377,
+      "sha256": "9252f612235c2cdb6f15e6ca4f7bd25dc678e2cda0788de98b70f1901df83a78",
+      "minutes": {
+        "t1": 0.66,
+        "t2": 2.16,
+        "t3": 3.37
+      }
+    },
+    {
+      "id": "noah",
+      "title": "Noah and God’s Promise",
+      "ref": "Genesis 6-9",
+      "obs": 3,
+      "obsChapters": [
+        3
+      ],
+      "cover": "cover-noah.jpg",
+      "zip": "story-noah.zip",
+      "bytes": 19008832,
+      "sha256": "676395f1d51fdc6033601ece5b83477ae7f7ccab14085495cb5fbaf9f2efa53f",
+      "minutes": {
+        "t1": 0.57,
+        "t2": 2.28,
+        "t3": 3.74
+      }
+    },
+    {
+      "id": "david-goliath",
+      "title": "David Trusts God",
+      "ref": "1 Samuel 15-17; 24; 31; 2 Samuel 5; 7",
+      "obs": 17,
+      "obsChapters": [
+        17
+      ],
+      "cover": "cover-david-goliath.jpg",
+      "zip": "story-david-goliath.zip",
+      "bytes": 13180428,
+      "sha256": "6270d5cc3ad7da0c60a03ebc328c1be2b319d48b88f3b7cf43f1a2460771b5a4",
+      "minutes": {
+        "t1": 0.44,
+        "t2": 1.29,
+        "t3": 3.06
+      }
+    },
+    {
+      "id": "abraham",
+      "title": "God’s Promise to Abraham",
+      "ref": "Genesis 12-22",
+      "obs": 4,
+      "obsChapters": [
+        4,
+        5
+      ],
+      "cover": "cover-abraham.jpg",
+      "zip": "story-abraham.zip",
+      "bytes": 19989412,
+      "sha256": "3e5b84f624e93474e4dfc7dde733fd8116da7fd864c6108ab9583db17223a68c",
+      "minutes": {
+        "t1": 0.53,
+        "t2": 2.24,
+        "t3": 4.35
+      }
+    },
+    {
+      "id": "joseph",
+      "title": "Joseph Forgives His Brothers",
+      "ref": "Genesis 37-50",
+      "obs": 8,
+      "obsChapters": [
+        8
+      ],
+      "cover": "cover-joseph.jpg",
+      "zip": "story-joseph.zip",
+      "bytes": 16443491,
+      "sha256": "57b00c6f319bcdfdbd0f032f1feab99d351ac711caf447f7502be3545d754f3c",
+      "minutes": {
+        "t1": 0.53,
+        "t2": 2.27,
+        "t3": 3.16
+      }
+    },
+    {
+      "id": "red-sea",
+      "title": "God Opens the Red Sea",
+      "ref": "Exodus 12-15",
+      "obs": 12,
+      "obsChapters": [
+        12
+      ],
+      "cover": "cover-red-sea.jpg",
+      "zip": "story-red-sea.zip",
+      "bytes": 15351476,
+      "sha256": "5d8cb87bf19cf20dec8cd20a1a6c465e07b4b4a330819fd328a872714c97e7af",
+      "minutes": {
+        "t1": 0.36,
+        "t2": 1.77,
+        "t3": 3.14
+      }
+    },
+    {
+      "id": "jesus-born",
+      "title": "Baby Jesus Is Born",
+      "ref": "Matthew 1-2; Luke 2",
+      "obs": 23,
+      "obsChapters": [
+        23
+      ],
+      "cover": "cover-jesus-born.jpg",
+      "zip": "story-jesus-born.zip",
+      "bytes": 13307537,
+      "sha256": "2a77e3edc3354939597944f41cb371e2e70d9116ebf14fbad8eb5f1b6546afd3",
+      "minutes": {
+        "t1": 0.4,
+        "t2": 1.56,
+        "t3": 2.73
+      }
+    },
+    {
+      "id": "easter",
+      "title": "Jesus Is Alive!",
+      "ref": "Matthew 27-28; Mark 15-16; Luke 23-24; John 19-20",
+      "obs": 40,
+      "obsChapters": [
+        40,
+        41
+      ],
+      "cover": "cover-easter.jpg",
+      "zip": "story-easter.zip",
+      "bytes": 17756142,
+      "sha256": "211936fcc231d0520d8fc36d58cfb5dcea0d1831fe45b4c805f7fccd41608e82",
+      "minutes": {
+        "t1": 0.41,
+        "t2": 1.48,
+        "t3": 4.11
+      }
+    },
+    {
+      "id": "feeding-5000",
+      "title": "Jesus Feeds Thousands",
+      "ref": "Matthew 14:13-21; Mark 6:31-44; Luke 9:10-17; John 6:5-15",
+      "obs": 30,
+      "obsChapters": [
+        30
+      ],
+      "cover": "cover-feeding-5000.jpg",
+      "zip": "story-feeding-5000.zip",
+      "bytes": 10084567,
+      "sha256": "7b9c8aee180308966eede4096a9b29b90734a191d8896ef5f81de4e2ab586e77",
+      "minutes": {
+        "t1": 0.39,
+        "t2": 1.3,
+        "t3": 1.82
+      }
+    },
+    {
+      "id": "good-samaritan",
+      "title": "The Good Samaritan",
+      "ref": "Luke 10:25-37",
+      "obs": 27,
+      "obsChapters": [
+        27
+      ],
+      "cover": "cover-good-samaritan.jpg",
+      "zip": "story-good-samaritan.zip",
+      "bytes": 11163600,
+      "sha256": "b2a6cc100ffbb52f51368924a25f82f742412c63b673c5019360e37682d69a54",
+      "minutes": {
+        "t1": 0.32,
+        "t2": 1.18,
+        "t3": 2.27
+      }
+    }
+  ]
+}

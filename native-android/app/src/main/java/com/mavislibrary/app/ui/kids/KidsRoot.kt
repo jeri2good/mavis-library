@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -21,6 +22,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mavislibrary.app.AppContainer
 import com.mavislibrary.app.audio.PlaybackController
+import com.mavislibrary.app.audio.KidsStoryController
+import com.mavislibrary.app.audio.KidsStoryService
 import com.mavislibrary.app.data.kids.*
 import com.mavislibrary.app.data.model.Book
 import com.mavislibrary.app.data.model.BookSource
@@ -44,20 +47,31 @@ private fun BigButton(text: String, modifier: Modifier = Modifier, enabled: Bool
 
 @Composable
 fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playback: PlaybackController) {
-    var screen by rememberSaveable { mutableStateOf("Home") }
+    var screen by rememberSaveable { mutableStateOf(if (KidsStoryService.state.value.story != null) "Story player" else "Home") }
     var route by rememberSaveable { mutableStateOf<String?>(null) }
     var pinOpen by remember { mutableStateOf(false) }
+    var pinLeave by remember { mutableStateOf(false) }
+    var parentsUnlocked by remember { mutableStateOf(false) }
     var reading by remember { mutableStateOf(false) }
     var kidsAudio by rememberSaveable { mutableStateOf(false) }
     val audio by playback.state.collectAsState()
+    val context = LocalContext.current
+    val stories = remember { StoryRepository(context) }
+    val storyController = remember { KidsStoryController(context) }
+    val storyAudio by KidsStoryService.state.collectAsState()
+    val storyConnected by storyController.connected.collectAsState()
+    DisposableEffect(storyController) {
+        onDispose { storyController.close() }
+    }
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var foreground by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var today by remember { mutableStateOf(LocalDate.now()) }
     val accumulator = remember { ReadingAccumulator() }
-    val active = (reading && foreground) || (kidsAudio && audio.playing)
+    val active = (reading && foreground) || (kidsAudio && audio.playing) || storyAudio.playing
     val currentActive by rememberUpdatedState(active)
     val currentKidsAudio by rememberUpdatedState(kidsAudio)
+    val currentStoryPlaying by rememberUpdatedState(storyAudio.playing)
     fun flush(activeNow: Boolean) {
         accumulator.update(activeNow)
         val chunk = accumulator.drain()
@@ -66,7 +80,13 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) { foreground = true; today = LocalDate.now() }
-            if (event == Lifecycle.Event.ON_PAUSE) { foreground = false; flush(currentKidsAudio && playback.state.value.playing) }
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                foreground = false
+                flush((currentKidsAudio && playback.state.value.playing) || currentStoryPlaying)
+                parentsUnlocked = false
+                pinOpen = false
+                if (screen == "Parents") screen = "Home"
+            }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); flush(false) }
@@ -75,7 +95,11 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
     LaunchedEffect(Unit) { while (true) { delay(30_000); today = LocalDate.now(); flush(currentActive) } }
     // Stop an adult queue on entry, including a service that connects after composition.
     LaunchedEffect(audio.connected, audio.playing, kidsAudio) { if (audio.connected && !kidsAudio && audio.playing) playback.toggle() }
-    val home = { reading = false; route = null; screen = "Home" }
+    val home = {
+        storyController.command(KidsStoryService.STOP)
+        parentsUnlocked = false
+        reading = false; route = null; screen = "Home"
+    }
     BackHandler { if (pinOpen) pinOpen = false else home() }
     MavisTheme(Look.KIDS) {
         Surface(Modifier.fillMaxSize()) {
@@ -84,7 +108,7 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
                     if (screen != "Home" || route != null) BigButton("Home", onClick = home)
                     else Text("★ Mavis Kids", Modifier.weight(1f), fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { pinOpen = true }, modifier = Modifier.size(64.dp)) {
+                    IconButton(onClick = { pinLeave = false; pinOpen = true }, modifier = Modifier.size(64.dp)) {
                         Icon(Icons.Outlined.Lock, "Grown-ups corner", Modifier.size(28.dp))
                     }
                 }
@@ -102,8 +126,8 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
                             verticalArrangement = Arrangement.spacedBy(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             item(span = { GridItemSpan(maxLineSpan) }) { Heading(if (state.name.isBlank()) "Hi, reader!" else "Hi, ${state.name}!") }
                             item(span = { GridItemSpan(maxLineSpan) }) { Stars(state, today, false) }
-                            items(listOf("Read", "Listen", "Bible stories", "My stars")) { label ->
-                                val symbol = when(label) { "Read" -> "📚"; "Listen" -> "♫"; "Bible stories" -> "☀"; else -> "★" }
+                            items(listOf("Read", "Listen", "Story shelf", "My stars")) { label ->
+                                val symbol = when(label) { "Read" -> "📚"; "Listen" -> "♫"; "Story shelf" -> "☀"; else -> "★" }
                                 FilledTonalButton(onClick = { screen = label }, modifier = Modifier.fillMaxWidth().height(156.dp), shape = RoundedCornerShape(32.dp)) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) { Heading(symbol); Heading(label) }
                                 }
@@ -113,9 +137,18 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
                     "My stars" -> LazyVerticalGrid(GridCells.Fixed(1), Modifier.weight(1f)) {
                         item { Heading("My stars") }; item { Stars(state, today, true) }
                     }
-                    "Bible stories" -> LazyVerticalGrid(GridCells.Fixed(1), Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        item { Heading("Bible stories") }
-                        items(BIBLE_STORIES) { story -> BigButton(story.title, Modifier.fillMaxWidth()) { route = story.route } }
+                    "Parents" -> if (parentsUnlocked) KidsStoryParents(stories, prefs, state) {
+                        pinLeave = true; pinOpen = true
+                    }
+                    "Story shelf" -> KidsStoryShelf(stories, state.childAge, storyConnected, Modifier.weight(1f)) { entry ->
+                        if (audio.playing) playback.toggle()
+                        kidsAudio = false
+                        storyController.start(entry.id, state.childAge, state.narrator)
+                        screen = "Story player"
+                    }
+                    "Story player" -> KidsStoryPlayer(storyAudio, storyController, Modifier.weight(1f).fillMaxWidth()) {
+                        storyController.command(KidsStoryService.STOP)
+                        screen = "Story shelf"
                     }
                     else -> KidsBooks(container, screen == "Listen", audio.connected, Modifier.weight(1f), onRead = { book ->
                         route = "#/book/" + java.net.URLEncoder.encode(book.key, "UTF-8").replace("+", "%20")
@@ -129,10 +162,17 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
                 }
             }
             if (pinOpen) PinDialog(onDismiss = { pinOpen = false }, onCheck = { pin ->
-                val result = prefs.leave(pin)
+                val result = if (pinLeave) prefs.leave(pin) else prefs.unlockParents(pin)
                 if (result == PinResult.Correct) {
-                    flush(false)
-                    if (playback.state.value.playing) playback.toggle()
+                    storyController.command(KidsStoryService.STOP)
+                    if (pinLeave) {
+                        flush(false)
+                        if (playback.state.value.playing) playback.toggle()
+                    } else {
+                        if (playback.state.value.playing) playback.toggle()
+                        parentsUnlocked = true
+                        reading = false; route = null; screen = "Parents"
+                    }
                 }
                 result
             })

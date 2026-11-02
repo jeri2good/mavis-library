@@ -43,7 +43,7 @@ class StoryRepository(
         val target = File(root, "cover-${entry.id}.jpg")
         if (target.isFile) return@withContext target
         try { atomicWrite(target, fetch(entry.cover, 4 * 1024 * 1024)); target }
-        catch (_: IOException) { null }
+        catch (_: Exception) { currentCoroutineContext().ensureActive(); null }
     }
 
     suspend fun preview(voice: String, catalog: StoryCatalog?): File? = withContext(Dispatchers.IO) {
@@ -61,7 +61,7 @@ class StoryRepository(
         val dir = directory(entry)
         File(dir, ".sha256").readText() == entry.sha256 && load(entry).id == entry.id
     }.getOrDefault(false)
-    fun load(entry: StoryEntry): Story = StoryPacks.story(File(directory(entry), "story.json").readText()).also {
+    fun load(entry: StoryEntry): Story = readStory(directory(entry)).also {
         require(it.id == entry.id)
     }
 
@@ -115,7 +115,7 @@ class StoryRepository(
             staging.mkdirs()
             try {
                 extract(part, staging)
-                val story = StoryPacks.story(File(staging, "story.json").readText())
+                val story = readStory(staging)
                 require(story.id == entry.id)
                 validateFiles(staging, story)
                 File(staging, ".sha256").writeText(entry.sha256)
@@ -141,6 +141,11 @@ class StoryRepository(
     }
 
     companion object {
+        private fun readStory(directory: File): Story {
+            val file = File(directory, "story.json")
+            require(file.length() in 1..(2 * 1024 * 1024)) { "Invalid story metadata size" }
+            return StoryPacks.story(file.readText())
+        }
         fun verify(file: File, expected: String) {
             val digest = MessageDigest.getInstance("SHA-256")
             file.inputStream().use { input ->

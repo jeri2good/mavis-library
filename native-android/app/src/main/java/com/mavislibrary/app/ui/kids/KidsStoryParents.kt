@@ -53,7 +53,7 @@ fun KidsStoryParents(repository: StoryRepository, prefs: KidsPrefs, state: KidsS
                     }
                 })
             KidsText("Narrator")
-            listOf("host" to "Cheerful host", "dad" to "Friendly dad", "grandma" to "Warm grandma").forEach { (id, label) ->
+            listOf("host" to "Cheerful host", "dad" to "Friendly dad", "grandma" to "British accent").forEach { (id, label) ->
                 FilterChip(selected = state.narrator == id, onClick = {
                     scope.launch {
                         try { prefs.storySettings(age.roundToInt(), id) }

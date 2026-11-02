@@ -75,7 +75,7 @@ fun KidsStoryShelf(repository: StoryRepository, age: Int, connected: Boolean, mo
                             }
                         }
                         KidsText(entry.title)
-                        Text("${entry.minutes[storyTier(age)] ?: 4} min" + if (downloaded) "  \u2713 Downloaded" else "",
+                        Text("${(entry.minutes[storyTier(age)] ?: 4.0).let { kotlin.math.max(1, kotlin.math.round(it).toInt()) }} min" + if (downloaded) "  \u2713 Downloaded" else "",
                             fontSize = 16.sp)
                     }
                 }

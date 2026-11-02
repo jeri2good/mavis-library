@@ -25,7 +25,7 @@ data class StoryCatalog(
 data class StoryEntry(
     val id: String, val title: String, val ref: String, val obs: JsonElement? = null,
     val cover: String, val zip: String, val bytes: Long, val sha256: String,
-    val minutes: Map<String, Int> = emptyMap(),
+    val minutes: Map<String, Double> = emptyMap(),
 )
 @Serializable
 data class StoryPage(

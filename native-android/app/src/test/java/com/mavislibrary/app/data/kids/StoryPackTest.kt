@@ -39,7 +39,7 @@ class StoryPackTest {
         "voices":[{"id":"host","label":"Cheerful host","default":true}],
         "tiers":[{"id":"t2","label":"Ages 5-7","minAge":5,"maxAge":7}],
         "stories":[{"id":"creation","title":"God Makes Everything","ref":"Genesis 1-2","obs":[1,2],
-        "cover":"cover-creation.jpg","zip":"story-creation.zip","bytes":${zip.length()},"sha256":"${digest(zip)}","minutes":{"t2":4}}]}"""
+        "cover":"cover-creation.jpg","zip":"story-creation.zip","bytes":${zip.length()},"sha256":"${digest(zip)}","minutes":{"t2":4,"t1":0.66}}]}"""
 
     @Test fun ageBoundariesAndTierPageFiltering() {
         (2..10).forEach { assertEquals(if (it < 5) "t1" else if (it < 8) "t2" else "t3", storyTier(it)) }
@@ -53,7 +53,7 @@ class StoryPackTest {
     @Test fun parseCatalogAndCompleteLocalPack() {
         val zip = fixture()
         val parsed = StoryPacks.catalog(catalog(zip))
-        assertEquals(4, parsed.stories.single().minutes["t2"])
+        assertEquals(4.0, parsed.stories.single().minutes["t2"]!!, 0.0); assertEquals(0.66, parsed.stories.single().minutes["t1"]!!, 0.0001)
         assertEquals("Verbatim credits https://example.test", parsed.credits)
         StoryRepository.verify(zip, parsed.stories.single().sha256)
         val dir = tmp.newFolder()

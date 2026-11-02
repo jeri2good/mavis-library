@@ -109,7 +109,7 @@ class KidsStoryService : MediaSessionService() {
         }
         val open = PendingIntent.getActivity(this, 12, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        session = MediaSession.Builder(this, narration).setSessionActivity(open).setCallback(Callback()).build()
+        session = MediaSession.Builder(this, narration).setId("kids-story").setSessionActivity(open).setCallback(Callback()).build()
         handler.post(timer)
     }
 

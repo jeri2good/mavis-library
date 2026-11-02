@@ -21,7 +21,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = android.app.Application::class)
+@Config(sdk = [35])
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class StoryPackTest {
     @get:Rule val tmp = TemporaryFolder()
@@ -115,6 +115,8 @@ class StoryPackTest {
             // An offline re-open must not issue another HTTP request.
             repo.download(entry) {}
             assertEquals(2, server.requestCount)
+            server.enqueue(MockResponse().setResponseCode(503))
+            assertEquals(entry, repo.catalog().stories.single())
         } finally { server.shutdown() }
     }
     @Test fun serverIgnoringRangeRestartsInsteadOfAppending() = runTest {
@@ -128,6 +130,25 @@ class StoryPackTest {
             server.enqueue(MockResponse().setBody(okio.Buffer().write(zip.readBytes())))
             repo.download(entry) {}
             assertTrue(repo.installed(entry))
+        }
+    }
+    @Test fun corruptDownloadNeverInstallsAndRetryStartsClean() = runTest {
+        val zip = fixture()
+        MockWebServer().use { server ->
+            server.start()
+            val repo = StoryRepository(context, server.url("/").toString())
+            repo.root.deleteRecursively(); repo.root.mkdirs()
+            val entry = StoryPacks.catalog(catalog(zip)).stories.single()
+            val corrupt = zip.readBytes().also { it[0] = (it[0].toInt() xor 1).toByte() }
+            server.enqueue(MockResponse().setBody(okio.Buffer().write(corrupt)))
+            assertTrue(runCatching { repo.download(entry) {} }.exceptionOrNull() is IllegalArgumentException)
+            assertFalse(repo.installed(entry))
+            assertFalse(File(repo.root, "${entry.id}-${entry.sha256}.part").exists())
+            server.enqueue(MockResponse().setBody(okio.Buffer().write(zip.readBytes())))
+            repo.download(entry) {}
+            assertTrue(repo.installed(entry))
+            server.takeRequest()
+            assertNull(server.takeRequest().getHeader("Range"))
         }
     }
 }

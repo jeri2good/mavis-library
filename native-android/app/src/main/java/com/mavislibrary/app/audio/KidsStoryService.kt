@@ -52,7 +52,6 @@ class KidsStoryService : MediaSessionService() {
         override fun run() {
             if (deadline?.let { SystemClock.elapsedRealtime() >= it } == true) {
                 deadline = null
-                pendingAdvance = false
                 handler.removeCallbacks(advance)
                 narration.pause()
                 mutable.value = mutable.value.copy(sleepMinutes = 0)
@@ -71,13 +70,14 @@ class KidsStoryService : MediaSessionService() {
                 override fun onEvents(player: Player, events: Player.Events) {
                     val s = mutable.value
                     val active = player.playWhenReady && player.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE &&
-                        !s.ended && s.story != null && s.error == null
+                        player.playbackState != Player.STATE_IDLE && !s.ended && s.story != null && s.error == null
                     music.playWhenReady = active
                     music.volume = if (player.isPlaying) 0.045f else 0.14f
                     mutable.value = s.copy(playing = active)
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_ENDED && mutable.value.story != null) {
+                    if (playbackState == Player.STATE_ENDED && narration.playbackState == Player.STATE_ENDED &&
+                        mutable.value.story != null) {
                         pendingAdvance = true
                         handler.removeCallbacks(advance)
                         handler.postDelayed(advance, 1000)
@@ -143,6 +143,7 @@ class KidsStoryService : MediaSessionService() {
         handler.removeCallbacks(advance)
         pendingAdvance = false
         val s = mutable.value
+        if (s.story == null) return
         val page = s.pages.getOrNull(index) ?: return finishStory()
         val path = page.audio[s.narrator]?.get(s.tier)
         if (path == null) {
@@ -205,7 +206,7 @@ class KidsStoryService : MediaSessionService() {
                 NEXT -> next()
                 PREVIOUS -> showPage((mutable.value.page - 1).coerceAtLeast(0))
                 TOGGLE -> {
-                    if (mutable.value.error != null) showPage(mutable.value.page)
+                    if (mutable.value.error != null || narration.playbackState == Player.STATE_IDLE) showPage(mutable.value.page)
                     else if (narration.playWhenReady) narration.pause() else narration.play()
                 }
                 STOP -> { startJob?.cancel(); stopStory() }

@@ -12,17 +12,17 @@ import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class KidsStoryController(context: Context) : AutoCloseable {
+class KidsStoryController(context: Context, connect: Boolean = android.os.Build.FINGERPRINT != "robolectric") : AutoCloseable {
     private var controller: MediaController? = null
     private val mutableConnected = MutableStateFlow(false)
     val connected = mutableConnected.asStateFlow()
-    private val future = MediaController.Builder(context.applicationContext,
-        SessionToken(context, ComponentName(context, KidsStoryService::class.java))).buildAsync()
+    private val future = if (connect) MediaController.Builder(context.applicationContext,
+        SessionToken(context, ComponentName(context, KidsStoryService::class.java))).buildAsync() else null
     init {
-        Futures.addCallback(future, object : FutureCallback<MediaController> {
+        future?.let { Futures.addCallback(it, object : FutureCallback<MediaController> {
             override fun onSuccess(result: MediaController) { controller = result; mutableConnected.value = true }
             override fun onFailure(t: Throwable) { mutableConnected.value = false }
-        }, MoreExecutors.directExecutor())
+        }, MoreExecutors.directExecutor()) }
     }
     fun command(action: String, args: Bundle = Bundle.EMPTY) {
         controller?.sendCustomCommand(SessionCommand(action, Bundle.EMPTY), args)
@@ -30,5 +30,5 @@ class KidsStoryController(context: Context) : AutoCloseable {
     fun start(id: String, age: Int, voice: String) = command(KidsStoryService.START, Bundle().apply {
         putString("id", id); putInt("age", age); putString("voice", voice)
     })
-    override fun close() { MediaController.releaseFuture(future); controller = null; mutableConnected.value = false }
+    override fun close() { future?.let(MediaController::releaseFuture); controller = null; mutableConnected.value = false }
 }

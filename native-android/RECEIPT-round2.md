@@ -127,3 +127,67 @@ verified by these JVM/Robolectric/build checks. Hermes should:
 Durable lesson: test published metadata, not only handwritten fixtures; keep
 decimal minutes and unknown-field tolerance, and reuse the uniquely named Kids
 session rather than adding a default-ID MediaSession to the same process.
+
+## Reviewer Addendum Items 1-4 - 2026-11-02
+
+Starting revision: `2eb023a`; worktree was clean. Read BRIEF-round2-addendum.md,
+BRIEF-app.md, AGENTS.md, this receipt, git history, production code, and existing
+tests before editing. Ran the exact memory-safe full Gradle command recorded
+above before changes: BUILD SUCCESSFUL in 2m50s.
+
+1. Already done; verified, not duplicated. Commit `1ee4db8` added
+   RoundTwoCatalogTest. Its publishedCatalogAcceptsDecimalsUnknownFieldsAndTierDefaults
+   parses real-catalog-v1.json with StoryPacks.catalog; its
+   publishedLongListenParsesAndConvertsAllChapters parses real-longlisten-v1.json
+   with LongListen.parse. Both production-parser tests pass in the final suite.
+2. Added adultAndKidsSessionsCoexistInEitherCreationOrder in KidsStoryServiceTest
+   (commit `1a03e20`). Robolectric creates PlaybackService and KidsStoryService
+   together in each order, asserts distinct session IDs and `kids-story`, and
+   connects real MediaControllers to both. Adult media replacement stays
+   available; Kids media replacement stays blocked. The targeted service suite
+   passed before implementing notification isolation.
+3. Fixed the evidenced notification collision using Media3's existing
+   DefaultMediaNotificationProvider, configured during KidsStoryService.onCreate.
+   Kids picture stories and Long Listen now share their own notification ID
+   `1002`, channel `kids_story_playback`, and resource-backed channel name
+   "Kids stories and Long Listen". Adult playback retains Media3's default ID
+   `1001` and default channel; no adult service or playback policy was changed.
+   The new notification regression failed before the fix: expected IDs
+   [1001, 1002], observed only [1001]. After the fix it checks simultaneous
+   notifications, independent titles/channels, the Kids channel name, adult
+   notification updates preserving Kids, and clearing Kids media without
+   cancelling the adult notification. Idle local items exercise the real
+   Media3 notification path without opening audio or contacting the network.
+4. Already done; verified, not duplicated. Commit `1ee4db8` includes Storyteller
+   in STORY_VOICES, persists/accepts it in KidsPrefs and preview handling, and
+   resolves service narration through catalog.narrator. Catalog voice tier
+   restrictions and tier.defaultVoice are honored; Storyteller remains t3-only.
+   Existing RoundTwoCatalogTest, KidsPrefsTest, and page-clip fallback tests
+   pass unchanged. No new narrator lane or duplicate fixture tests were added.
+
+Final verification uses the exact full command above (no test filters):
+BUILD SUCCESSFUL in 2m47s, including assembleDebug; 98 XML suites, 526 tests,
+0 failures, 0 errors, 0 skipped. KidsStoryServiceTest has 3 passing tests;
+RoundTwoCatalogTest has 4 and KidsPrefsTest has 13. Also passed
+`node scripts/test-account-transport.mjs` (fake fetch/XHR) and `git diff --check`.
+An initial targeted command placed --tests after assembleDebug and was rejected
+before test execution; corrected by placing the filter after testDebugUnitTest.
+The only subsequent test failure was the intentional pre-fix collision repro.
+
+APK: app/build/outputs/apk/debug/app-debug.apk, 97,678,530 bytes.
+SHA-256: 3ca75c3ac3707b7d56a0a3a111b26e6784469347217b366c9c06db411a0320c4
+This APK was built with HEAD `1a03e20` plus the notification fix/test changes
+that accompany this receipt; its embedded GIT_SHA therefore reads `1a03e20`.
+
+All tracked changes stay under native-android/. gradle.properties and bundled
+web source are unchanged; existing web assets were reused. No emulator/device,
+push, deployment, Netlify action, or live content/audio request was performed.
+Default/fallback content and voice lanes remain as documented earlier;
+no experimental lane was introduced.
+
+Robolectric verifies notification generation/identity/cancellation, not actual
+phone lock-screen rendering or audible playback. Hermes device acceptance
+remains required: start an adult audiobook, enter Kids, play a picture story
+and Long Listen, inspect the separate Kids notification channel and return
+route, then stop Kids and confirm no adult notification is overwritten or
+cancelled. Retain the existing screen-off, PIN/back, and audio-focus checks.

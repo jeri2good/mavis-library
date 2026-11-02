@@ -14,6 +14,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -22,6 +23,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.mavislibrary.app.MainActivity
 import com.mavislibrary.app.MavisApp
+import com.mavislibrary.app.R
 import com.mavislibrary.app.data.kids.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,6 +76,12 @@ class KidsStoryService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        // Adult playback keeps Media3's default ID/channel; Kids must not replace or cancel it.
+        setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this)
+            .setNotificationId(1002)
+            .setChannelId("kids_story_playback")
+            .setChannelName(R.string.kids_playback_channel)
+            .build())
         narration = ExoPlayer.Builder(this).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             setHandleAudioBecomingNoisy(true)

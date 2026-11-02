@@ -39,6 +39,10 @@ android {
         targetSdk = 35
         versionCode = publishedVersionCode ?: 2
         versionName = publishedVersionName ?: "0.6.0-m2"
+        // Published builds are for phones only. The release workflow publishes the (release-key-signed) debug
+        // variant with -PmavisVersionCode, so filter on that, not on the release build type. Leaving out the
+        // emulator ABIs drops ~27 MB (x86_64 Kokoro engine). Local builds keep every ABI so the emulator still works.
+        if (publishedVersionCode != null) ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         buildConfigField("String", "API_BASE", "\"https://mavis-library.netlify.app\"")
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"https://github.com/jeri2good/mavis-library/releases/latest/download/update.json\"")
@@ -67,9 +71,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Phones only: the x86_64 Kokoro engine (27 MB) exists for the emulator, so release builds leave it out.
-            // Debug builds keep every ABI so the emulator still runs Kokoro.
-            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         }
     }
 

@@ -113,7 +113,9 @@ class AppContainer internal constructor(
     fun readerApi() = com.mavislibrary.app.data.reader.ReaderApi(podcastApi())
     val readerPrefs by lazy { com.mavislibrary.app.data.reader.ReaderPrefs(settingsPrefs) }
     val readAloudPrefs by lazy { com.mavislibrary.app.readaloud.ReadAloudPrefs(settingsPrefs) }
-    val readAloud by lazy { com.mavislibrary.app.readaloud.ReadAloud(app, readAloudPrefs, scope) }
+    /** No HTTP cache and a long read timeout: this archive is too big to cache and comes in one long stream. */
+    val kokoroModel by lazy { com.mavislibrary.app.readaloud.KokoroModelStore(app.filesDir.resolve("tts"), okHttp.newBuilder().cache(null).readTimeout(60, TimeUnit.SECONDS).build()) }
+    val readAloud by lazy { com.mavislibrary.app.readaloud.ReadAloud(app, readAloudPrefs, kokoroModel, scope) }
     val readState by lazy { com.mavislibrary.app.data.reader.ReadStateStore(settingsPrefs) }
     fun podcastRepository() = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(), podcastSettings, BuildConfig.API_BASE, ::podcastAccountId)
     val podcastReadyStore by lazy { com.mavislibrary.app.data.briefing.PodcastReadyStore(settingsPrefs) }

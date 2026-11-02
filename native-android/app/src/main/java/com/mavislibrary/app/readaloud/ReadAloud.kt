@@ -7,6 +7,8 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -57,9 +59,12 @@ fun voicesJson(voices: List<ShimVoice>): String = JSONObject().put("ev", "voices
 }).toString()
 
 /** App-wide read-aloud: the speech queue, its engines, audio focus, and the line to the page's shim. */
-class ReadAloud(private val app: Application, val prefs: ReadAloudPrefs, private val scope: CoroutineScope) {
+class ReadAloud(app: Application, val prefs: ReadAloudPrefs, val model: KokoroModelStore, private val scope: CoroutineScope) {
+    /** False on 32-bit-only phones, which have the phone voice alone. */
+    val naturalSupported = KokoroEngine.supported()
     private val main = Handler(Looper.getMainLooper())
     private val phone = PhoneVoiceEngine(app) { voices -> phoneVoices = voices; pushVoices() }
+    private val kokoro by lazy { KokoroEngine(model::modelDir) { settings.naturalVoice } }
     private val audio = app.getSystemService(AudioManager::class.java)
 
     @Volatile private var settings = ReadAloudSettings()
@@ -68,8 +73,8 @@ class ReadAloud(private val app: Application, val prefs: ReadAloudPrefs, private
     private var pageSink: ((String) -> Unit)? = null
 
     private val dispatcher = SpeechDispatcher(
-        route = { phone },
-        fallback = { null },
+        route = { request -> if (engineFor(request.voiceUri, request.lang, settings, naturalInstalled()) == VoiceEngineKind.NATURAL) kokoro else phone },
+        fallback = { if (it === phone) null else phone },
         emit = { event -> sendToPage(speechEventJson(event)) },
         onActiveChanged = ::onActiveChanged,
     )
@@ -81,7 +86,40 @@ class ReadAloud(private val app: Application, val prefs: ReadAloudPrefs, private
                 pushVoices()
             }
         }
+        scope.launch { model.state.collectLatest { pushVoices() } }
     }
+
+    private fun naturalInstalled() = naturalSupported && model.state.value == KokoroState.Installed
+
+    private var downloadJob: Job? = null
+
+    /** Runs in the app scope, so it continues when the Settings screen closes. */
+    fun startDownload() {
+        if (downloadJob?.isActive == true) return
+        downloadJob = scope.launch { model.download() }
+    }
+
+    fun cancelDownload() { downloadJob?.cancel() }
+
+    fun removeModel() {
+        dispatcher.reset()
+        kokoro.release()
+        scope.launch {
+            downloadJob?.cancelAndJoin()
+            model.remove()
+        }
+    }
+
+    /** Plays a short line in one voice from the Settings screen, replacing anything being read. */
+    fun sample(voiceUri: String?) {
+        phone.warm()
+        dispatcher.cancel()
+        dispatcher.speak(SpeechRequest(sampleIds--, SAMPLE_TEXT, voiceUri, "en-US"))
+    }
+
+    fun stopSample() = dispatcher.cancel()
+
+    private var sampleIds = -1L
 
     /** One message from the page. Called on the main thread by the WebView listener. */
     fun onWebMessage(message: String, reply: (String) -> Unit) {
@@ -104,7 +142,7 @@ class ReadAloud(private val app: Application, val prefs: ReadAloudPrefs, private
         dispatcher.reset()
     }
 
-    private fun pushVoices() = sendToPage(voicesJson(voiceList(settings, false, phoneVoices)))
+    private fun pushVoices() = sendToPage(voicesJson(voiceList(settings, naturalInstalled(), phoneVoices)))
 
     private fun sendToPage(json: String) {
         main.post { runCatching { pageSink?.invoke(json) } }
@@ -127,5 +165,6 @@ class ReadAloud(private val app: Application, val prefs: ReadAloudPrefs, private
 
     private companion object {
         const val FOCUS_LINGER_MS = 2_000L
+        const val SAMPLE_TEXT = "The Lord is my shepherd; I shall not want."
     }
 }

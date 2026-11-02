@@ -19,6 +19,40 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class KidsStoryServiceTest {
+    @Test fun adultAndKidsSessionsCoexistInEitherCreationOrder() {
+        for (kidsFirst in listOf(false, true)) {
+            val adult = Robolectric.buildService(PlaybackService::class.java)
+            val kids = Robolectric.buildService(KidsStoryService::class.java)
+            if (kidsFirst) { kids.create(); adult.create() }
+            else { adult.create(); kids.create() }
+            try {
+                val adultSession = PlaybackService::class.java.getDeclaredField("librarySession")
+                    .apply { isAccessible = true }.get(adult.get()) as MediaSession
+                val kidsSession = KidsStoryService::class.java.getDeclaredField("session")
+                    .apply { isAccessible = true }.get(kids.get()) as MediaSession
+                assertEquals("kids-story", kidsSession.id)
+                assertNotEquals(adultSession.id, kidsSession.id)
+                val adultController = MediaController.Builder(adult.get(), adultSession.token).buildAsync()
+                val kidsController = MediaController.Builder(kids.get(), kidsSession.token).buildAsync()
+                try {
+                    shadowOf(Looper.getMainLooper()).idle()
+                    assertTrue(adultController.isDone)
+                    assertTrue(kidsController.isDone)
+                    assertTrue(adultController.get().isConnected)
+                    assertTrue(kidsController.get().isConnected)
+                    assertTrue(adultController.get().isCommandAvailable(Player.COMMAND_SET_MEDIA_ITEM))
+                    assertFalse(kidsController.get().isCommandAvailable(Player.COMMAND_SET_MEDIA_ITEM))
+                } finally {
+                    MediaController.releaseFuture(kidsController)
+                    MediaController.releaseFuture(adultController)
+                }
+            } finally {
+                if (kidsFirst) { adult.destroy(); kids.destroy() }
+                else { kids.destroy(); adult.destroy() }
+            }
+        }
+    }
+
     @Test fun sessionHasPlaybackCommandsButCannotReplaceKidsMedia() {
         val service = Robolectric.buildService(KidsStoryService::class.java).create()
         val session = KidsStoryService::class.java.getDeclaredField("session").apply { isAccessible = true }

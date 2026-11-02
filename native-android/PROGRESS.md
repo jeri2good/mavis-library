@@ -14,3 +14,4 @@
 - Final verification on code commit c44a561 passed again in 2m49s: 96 suites / 515 tests / zero failures, errors or skips, plus assembleDebug. APK SHA-256: 4173788eec1b096d20ae4ab8edbc0e6bef7869d0c8f4dbba899833ea4eea81cf.
 - Re-synced the shared contract after its concurrent OBS-mapping correction (Daniel/Jonah absent; nullable/multi-chapter obs already supported). App code is unchanged by that documentation update.
 - Appended the Chunk 1 receipt and Hermes device acceptance checklist to native-android/RECEIPT.md. All changes stay under native-android; gradle.properties is unchanged; no emulator, deployment or push.
+- Round-two addendum: verified items 1/4 already delivered by 1ee4db8; baseline memory-safe testDebugUnitTest + assembleDebug passes. Added item 2's same-process adult/Kids service regression in both creation orders, including live controller connection and retained media-command containment.

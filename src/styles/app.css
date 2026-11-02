@@ -629,14 +629,28 @@ html.in-native-shell { --tabbar: 0px; }
   margin-inline: calc(var(--gutter) * -1);
   background: var(--paper); border-bottom: 1px solid var(--line);
 }
-.bible-tools { display: flex; gap: 2px; margin-left: auto; order: 2; }
+.bible-tools {
+  display: flex; align-items: center; flex-wrap: nowrap; gap: 2px;
+  margin-left: auto; order: 2; max-width: 100%; min-width: 0;
+  overflow-x: auto; padding: 4px 2px; scrollbar-width: thin;
+}
+.bible-tools .icon-btn {
+  flex: 0 0 auto; flex-direction: column; gap: 2px;
+  width: auto; min-width: 48px; min-height: 52px; padding: 4px;
+}
+.bible-tools .icon-btn span { font-size: 11px; line-height: 16px; color: var(--ink-soft); }
+.bible-tools .icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.bible-tools .bible-mine {
+  flex: 0 0 auto; min-height: 48px; border-radius: 999px;
+  background: #d9a85a; color: #241b10; border-color: #d9a85a; white-space: nowrap;
+}
+.bible-tools .bible-mine:hover { background: #e6b96e; border-color: #e6b96e; }
 .bible-bar .seg { order: 3; }
 @media (min-width: 700px) { .bible-bar .seg { order: 1; } }
 @media (max-width: 699px) {
   .bible-bar { gap: 6px; padding-block: 6px; }
   .bible-bar .seg { width: 100%; grid-auto-columns: 1fr; }
-  .bible-tools { gap: 0; }
-  .bible-tools .icon-btn { width: 38px; }
+  .bible-tools { gap: 0; flex-basis: 100%; }
   .bible-pick { padding: 0 12px; font-size: 1rem; gap: 6px; }
 }
 .bible-pick { font-family: var(--font-display); font-size: 1.05rem; }

@@ -1,0 +1,14 @@
+{
+  "id": "creation", "title": "God Makes Everything", "ref": "Genesis 1-2", "music": "music.mp3",
+  "pages": [
+    {"img":"img/01.jpg","text":{"t1":"God made light.","t2":"God made the light and called it good.","t3":"God made light, bringing order to the darkness."},
+     "audio":{"host":{"t1":"audio/host/t2/01.mp3","t2":"audio/host/t2/01.mp3","t3":"audio/host/t2/01.mp3"},
+              "dad":{"t1":"audio/host/t2/01.mp3","t2":"audio/host/t2/01.mp3","t3":"audio/host/t2/01.mp3"},
+              "grandma":{"t1":"audio/host/t2/01.mp3","t2":"audio/host/t2/01.mp3","t3":"audio/host/t2/01.mp3"}}},
+    {"img":"img/01.jpg","text":{"t2":"God made the sky.","t3":"God made the sky and seas."},
+     "audio":{"host":{"t2":"audio/host/t2/01.mp3","t3":"audio/host/t2/01.mp3"},
+              "dad":{"t2":"audio/host/t2/01.mp3","t3":"audio/host/t2/01.mp3"},
+              "grandma":{"t2":"audio/host/t2/01.mp3","t3":"audio/host/t2/01.mp3"}}}
+  ],
+  "question":{"t3":{"q":"What did God make?","choices":["Light","A car","A phone"],"answer":0}}
+}

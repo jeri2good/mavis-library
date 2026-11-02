@@ -4,3 +4,4 @@
 - Copied the contract verbatim into docs/KIDS-STORY-CONTRACT.md.
 - Added typed catalog/story models, tier filtering, parent PIN verification without leaving kids mode, age/narrator preferences, and a debug pack-base override.
 - Added offline catalog/covers, bounded/resumable downloads, SHA-256 verification, safe ZIP extraction and staged story installation. Verification follows in the fixture-test task.
+- Added a fully local two-page fixture with tiny JPEG and one-second silent MP3s, plus Robolectric tests for parsing, all age boundaries, page filtering, prefs defaults/persistence, PIN-preserving parent unlock, ZIP traversal, SHA mismatch, HTTP Range resume and servers ignoring Range. Full memory-limited Gradle verification is running.

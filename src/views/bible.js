@@ -63,7 +63,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   const prog = await store.getProgress(KEY).catch(() => null);
   let ref = null;
   if (route.segs[0]) {
-    const b = idx.byId.get(route.segs[0]);
+    const b = idx.byId.get(route.segs[0]) || [...idx.byId.values()].find(b => b.id.toLowerCase() === route.segs[0].toLowerCase());
     if (b) ref = { book: b.id, chapter: Math.min(b.verses.length, Math.max(1, Number(route.segs[1]) || 1)) };
   }
   if (!ref && prog?.cfi) ref = B.parseOsis(prog.cfi);
@@ -91,13 +91,13 @@ async function renderChapter(root, route, { idx, navigate, token }) {
           <select class="select tr-pick" id="tr2-pick" title="Side by side with"><option value="">+ side by side</option>${B.ALL_TRANSLATIONS.map((t) => html`<option value="${t.id}" ${t.id === tr2 ? 'selected' : ''}>+ ${t.short}</option>`)}</select>
         </span>
         <span class="bible-tools">
-        <button type="button" class="icon-btn" data-act="strongs" aria-pressed="${strongsOn}" aria-label="Show Strong’s numbers (tap a word for its Hebrew or Greek)" title="Strong’s concordance">${icon('dict')}</button>
-        <a class="icon-btn" href="#/bible/search" aria-label="Search the Bible">${icon('search')}</a>
-        <button type="button" class="icon-btn" data-act="listen" aria-label="Listen to this chapter">${icon('headphones')}</button>
-        ${window.MavisPodcast && !isKids() ? html`<button type="button" class="icon-btn" data-act="podcast" aria-label="Bible lesson podcast" title="Bible lesson podcast">${icon('mic')}</button>` : ''}
-        <a class="btn btn-sm" href="#/bible/mine">${icon('note', { size: 18 })} My Bible</a>
-        <button type="button" class="icon-btn" data-act="ask" aria-label="Ask Mavis about this chapter">${icon('spark')}</button>
-        <button type="button" class="icon-btn" data-act="study" aria-label="Study tools: commentary, topics, reading plans" title="Study tools">${icon('library')}</button>
+        <button type="button" class="icon-btn" data-act="strongs" aria-pressed="${strongsOn}" aria-label="Show Strong’s numbers (tap a word for its Hebrew or Greek)" title="Strong’s concordance">${icon('original')}<span>Original</span></button>
+        <a class="icon-btn" href="#/bible/search" aria-label="Search the Bible">${icon('search')}<span>Search</span></a>
+        <button type="button" class="icon-btn" data-act="listen" aria-label="Read this chapter aloud">${icon('speaking')}<span>Read</span></button>
+        ${window.MavisPodcast && !isKids() ? html`<button type="button" class="icon-btn" data-act="podcast" aria-label="Make a Bible lesson podcast" title="Bible lesson podcast">${icon('studioMic')}<span>Lesson</span></button>` : ''}
+        <a class="btn btn-sm bible-mine" href="#/bible/mine">${icon('note', { size: 18 })} My Bible</a>
+        <button type="button" class="icon-btn" data-act="ask" aria-label="Ask Mavis about this chapter">${icon('spark')}<span>Ask</span></button>
+        <button type="button" class="icon-btn" data-act="study" aria-label="Study tools: commentary, topics, reading plans" title="Study tools">${icon('library')}<span>Study</span></button>
         </span>
       </div>
       <form class="searchbar bible-lookup" role="search" id="lookup">
@@ -781,7 +781,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
       strongsOn = !strongsOn; store.setSetting('bibleStrongs', strongsOn);
       e.target.closest('[data-act]').setAttribute('aria-pressed', String(strongsOn));
       versesEl.classList.toggle('strongs-on', strongsOn);
-      if (strongsOn && tr !== 'kjv') toast('Strong’s numbers are on the KJV text. Switch to KJV to tap words, or use “Original” on a verse.');
+      toast(strongsOn ? 'Original words on — tap a word for its Hebrew or Greek' : 'Original words off');
       await paint();
     }
     if (act === 'podcast' && window.MavisPodcast && !isKids()) {

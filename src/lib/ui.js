@@ -28,6 +28,9 @@ export function $$(sel, root = document) { return [...root.querySelectorAll(sel)
 // ---------- Icons (one consistent 24px, 1.6 stroke family) ----------
 
 const P = {
+  speaking: '<path d="M5 21v-5a7 7 0 0 1-2-5c0-4 2.3-7 6-7 3.2 0 5 2.5 5 5l2 3h-2v3a2 2 0 0 1-2 2H9v4M10.5 9h.1M17.5 10a4 4 0 0 1 0 6M20 7.5a7.5 7.5 0 0 1 0 11"/>',
+  studioMic: '<rect x="6" y="3" width="6" height="11" rx="3"/><path d="M3.5 11v1a5.5 5.5 0 0 0 9 4.2M9 17.5V21M5.5 21h7M8 6h2M8 9h2M18 14v7h-3"/><circle cx="18" cy="10" r="4"/>',
+  original: '<path d="m8 3 8 7M15 3l-2 4M9 6l-1 4M7 21h4v-2a4 4 0 1 1 2 0v2h4"/>',
   spark: '<path d="M12 3.5c.6 3.9 2.6 5.9 6.5 6.5-3.9.6-5.9 2.6-6.5 6.5-.6-3.9-2.6-5.9-6.5-6.5 3.9-.6 5.9-2.6 6.5-6.5z"/><path d="M18.5 15.5c.3 1.6 1 2.3 2.5 2.5-1.5.2-2.2.9-2.5 2.5-.3-1.6-1-2.3-2.5-2.5 1.5-.2 2.2-.9 2.5-2.5z"/>',
   star: '<path d="m12 3.8 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/>',
   starFill: '<path fill="currentColor" d="m12 3.8 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/>',

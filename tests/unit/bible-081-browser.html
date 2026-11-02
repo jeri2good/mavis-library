@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/src/styles/app.css"></head><body><main id="root"></main><script type="module">
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/src/styles/app.css"></head><body><div id="toasts"></div><main id="root"></main><script type="module">
 import * as store from '/src/lib/store.js';
 import { render } from '/src/views/bible.js';
 const actualFetch = window.fetch.bind(window);
@@ -20,6 +20,15 @@ try {
  await store.loadSettings(); await store.setSetting('bibleCached',true); await store.setSetting('kidsMode',false); await store.setSetting('bibleStrongs',false);
  await show();
  check(root.querySelector('a[href="#/bible/mine"]'), 'My Bible header');
+ check([...root.querySelectorAll('.bible-tools .icon-btn span')].map(el=>el.textContent).join(',')==='Original,Search,Read,Lesson,Ask,Study','Toolbar labels');
+ check(root.querySelector('[data-act="listen"]').getAttribute('aria-label')==='Read this chapter aloud','Read accessible name');
+ check(root.querySelector('[data-act="podcast"]').getAttribute('aria-label')==='Make a Bible lesson podcast','Lesson accessible name');
+ const original=root.querySelector('[data-act="strongs"]');
+ original.click(); await wait(()=>root.querySelector('.strongs-on .w'));
+ check(original.getAttribute('aria-pressed')==='true' && document.querySelector('.toast-msg').textContent==='Original words on — tap a word for its Hebrew or Greek','Original on feedback');
+ original.click(); await wait(()=>!root.querySelector('.strongs-on'));
+ check(original.getAttribute('aria-pressed')==='false' && [...document.querySelectorAll('.toast-msg')].at(-1).textContent==='Original words off','Original off feedback');
+ await wait(()=>root.querySelector('#v16 [data-word="0"]'));
  root.querySelector('[data-act="podcast"]').click(); await wait(()=>messages.length===1);
  check(messages[0].chapter==='John 3' && messages[0].text.includes('\n36 '), 'Full chapter bridge');
  const target=()=>root.querySelector('#v16 [data-word="0"]');

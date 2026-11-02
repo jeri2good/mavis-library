@@ -178,6 +178,8 @@ fun SettingsScreen(container: AppContainer, onOpenShowcase: () -> Unit, onDriveM
             }
         }
 
+        ReadAloudSettingsSection(container)
+
         Section("Drive mode", Icons.Outlined.DirectionsCar) {
             SettingSwitch(
                 "Start for car Bluetooth",
@@ -246,7 +248,7 @@ private fun SettingSwitch(title: String, blurb: String, checked: Boolean, onChec
 }
 
 @Composable
-private fun Section(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, content: @Composable () -> Unit) {
+internal fun Section(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, content: @Composable () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

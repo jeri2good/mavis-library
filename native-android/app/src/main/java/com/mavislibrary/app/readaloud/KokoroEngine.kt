@@ -134,12 +134,15 @@ class KokoroEngine(private val modelDir: () -> File?, private val defaultVoice: 
             val model = loadedModel() ?: throw IllegalStateException("model missing")
             val wanted = active.request.voiceUri?.removePrefix(NATURAL_PREFIX) ?: defaultVoice()
             val voice = NATURAL_VOICES.find { it.id == wanted } ?: NATURAL_VOICES.first()
-            val speed = active.request.rate.coerceIn(MIN_RATE, MAX_RATE)
+            // Scripture pacing: a little slower than Kokoro's brisk default, with a breath after each sentence so verses
+            // don't run together (J: "reads like a robot"). The pause is real audio, so `end` fires after it.
+            val speed = (active.request.rate * CALM_PACE).coerceIn(MIN_RATE, MAX_RATE)
             for (span in splitSentences(active.request.text)) {
                 if (active.cancelled) return
                 val audio = model.generateWithCallback(active.request.text.substring(span), voice.speakerId, speed, KeepGoing(active))
                 if (active.cancelled) return
-                if (!put(active, Chunk(audio.samples, audio.sampleRate, span))) return
+                val breath = FloatArray((audio.sampleRate * SENTENCE_PAUSE_S).toInt())
+                if (!put(active, Chunk(audio.samples + breath, audio.sampleRate, span))) return
             }
         }
         if (outcome.isFailure) {
@@ -241,6 +244,8 @@ class KokoroEngine(private val modelDir: () -> File?, private val defaultVoice: 
         private const val MAX_THREADS = 4
         private const val MIN_RATE = .5f
         private const val MAX_RATE = 2f
+        private const val CALM_PACE = .88f
+        private const val SENTENCE_PAUSE_S = .45f
         private const val DRAIN_TIMEOUT_MS = 5_000L
         private const val IDLE_RELEASE_MINUTES = 3L
 

@@ -20,6 +20,7 @@ media3 = "1.11.1"
 cameraX = "1.4.2"
 zxing = "3.5.3"
 guava = "33.3.1-jre"
+commonsCompress = "1.27.1"
 junit = "4.13.2"
 robolectric = "4.15.1"
 androidxTestCore = "1.6.1"
@@ -64,6 +65,7 @@ androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", versi
 androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "cameraX" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commonsCompress" }
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 androidx-test-core = { module = "androidx.test:core-ktx", version.ref = "androidxTestCore" }

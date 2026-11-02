@@ -1,4 +1,8 @@
 import com.android.build.api.variant.ApplicationAndroidComponentsExtension
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.android.application)
@@ -80,6 +84,16 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
+    packaging {
+        jniLibs {
+            // Kokoro ships for arm64-v8a + x86_64 only (the AAR also has 32-bit libs); other ABIs use the phone voice.
+            excludes += listOf("lib/armeabi-v7a/libsherpa-onnx-jni.so", "lib/x86/libsherpa-onnx-jni.so", "lib/x86/libonnxruntime.so")
+        }
+        resources {
+            excludes += listOf("META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/DEPENDENCIES")
+        }
+    }
+
     lint {
         abortOnError = true
         warningsAsErrors = false
@@ -148,7 +162,48 @@ extensions.getByType<ApplicationAndroidComponentsExtension>().onVariants { varia
     variant.sources.assets?.addGeneratedSourceDirectory(copyWebAssets, CopyWebAssets::outputDir)
 }
 
+/** Downloads a release asset once into Gradle's user home (shared by worktrees, works offline afterwards) and checks its SHA-256. */
+abstract class FetchPinnedAar : DefaultTask() {
+    @get:Input abstract val url: Property<String>
+    @get:Input abstract val sha256: Property<String>
+    @get:OutputFile abstract val output: RegularFileProperty
+
+    private fun digest(file: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(1 shl 16)
+            while (true) { val n = input.read(buffer); if (n < 0) break; md.update(buffer, 0, n) }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    @TaskAction
+    fun fetch() {
+        val target = output.get().asFile
+        if (target.isFile && digest(target) == sha256.get()) return
+        target.parentFile.mkdirs()
+        val part = File(target.path + ".part")
+        URI(url.get()).toURL().openStream().use { input -> part.outputStream().use { input.copyTo(it) } }
+        val actual = digest(part)
+        if (actual != sha256.get()) {
+            part.delete()
+            throw GradleException("SHA-256 mismatch for ${url.get()}: expected ${sha256.get()}, got $actual")
+        }
+        Files.move(part.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+}
+
+val sherpaOnnxVersion = "1.13.8"
+val sherpaOnnxAar = File(gradle.gradleUserHomeDir, "caches/mavis-pinned/sherpa-onnx-static-link-onnxruntime-$sherpaOnnxVersion.aar")
+val fetchSherpaOnnx = tasks.register<FetchPinnedAar>("fetchSherpaOnnx") {
+    url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaOnnxVersion/sherpa-onnx-static-link-onnxruntime-$sherpaOnnxVersion.aar")
+    sha256.set("b22c3fc1b6a45666d28892bb2f7694beeb77a8362d7ebd77c1a5431ec9435471")
+    output.set(sherpaOnnxAar)
+}
+
 dependencies {
+    implementation(files(sherpaOnnxAar).builtBy(fetchSherpaOnnx))
+    implementation(libs.commons.compress)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

@@ -23,6 +23,8 @@
 
     <queries>
         <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <!-- Android 11+ hides speech engines from TextToSpeech without this. -->
+        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
     </queries>
 
     <application

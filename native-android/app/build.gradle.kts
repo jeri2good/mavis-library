@@ -45,6 +45,7 @@ android {
         if (publishedVersionCode != null) ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         buildConfigField("String", "API_BASE", "\"https://mavis-library.netlify.app\"")
+        buildConfigField("String", "KIDS_PACK_BASE", "\"https://github.com/jeri2good/mavis-library/releases/download/kids-content-v1/\"")
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"https://github.com/jeri2good/mavis-library/releases/latest/download/update.json\"")
         buildConfigField("String", "UPDATE_DOWNLOADS", "\"https://github.com/jeri2good/mavis-library/releases/download/\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -63,6 +64,10 @@ android {
 
     buildTypes {
         debug {
+            providers.gradleProperty("kidsPackBase").orNull?.let {
+                require(!it.contains('"') && !it.contains('\\') && !it.contains('\n'))
+                buildConfigField("String", "KIDS_PACK_BASE", "\"$it\"")
+            }
             // Point a DEBUG build at one GitHub release tag's update.json (e.g. a pre-release, which /latest ignores).
             if (updateTestBase != null) buildConfigField("String", "UPDATE_MANIFEST_URL",
                 "\"https://github.com/jeri2good/mavis-library/releases/download/${updateTestBase}/update.json\"")

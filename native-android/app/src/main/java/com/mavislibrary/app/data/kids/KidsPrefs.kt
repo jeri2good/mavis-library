@@ -18,7 +18,8 @@ fun kidsBook(source: String, id: String, kids: Boolean = false, subjects: List<S
 fun adultRoutesAllowed(kidsMode: Boolean) = !kidsMode
 
 data class KidsDay(val date: LocalDate, val minutes: Int, val star: Boolean)
-data class KidsState(val enabled: Boolean = false, val name: String = "", val goal: Int = 15, val log: Map<LocalDate, Long> = emptyMap()) {
+data class KidsState(val enabled: Boolean = false, val name: String = "", val goal: Int = 15, val log: Map<LocalDate, Long> = emptyMap(),
+                     val childAge: Int = 5, val narrator: String = "host") {
     fun minutes(today: LocalDate) = ((log[today] ?: 0) / 60000).toInt()
     fun week(today: LocalDate) = (6 downTo 0).map { today.minusDays(it.toLong()).let { d -> KidsDay(d, minutes(d), (log[d] ?: 0) >= goal * 60000L) } }
     fun streak(today: LocalDate): Int {
@@ -48,19 +49,27 @@ sealed interface PinResult {
 }
 /** Separate singleton DataStore follows SettingsStore's atomic edit pattern. Only salted digest is persisted. */
 class KidsPrefs(private val store: DataStore<Preferences>, private val clock: () -> Long = System::currentTimeMillis) {
-    val state = store.data.map { p -> KidsState(p[ON] ?: false, p[NAME] ?: "", p[GOAL] ?: 15, decodeLog(p[LOG])) }
+    val state = store.data.map { p -> KidsState(p[ON] ?: false, p[NAME] ?: "", p[GOAL] ?: 15, decodeLog(p[LOG]),
+        (p[AGE] ?: 5).coerceIn(2, 10), p[NARRATOR]?.takeIf { it in STORY_VOICES } ?: "host") }
+    suspend fun storySettings(age: Int, narrator: String) {
+        require(age in 2..10 && narrator in STORY_VOICES)
+        store.edit { it[AGE] = age; it[NARRATOR] = narrator }
+    }
     suspend fun start(name: String, goal: Int, pin: String) {
         require(goal in listOf(10,15,20,30))
         val hash = KidsPin.create(pin)
         store.edit { it[PIN] = hash; it[NAME] = name.trim().take(30); it[GOAL] = goal; it[ON] = true; it[MISSES] = 0; it[UNTIL] = 0 }
     }
-    suspend fun leave(pin: String): PinResult {
+    suspend fun leave(pin: String): PinResult = checkPin(pin, leave = true)
+    suspend fun unlockParents(pin: String): PinResult = checkPin(pin, leave = false)
+    private suspend fun checkPin(pin: String, leave: Boolean): PinResult {
         var result: PinResult = PinResult.Wrong
         store.edit { p ->
             val now = clock(); val until = p[UNTIL] ?: 0
             if (until > now) result = PinResult.Locked((until - now + 999) / 1000)
             else if (KidsPin.verifies(pin, p[PIN].orEmpty())) {
-                p[ON] = false; p[MISSES] = 0; p[UNTIL] = 0; result = PinResult.Correct
+                if (leave) p[ON] = false
+                p[MISSES] = 0; p[UNTIL] = 0; result = PinResult.Correct
             } else {
                 val misses = (if (until != 0L) 0 else p[MISSES] ?: 0) + 1
                 p[MISSES] = misses
@@ -79,6 +88,7 @@ class KidsPrefs(private val store: DataStore<Preferences>, private val clock: ()
     }
     private companion object {
         val ON = booleanPreferencesKey("kids_mode"); val NAME = stringPreferencesKey("child_name")
+        val AGE = intPreferencesKey("child_age"); val NARRATOR = stringPreferencesKey("story_narrator")
         val GOAL = intPreferencesKey("daily_goal"); val PIN = stringPreferencesKey("salted_pin_hash")
         val LOG = stringPreferencesKey("reading_log_ms"); val MISSES = intPreferencesKey("pin_misses"); val UNTIL = longPreferencesKey("pin_locked_until")
         fun decodeLog(value: String?) = value.orEmpty().split(';').mapNotNull { entry -> runCatching { val pair = entry.split('='); LocalDate.parse(pair[0]) to pair[1].toLong().coerceAtLeast(0) }.getOrNull() }.toMap()

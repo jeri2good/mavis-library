@@ -132,6 +132,22 @@ class StoryPackTest {
             assertTrue(repo.installed(entry))
         }
     }
+    @Test fun longListenCachesPublishedCatalogAndKeepsItOnInvalidRefresh() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            val repo = StoryRepository(context, server.url("/").toString())
+            val text = javaClass.getResource("/kids/real-longlisten-v1.json")!!.readText()
+            server.enqueue(MockResponse().setBody(text))
+            val catalog = repo.longListen()
+            assertEquals("/longlisten.json", server.takeRequest().path)
+            assertEquals(8, catalog.books.size)
+            server.enqueue(MockResponse().setBody("""{"version":2}"""))
+            assertEquals(catalog, repo.longListen())
+            server.enqueue(MockResponse().setResponseCode(503))
+            assertEquals(catalog, repo.longListen())
+            assertEquals(catalog, StoryRepository(context, server.url("/").toString()).cachedLongListen())
+        }
+    }
     @Test fun corruptDownloadNeverInstallsAndRetryStartsClean() = runTest {
         val zip = fixture()
         MockWebServer().use { server ->

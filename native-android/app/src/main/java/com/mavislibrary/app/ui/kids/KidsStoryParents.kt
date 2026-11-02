@@ -42,19 +42,22 @@ fun KidsStoryParents(repository: StoryRepository, prefs: KidsPrefs, state: KidsS
         if (credits) {
             // Plain text intentionally: licensing URLs are not clickable in kids mode.
             KidsText(catalog?.credits ?: "Download the story catalog to see its credits.")
+            KidsText("LibriVox recordings are in the public domain, read by volunteers. Audio hosted by the Internet Archive.")
             Button(onClick = { credits = false }) { KidsText("Back to settings") }
         } else {
             KidsText("Child's age: ${age.roundToInt()}")
             Slider(value = age, onValueChange = { age = it }, valueRange = 2f..10f, steps = 7,
                 onValueChangeFinished = {
                     scope.launch {
-                        try { prefs.storySettings(age.roundToInt(), state.narrator) }
+                        try { prefs.storyAge(age.roundToInt()) }
                         catch (_: Exception) { message = "Couldn't save age. Please try again." }
                     }
                 })
             KidsText("Narrator")
-            listOf("host" to "Cheerful host", "dad" to "Friendly dad", "grandma" to "British accent").forEach { (id, label) ->
-                FilterChip(selected = state.narrator == id, onClick = {
+            catalog?.voicesFor(age.roundToInt()).orEmpty().forEach { voice ->
+                val id = voice.id
+                val label = voice.label
+                FilterChip(selected = catalog?.narrator(age.roundToInt(), state.narrator.takeIf { state.narratorChosen }) == id, onClick = {
                     scope.launch {
                         try { prefs.storySettings(age.roundToInt(), id) }
                         catch (_: Exception) { message = "Couldn't save narrator. Please try again." }

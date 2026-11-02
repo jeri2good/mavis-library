@@ -5,7 +5,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import java.io.File
 
-val STORY_VOICES = listOf("host", "dad", "grandma")
+val STORY_VOICES = listOf("host", "dad", "grandma", "storyteller")
 fun storyTier(age: Int): String = when (age.coerceIn(2, 10)) {
     in 2..4 -> "t1"
     in 5..7 -> "t2"
@@ -13,14 +13,28 @@ fun storyTier(age: Int): String = when (age.coerceIn(2, 10)) {
 }
 
 @Serializable
-data class StoryVoice(val id: String, val label: String, val default: Boolean = false, val preview: String? = null)
+data class StoryVoice(val id: String, val label: String, val default: Boolean = false, val preview: String? = null,
+                      val tiers: List<String>? = null)
 @Serializable
-data class StoryTier(val id: String, val label: String, val minAge: Int, val maxAge: Int)
+data class StoryTier(val id: String, val label: String, val minAge: Int, val maxAge: Int, val defaultVoice: String? = null)
 @Serializable
 data class StoryCatalog(
     val version: Int, val credits: String, val voices: List<StoryVoice> = emptyList(),
     val tiers: List<StoryTier> = emptyList(), val stories: List<StoryEntry>,
-)
+) {
+    fun voicesFor(age: Int) = voices.filter {
+        it.id in STORY_VOICES && (it.tiers == null || storyTier(age) in it.tiers) &&
+            (it.id != "storyteller" || storyTier(age) == "t3")
+    }
+    fun narrator(age: Int, choice: String?): String {
+        val available = voicesFor(age)
+        val defaultVoice = tiers.find { it.id == storyTier(age) }?.defaultVoice
+            ?: "storyteller".takeIf { storyTier(age) == "t3" }
+        return available.firstOrNull { it.id == choice }?.id
+            ?: available.firstOrNull { it.id == defaultVoice }?.id
+            ?: available.firstOrNull { it.default }?.id ?: "host"
+    }
+}
 @Serializable
 data class StoryEntry(
     val id: String, val title: String, val ref: String, val obs: JsonElement? = null,
@@ -31,7 +45,9 @@ data class StoryEntry(
 data class StoryPage(
     val img: String, val text: Map<String, String> = emptyMap(),
     val audio: Map<String, Map<String, String>> = emptyMap(),
-)
+) {
+    fun clip(voice: String, tier: String): String? = audio[voice]?.get(tier) ?: audio["host"]?.get(tier)
+}
 @Serializable
 data class StoryQuestion(val q: String, val choices: List<String>, val answer: Int)
 @Serializable

@@ -26,6 +26,19 @@ class StoryRepository(
     private val mutex = Mutex()
     private val cache = File(root, "catalog.json")
     fun cachedCatalog(): StoryCatalog? = runCatching { StoryPacks.catalog(cache.readText()) }.getOrNull()
+    private val longCache = File(root, "longlisten.json")
+    fun cachedLongListen(): LongListenCatalog? = runCatching { LongListen.parse(longCache.readText()) }.getOrNull()
+    suspend fun longListen(): LongListenCatalog = withContext(Dispatchers.IO) {
+        try {
+            val text = fetch("longlisten.json", 2 * 1024 * 1024).toString(Charsets.UTF_8)
+            val parsed = LongListen.parse(text)
+            atomicWrite(longCache, text.toByteArray())
+            parsed
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            cachedLongListen() ?: throw e
+        }
+    }
 
     suspend fun catalog(): StoryCatalog = withContext(Dispatchers.IO) {
         try {

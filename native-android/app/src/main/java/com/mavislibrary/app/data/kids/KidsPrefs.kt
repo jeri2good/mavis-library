@@ -19,7 +19,7 @@ fun adultRoutesAllowed(kidsMode: Boolean) = !kidsMode
 
 data class KidsDay(val date: LocalDate, val minutes: Int, val star: Boolean)
 data class KidsState(val enabled: Boolean = false, val name: String = "", val goal: Int = 15, val log: Map<LocalDate, Long> = emptyMap(),
-                     val childAge: Int = 5, val narrator: String = "host") {
+                     val childAge: Int = 5, val narrator: String = "host", val narratorChosen: Boolean = false) {
     fun minutes(today: LocalDate) = ((log[today] ?: 0) / 60000).toInt()
     fun week(today: LocalDate) = (6 downTo 0).map { today.minusDays(it.toLong()).let { d -> KidsDay(d, minutes(d), (log[d] ?: 0) >= goal * 60000L) } }
     fun streak(today: LocalDate): Int {
@@ -50,7 +50,12 @@ sealed interface PinResult {
 /** Separate singleton DataStore follows SettingsStore's atomic edit pattern. Only salted digest is persisted. */
 class KidsPrefs(private val store: DataStore<Preferences>, private val clock: () -> Long = System::currentTimeMillis) {
     val state = store.data.map { p -> KidsState(p[ON] ?: false, p[NAME] ?: "", p[GOAL] ?: 15, decodeLog(p[LOG]),
-        (p[AGE] ?: 5).coerceIn(2, 10), p[NARRATOR]?.takeIf { it in STORY_VOICES } ?: "host") }
+        (p[AGE] ?: 5).coerceIn(2, 10), p[NARRATOR]?.takeIf { it in STORY_VOICES }
+            ?: if ((p[AGE] ?: 5) >= 8) "storyteller" else "host", p[NARRATOR] != null) }
+    suspend fun storyAge(age: Int) {
+        require(age in 2..10)
+        store.edit { it[AGE] = age }
+    }
     suspend fun storySettings(age: Int, narrator: String) {
         require(age in 2..10 && narrator in STORY_VOICES)
         store.edit { it[AGE] = age; it[NARRATOR] = narrator }

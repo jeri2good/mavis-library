@@ -27,8 +27,11 @@ class KidsStoryController(context: Context, connect: Boolean = android.os.Build.
     fun command(action: String, args: Bundle = Bundle.EMPTY) {
         controller?.sendCustomCommand(SessionCommand(action, Bundle.EMPTY), args)
     }
-    fun start(id: String, age: Int, voice: String) = command(KidsStoryService.START, Bundle().apply {
+    fun start(id: String, age: Int, voice: String?) = command(KidsStoryService.START, Bundle().apply {
         putString("id", id); putInt("age", age); putString("voice", voice)
+    })
+    fun startLong(id: String, chapter: Int? = null) = command(KidsStoryService.START_LONG, Bundle().apply {
+        putString("id", id); chapter?.let { putInt("chapter", it) }
     })
     override fun close() { future?.let(MediaController::releaseFuture); controller = null; mutableConnected.value = false }
 }

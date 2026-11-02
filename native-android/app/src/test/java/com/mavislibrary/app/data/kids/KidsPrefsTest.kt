@@ -44,6 +44,19 @@ class KidsPrefsTest {
     @Test fun missingPinDoesNotUnlock() = runTest(UnconfinedTestDispatcher()) {
         assertEquals(PinResult.Wrong, KidsPrefs(store()).leave("1234"))
     }
+    @Test fun ageDefaultsDoNotOverrideExplicitParentNarrator() = runTest(UnconfinedTestDispatcher()) {
+        val ds = store()
+        val prefs = KidsPrefs(ds)
+        prefs.storyAge(8)
+        assertEquals("storyteller", KidsPrefs(ds).state.first().narrator)
+        assertFalse(prefs.state.first().narratorChosen)
+        prefs.storyAge(7)
+        assertEquals("host", prefs.state.first().narrator)
+        prefs.storySettings(8, "dad")
+        prefs.storyAge(10)
+        assertEquals("dad", KidsPrefs(ds).state.first().narrator)
+        assertTrue(prefs.state.first().narratorChosen)
+    }
     @Test fun correctPinClearsMissesAndExpiredLockStartsFresh() = runTest(UnconfinedTestDispatcher()) {
         val ds = store(); var now = 500L
         val prefs = KidsPrefs(ds) { now }

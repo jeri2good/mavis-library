@@ -47,7 +47,11 @@ private fun BigButton(text: String, modifier: Modifier = Modifier, enabled: Bool
 
 @Composable
 fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playback: PlaybackController) {
-    var screen by rememberSaveable { mutableStateOf(if (KidsStoryService.state.value.story != null) "Story player" else "Home") }
+    var screen by rememberSaveable { mutableStateOf(when {
+        KidsStoryService.state.value.longBook != null -> "Long player"
+        KidsStoryService.state.value.story != null -> "Story player"
+        else -> "Home"
+    }) }
     var route by rememberSaveable { mutableStateOf<String?>(null) }
     var pinOpen by remember { mutableStateOf(false) }
     var pinLeave by remember { mutableStateOf(false) }
@@ -126,7 +130,7 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
                             verticalArrangement = Arrangement.spacedBy(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             item(span = { GridItemSpan(maxLineSpan) }) { Heading(if (state.name.isBlank()) "Hi, reader!" else "Hi, ${state.name}!") }
                             item(span = { GridItemSpan(maxLineSpan) }) { Stars(state, today, false) }
-                            items(listOf("Read", "Listen", "Story shelf", "My stars")) { label ->
+                            items(listOf("Read", "Listen", "Story shelf", "Long Listen", "My stars")) { label ->
                                 val symbol = when(label) { "Read" -> "📚"; "Listen" -> "♫"; "Story shelf" -> "☀"; else -> "★" }
                                 FilledTonalButton(onClick = { screen = label }, modifier = Modifier.fillMaxWidth().height(156.dp), shape = RoundedCornerShape(32.dp)) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) { Heading(symbol); Heading(label) }
@@ -143,12 +147,22 @@ fun KidsRoot(container: AppContainer, prefs: KidsPrefs, state: KidsState, playba
                     "Story shelf" -> KidsStoryShelf(stories, state.childAge, storyConnected, Modifier.weight(1f)) { entry ->
                         if (audio.playing) playback.toggle()
                         kidsAudio = false
-                        storyController.start(entry.id, state.childAge, state.narrator)
+                        storyController.start(entry.id, state.childAge, state.narrator.takeIf { state.narratorChosen })
                         screen = "Story player"
                     }
                     "Story player" -> KidsStoryPlayer(storyAudio, storyController, Modifier.weight(1f).fillMaxWidth()) {
                         storyController.command(KidsStoryService.STOP)
                         screen = "Story shelf"
+                    }
+                    "Long Listen" -> KidsLongListen(stories, container.audioFiles, storyConnected, Modifier.weight(1f)) { book, chapter ->
+                        if (audio.playing) playback.toggle()
+                        kidsAudio = false
+                        storyController.startLong(book.id, chapter)
+                        screen = "Long player"
+                    }
+                    "Long player" -> KidsLongPlayer(storyAudio, storyController, Modifier.weight(1f).fillMaxWidth()) {
+                        storyController.command(KidsStoryService.STOP)
+                        screen = "Long Listen"
                     }
                     else -> KidsBooks(container, screen == "Listen", audio.connected, Modifier.weight(1f), onRead = { book ->
                         route = "#/book/" + java.net.URLEncoder.encode(book.key, "UTF-8").replace("+", "%20")

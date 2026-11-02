@@ -60,13 +60,23 @@ data class ShimVoice(val uri: String, val name: String, val lang: String, val is
  * The list behind getVoices(). The web screens take the first local English voice unless one was saved, so the
  * default engine's voices come first; offline phone voices come before network ones.
  */
-fun voiceList(settings: ReadAloudSettings, naturalInstalled: Boolean, phoneVoices: List<PhoneVoice>): List<ShimVoice> {
+fun voiceList(
+    settings: ReadAloudSettings,
+    naturalInstalled: Boolean,
+    phoneVoices: List<PhoneVoice>,
+    deviceLang: String = java.util.Locale.getDefault().toLanguageTag(),
+): List<ShimVoice> {
     val default = defaultEngine(settings, naturalInstalled)
     val natural = if (!naturalInstalled) emptyList() else {
         val chosen = NATURAL_VOICES.filter { it.id == settings.naturalVoice }
         (chosen + (NATURAL_VOICES - chosen.toSet())).map { ShimVoice(it.uri, it.displayName, it.lang, default == VoiceEngineKind.NATURAL && it.id == settings.naturalVoice) }
     }
-    val phone = phoneVoices.sortedWith(compareBy({ !it.offline }, { !it.lang.lowercase().startsWith("en") }, { it.name }))
+    // Seen on device: name order put en-AU first, so a US phone read in an Australian voice. Prefer the phone's own
+    // locale, then en-US, then any English.
+    val tag = deviceLang.replace('_', '-').lowercase()
+    fun langRank(lang: String): Int { val l = lang.replace('_', '-').lowercase(); return when {
+        l == tag -> 0; l == "en-us" -> 1; l.startsWith("en") -> 2; else -> 3 } }
+    val phone = phoneVoices.sortedWith(compareBy({ !it.offline }, { langRank(it.lang) }, { it.name }))
         .mapIndexed { index, voice -> ShimVoice(PhoneVoiceEngine.PHONE_PREFIX + voice.name, voice.name, voice.lang, default == VoiceEngineKind.PHONE && index == 0) }
     return if (default == VoiceEngineKind.NATURAL) natural + phone else phone + natural
 }

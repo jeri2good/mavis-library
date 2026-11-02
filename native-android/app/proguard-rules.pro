@@ -4,6 +4,8 @@
 -dontnote kotlinx.serialization.**
 # sherpa-onnx reads and fills these classes from JNI by name.
 -keep class com.k2fsa.sherpa.onnx.** { *; }
+# JNI calls invoke() on the generation callback by name; keep it (and its generic bridge) in release builds.
+-keep class com.mavislibrary.app.readaloud.KokoroEngine$KeepGoing { *; }
 # commons-compress references optional codecs the app never uses (only bzip2 + tar are used).
 -dontwarn org.apache.commons.compress.**
 -dontwarn org.tukaani.xz.**

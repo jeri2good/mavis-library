@@ -22,6 +22,15 @@ import kotlin.concurrent.thread
 class KokoroEngine(private val modelDir: () -> File?, private val defaultVoice: () -> String) : SpeechEngine {
     private class Chunk(val samples: FloatArray?, val sampleRate: Int, val span: IntRange?, val error: String? = null)
 
+    /**
+     * sherpa-onnx's JNI looks up a non-static `invoke([F)Ljava/lang/Integer;` on the callback's own class. A Kotlin
+     * lambda compiles to an invokedynamic synthetic class without that exact method, which aborted the app on device
+     * (JNI NoSuchMethodError in kokoro-synth). A named class keeps the bridge method JNI expects.
+     */
+    private class KeepGoing(private val session: Session) : (FloatArray) -> Int {
+        override fun invoke(samples: FloatArray): Int = if (session.cancelled) 0 else 1
+    }
+
     private inner class Session(val request: SpeechRequest, val callback: SpeechCallback) {
         @Volatile var cancelled = false
         @Volatile var paused = false
@@ -128,7 +137,7 @@ class KokoroEngine(private val modelDir: () -> File?, private val defaultVoice: 
             val speed = active.request.rate.coerceIn(MIN_RATE, MAX_RATE)
             for (span in splitSentences(active.request.text)) {
                 if (active.cancelled) return
-                val audio = model.generateWithCallback(active.request.text.substring(span), voice.speakerId, speed) { if (active.cancelled) 0 else 1 }
+                val audio = model.generateWithCallback(active.request.text.substring(span), voice.speakerId, speed, KeepGoing(active))
                 if (active.cancelled) return
                 if (!put(active, Chunk(audio.samples, audio.sampleRate, span))) return
             }

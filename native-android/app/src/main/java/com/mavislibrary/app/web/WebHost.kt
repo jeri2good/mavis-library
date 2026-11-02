@@ -112,6 +112,7 @@ class WebHost(private val activity: ComponentActivity) {
     var onPodcast: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null
     var onArticle: ((com.mavislibrary.app.data.podcast.PodcastDraft) -> Unit)? = null
 
+    private val readAloud get() = (activity.application as MavisApp).container.readAloud
     private var baseHistoryIndex = 0
     private var loaded = false
     private var fileCallback: ValueCallback<Array<Uri>>? = null
@@ -181,6 +182,15 @@ class WebHost(private val activity: ComponentActivity) {
                         }
                     }
                 }
+            }
+            // WebView has no speechSynthesis: read-aloud in the web screens runs on the native voices behind this shim.
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+                WebViewCompat.addWebMessageListener(this, "MavisSpeech", setOf(WEB_ORIGIN)) { view, message, origin, mainFrame, replyProxy ->
+                    if (mainFrame && isAppOrigin(origin.toString()) && isAppOrigin(view.url)) {
+                        readAloud.onWebMessage(message.data.orEmpty()) { replyProxy.postMessage(it) }
+                    }
+                }
+                WebViewCompat.addDocumentStartJavaScript(this, activity.assets.open("native-speech-synthesis.js").bufferedReader().use { it.readText() }, setOf(WEB_ORIGIN))
             }
             addJavascriptInterface(NativeBridge(), "MavisAndroid")
             webViewClient = Client()
@@ -284,6 +294,7 @@ class WebHost(private val activity: ComponentActivity) {
     fun destroy() {
         settingsJob.cancel()
         if (!loaded) return
+        readAloud.detachPage()
         fileCallback?.onReceiveValue(null)
         webView.destroy()
     }

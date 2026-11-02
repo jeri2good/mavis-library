@@ -112,6 +112,8 @@ class AppContainer internal constructor(
         token = { secureStore.read(com.mavislibrary.app.data.secure.Secret.ACCOUNT_TOKEN) })
     fun readerApi() = com.mavislibrary.app.data.reader.ReaderApi(podcastApi())
     val readerPrefs by lazy { com.mavislibrary.app.data.reader.ReaderPrefs(settingsPrefs) }
+    val readAloudPrefs by lazy { com.mavislibrary.app.readaloud.ReadAloudPrefs(settingsPrefs) }
+    val readAloud by lazy { com.mavislibrary.app.readaloud.ReadAloud(app, readAloudPrefs, scope) }
     val readState by lazy { com.mavislibrary.app.data.reader.ReadStateStore(settingsPrefs) }
     fun podcastRepository() = com.mavislibrary.app.data.podcast.PodcastRepository(podcastApi(), podcastSettings, BuildConfig.API_BASE, ::podcastAccountId)
     val podcastReadyStore by lazy { com.mavislibrary.app.data.briefing.PodcastReadyStore(settingsPrefs) }

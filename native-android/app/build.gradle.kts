@@ -67,6 +67,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Phones only: the x86_64 Kokoro engine (27 MB) exists for the emulator, so release builds leave it out.
+            // Debug builds keep every ABI so the emulator still runs Kokoro.
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         }
     }
 

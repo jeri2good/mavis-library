@@ -74,9 +74,50 @@ class UpdateTest {
         assertArrayEquals(apk, file.readBytes())
         assertEquals(apk.size.toLong(), last)
         assertEquals(listOf("mavis-105.apk"), dir.list()!!.toList())
-        val damaged = runCatching { UpdateDownloader(client, dir).download(info.copy(sha256 = "0".repeat(64))) }
+        val damaged = runCatching { UpdateDownloader(client, dir, attempts = 1).download(info.copy(sha256 = "0".repeat(64))) }
         assertTrue(damaged.exceptionOrNull()?.message!!.contains("damaged"))
         assertTrue(dir.list()!!.isEmpty())
+    }
+
+    @Test fun droppedConnectionResumesFromWhereItStoppedInsteadOfStartingOver() = runBlocking {
+        val dir = temp.newFolder("resume")
+        val cut = apk.size / 2 // DISCONNECT_DURING_RESPONSE_BODY drops after half the body
+        // 1st response: promises the whole APK but the connection drops after `cut` bytes (J's "connection reset").
+        server.enqueue(MockResponse().setBody(Buffer().write(apk))
+            .setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY))
+        // 2nd response: the server honours the Range request with only the missing bytes.
+        server.enqueue(MockResponse().setResponseCode(206).setBody(Buffer().write(apk.copyOfRange(cut, apk.size)))
+            .setHeader("Content-Range", "bytes $cut-${apk.size - 1}/${apk.size}"))
+        val info = UpdateInfo(106, "0.7.18", server.url("/mavis.apk").toString(), apkSha)
+        val file = UpdateDownloader(client, dir, attempts = 3, retryDelayMs = 1).download(info)
+        assertArrayEquals(apk, file.readBytes())
+        assertNull(server.takeRequest().getHeader("Range"))
+        assertEquals("bytes=$cut-", server.takeRequest().getHeader("Range"))
+        assertEquals(listOf("mavis-106.apk"), dir.list()!!.toList())
+    }
+
+    @Test fun serverThatIgnoresRangeStartsCleanAndStillVerifies() = runBlocking {
+        val dir = temp.newFolder("norange")
+        val info = UpdateInfo(107, "0.7.19", server.url("/mavis.apk").toString(), apkSha)
+        // A stale partial for this exact build; the server answers 200 (whole file), so it must overwrite, not append.
+        File(dir, "mavis-107-${apkSha.take(16)}.apk.part").writeBytes(ByteArray(5_000) { 7 })
+        server.enqueue(MockResponse().setBody(Buffer().write(apk)))
+        val file = UpdateDownloader(client, dir, attempts = 1).download(info)
+        assertArrayEquals(apk, file.readBytes())
+        assertEquals("bytes=5000-", server.takeRequest().getHeader("Range"))
+    }
+
+    @Test fun keepsPartialProgressWhenItFinallyGivesUp() = runBlocking {
+        val dir = temp.newFolder("giveup")
+        val info = UpdateInfo(108, "0.7.20", server.url("/mavis.apk").toString(), apkSha)
+        repeat(2) {
+            server.enqueue(MockResponse().setBody(Buffer().write(apk))
+                .setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY))
+        }
+        val failed = runCatching { UpdateDownloader(client, dir, attempts = 2, retryDelayMs = 1).download(info) }
+        assertTrue(failed.exceptionOrNull()?.message!!.contains("progress is saved"))
+        val part = File(dir, "mavis-108-${apkSha.take(16)}.apk.part")
+        assertTrue(part.exists() && part.length() > 0)
     }
 
     @Test fun updaterAsksForPermissionThenDownloadsAndReportsAndroidsAnswer() = runBlocking {

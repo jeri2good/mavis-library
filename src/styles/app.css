@@ -695,7 +695,7 @@ html.in-native-shell { --tabbar: 0px; }
 .lex { display: grid; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .lex-head { display: flex; align-items: baseline; gap: 12px; }
 .lex-lemma { font-size: 1.9rem; font-family: 'Times New Roman', 'SBL Hebrew', 'Ezra SIL', 'Noto Serif Hebrew', 'Noto Serif', serif; }
-.lex-id { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.lex-id { font-size: .8em; font-weight: 600; color: var(--muted, #8a7d6b); font-variant-numeric: tabular-nums; }
 .lex-def { white-space: pre-line; color: var(--ink-soft); line-height: 1.55; max-height: 40vh; overflow: auto; }
 .lex-banner { border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 14px; background: var(--paper-raised); }
 .xref { display: grid; gap: 2px; padding: 12px 8px; border-bottom: 1px solid var(--line); text-decoration: none; color: inherit; border-radius: 8px; }

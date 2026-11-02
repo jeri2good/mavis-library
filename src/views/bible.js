@@ -286,7 +286,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
           const matches = words.filter(t => normal(t.text) === normal(text));
           const mapped = translation === 'kjv' ? words[word] : matches.length === 1 ? matches[0] : null;
           const note = translation !== 'kjv' ? 'Original word lookup uses the KJV wording of this verse.' : '';
-          if (mapped?.strongs?.length) showStrongs(mapped.strongs.join(','), note);
+          if (mapped?.strongs?.length) showStrongs(mapped.strongs.join(','), note, mapped.text || text);
           else showInterlinear(v, `${note}${note ? ' ' : ''}No direct original word — here's the verse in the original.`);
         }
       } catch (err) { toast(`Couldn’t open word action: ${err.message}`); }
@@ -556,19 +556,21 @@ async function renderChapter(root, route, { idx, navigate, token }) {
 
   const verseLines = () => (chap1?.verses || []).map((t, i) => `${i + 1} ${t}`).join('\n');
 
-  async function showStrongs(nums, note = '') {
+  async function showStrongs(nums, note = '', word = '') {
+    // Lead with the English word the reader tapped; the Strong's code is a small reference, not the headline.
     // Show the content word before the Greek article (G3588) when both are tagged.
     const list = nums.split(',').sort((a, b) => (a === 'G3588') - (b === 'G3588'));
-    const d = openDialog({ title: 'Strong’s concordance', variant: 'sheet', body: html`<p class="muted">Loading…</p>` });
+    const tapped = String(word || '').replace(/[^\p{L}\p{N}'’-]/gu, '');
+    const d = openDialog({ title: tapped ? `“${tapped}” in the original` : 'Original word', variant: 'sheet', body: html`<p class="muted">Loading…</p>` });
     try {
       const entries = (await Promise.all(list.map((n) => B.strongsEntry(n)))).filter(Boolean);
       if (!entries.length) { d.body.innerHTML = String(html`<p class="muted">No lexicon entry for ${nums}.</p>`); return; }
       d.body.innerHTML = String(html`${note ? html`<p class="small muted">${note}</p>` : ''}${entries.map((e) => html`
         <section class="lex">
-          <div class="lex-head"><span class="lex-lemma" lang="${e.id[0] === 'H' ? 'he' : 'el'}">${e.lemma}</span><span class="lex-id">${e.id}</span></div>
+          <div class="lex-head"><span class="lex-lemma" lang="${e.id[0] === 'H' ? 'he' : 'el'}">${e.lemma}</span><span class="lex-id" title="Strong’s number">Strong’s ${e.id}</span></div>
           <p><em>${e.translit}</em> · <strong>${e.gloss}</strong></p>
           <p class="lex-def">${e.definition}</p>
-          <button type="button" class="btn btn-sm" data-occ="${e.id}">${icon('search', { size: 16 })} Every verse with ${e.id}</button>
+          <button type="button" class="btn btn-sm" data-occ="${e.id}">${icon('search', { size: 16 })} Every verse with this word</button>
         </section>`)}
         <p class="hint">Lexicon: STEPBible.org (Tyndale House, Cambridge), CC BY 4.0.</p>`);
       d.body.addEventListener('click', (e) => {
@@ -727,7 +729,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
   root.addEventListener('click', async (e) => {
     if ((heldGesture || Date.now() < suppressClickUntil) && e.target.closest('#verses')) { e.preventDefault(); e.stopPropagation(); return; }
     const w = e.target.closest('.strongs-on .w');
-    if (w) { e.stopPropagation(); showStrongs(w.dataset.s); return; }
+    if (w) { e.stopPropagation(); showStrongs(w.dataset.s, '', w.textContent); return; }
     const note = e.target.closest('[data-note]');
     if (note) { const a = annotations.find((x) => x.uid === note.dataset.note); if (a) editNote(a); return; }
     const fn = e.target.closest('[data-fn]');
@@ -801,7 +803,7 @@ async function renderChapter(root, route, { idx, navigate, token }) {
     }
   });
   root.addEventListener('keydown', (e) => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.strongs-on .w')) { e.preventDefault(); showStrongs(e.target.dataset.s); }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.strongs-on .w')) { e.preventDefault(); showStrongs(e.target.dataset.s, '', e.target.textContent); }
     else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.v')) { e.preventDefault(); toggleVerse(Number(e.target.dataset.v), true); }
   });
   root.querySelector('#lookup').addEventListener('submit', (e) => { e.preventDefault(); lookup(root.querySelector('#lookup-q').value); });
@@ -988,7 +990,7 @@ async function renderSearch(root, route, { idx, navigate, token }) {
     let lexHead = '';
     if (res.strongs) {
       const e = await B.strongsEntry(res.strongs).catch(() => null);
-      if (e) lexHead = html`<section class="lex lex-banner"><div class="lex-head"><span class="lex-lemma" lang="${e.id[0] === 'H' ? 'he' : 'el'}">${e.lemma}</span><span class="lex-id">${e.id}</span></div><p><em>${e.translit}</em> · <strong>${e.gloss}</strong></p></section>`;
+      if (e) lexHead = html`<section class="lex lex-banner"><div class="lex-head"><span class="lex-lemma" lang="${e.id[0] === 'H' ? 'he' : 'el'}">${e.lemma}</span><span class="lex-id" title="Strong’s number">Strong’s ${e.id}</span></div><p><em>${e.translit}</em> · <strong>${e.gloss}</strong></p></section>`;
     }
     if (!res.total) { out.innerHTML = String(html`${lexHead}${stateBlock({ title: 'No verses found', text: `Nothing in ${scope === 'all' ? 'the Bible' : scope === 'OT' ? 'the Old Testament' : scope === 'NT' ? 'the New Testament' : idx.byId.get(scope)?.name} matches “${q}”. Try fewer words or another translation.` })}`); return; }
     const byBook = Object.entries(res.byBook).map(([id, n]) => ({ id, n, name: idx.byId.get(id).name }));

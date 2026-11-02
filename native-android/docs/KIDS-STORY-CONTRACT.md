@@ -37,5 +37,7 @@ Cover images are separate small release assets so the shelf loads before any zip
 "Stories adapted from Open Bible Stories. The original work by unfoldingWord is available from https://openbiblestories.org (CC BY-SA 4.0). Changes: retold for young children at three reading levels and narrated. Illustrations © Sweet Publishing (www.sweetpublishing.com), CC BY-SA 3.0, revised by Distant Shores Media / Door43. These adapted stories are shared under CC BY-SA 4.0."
 
 ## Chunk 1 story ids (OBS number)
-creation(1) noah(3) abraham(4/5 promise) joseph(8) red-sea(12) david-goliath(17) daniel(22? use OBS lions = 22 not; pick correct OBS chapter) jonah(18? pick correct) jesus-born(21/23) easter(40-41)
+creation(1) noah(3) abraham(4,5 promise) joseph(8) red-sea(12) david-goliath(17, Goliath at frame 03) daniel(no matching OBS story) jonah(no matching OBS story) jesus-born(23) easter(40,41)
 The pipeline must map each to the correct OBS chapter(s) by reading titles, and record them in "obs".
+
+Verified against the unpacked 50-chapter en_obs source on 2026-11-02: chapter 22 is The Birth of John; chapter 18 is The Divided Kingdom. Daniel/lions and Jonah are absent, so their `obs` values remain null in source/mapping.json and production is blocked pending an approved source after phase 1. Full title mapping is recorded there. Phase-1 David uses frames 17-01 through 17-08 (early David context); only frame 17-03 depicts Goliath.

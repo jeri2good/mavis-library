@@ -11,3 +11,6 @@
 - First full build assembled the APK; all new tests passed, but two shell tests exposed Robolectric's null service binding. Matched the existing PlaybackController opt-out for automatic Robolectric bindings while retaining a direct-token service integration test.
 - Added corrupt-download rejection/clean retry, cached-catalog fallback, media command containment and elapsed-time sleep expiry tests. Fixed pause/resume during the auto-advance gap, audio-focus/music synchronization, and ignored stale ended events.
 - Second full memory-safe build passed: 96 suites, 515 tests, zero failures/errors/skips; assembleDebug succeeded. Initial native font-loader failures did not recur. Final verification/receipt follows.
+- Final verification on code commit c44a561 passed again in 2m49s: 96 suites / 515 tests / zero failures, errors or skips, plus assembleDebug. APK SHA-256: 4173788eec1b096d20ae4ab8edbc0e6bef7869d0c8f4dbba899833ea4eea81cf.
+- Re-synced the shared contract after its concurrent OBS-mapping correction (Daniel/Jonah absent; nullable/multi-chapter obs already supported). App code is unchanged by that documentation update.
+- Appended the Chunk 1 receipt and Hermes device acceptance checklist to native-android/RECEIPT.md. All changes stay under native-android; gradle.properties is unchanged; no emulator, deployment or push.

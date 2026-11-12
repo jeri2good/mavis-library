@@ -42,7 +42,20 @@ data class PlaybackUiState(
     val sleepLabel: String = "Sleep timer",
     /** Media id of the loaded item; a podcast's is its resume key. */
     val mediaId: String = "",
+    /** Why playback stopped, in words safe to show; null while all is well. */
+    val error: String? = null,
 )
+
+/**
+ * Words for a playback failure. Only the fixed wording of [com.mavislibrary.app.data.podcast.AudioProblem] is passed
+ * through (the cause arrives from the player service as plain text); anything else gets a general line, so a file
+ * path or a link is never shown.
+ */
+fun playbackErrorMessage(error: Throwable?): String? {
+    if (error == null) return null
+    return generateSequence(error) { it.cause }.take(8).firstNotNullOfOrNull { com.mavislibrary.app.data.podcast.AudioProblem.of(it.message) }?.message
+        ?: "Playback stopped: the audio couldn't be loaded. Check your connection and try again."
+}
 
 class PlaybackController(context: Context, connect: Boolean = android.os.Build.FINGERPRINT != "robolectric") : AutoCloseable {
     private val appContext = context.applicationContext
@@ -144,6 +157,7 @@ class PlaybackController(context: Context, connect: Boolean = android.os.Build.F
             positionMs = p.currentPosition.coerceAtLeast(0),
             durationMs = p.duration.coerceAtLeast(0),
             speed = p.playbackParameters.speed,
+            error = playbackErrorMessage(p.playerError),
             sleepLabel = p.customLayout.firstOrNull {
                 it.sessionCommand?.customAction == AudioCommands.SLEEP_30
             }?.displayName?.toString() ?: "Sleep timer",

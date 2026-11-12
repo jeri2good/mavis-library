@@ -8,7 +8,9 @@ import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
+import com.mavislibrary.app.data.podcast.AudioProblem
 import com.mavislibrary.app.data.podcast.PodcastApi
+import com.mavislibrary.app.data.podcast.PodcastAudioException
 import com.mavislibrary.app.data.podcast.PodcastSettings
 import com.mavislibrary.app.data.podcast.StudioAddress
 import kotlinx.coroutines.runBlocking
@@ -28,10 +30,14 @@ class PodcastDataSource(private val api: PodcastApi) : BaseDataSource(true) {
         val range = if (dataSpec.position > 0 || dataSpec.length != C.LENGTH_UNSET.toLong()) {
             "bytes=${dataSpec.position}-" + if (dataSpec.length != C.LENGTH_UNSET.toLong()) (dataSpec.position + dataSpec.length - 1).toString() else ""
         } else null
-        val r = runBlocking { api.audio(dataSpec.uri.toString(), range) }
+        val r = try { runBlocking { api.audio(dataSpec.uri.toString(), range) } } catch (e: PodcastAudioException) {
+            // The player treats "past the end" as the end of the podcast instead of an error to retry.
+            if (e.problem == AudioProblem.RANGE) throw androidx.media3.datasource.DataSourceException(e, androidx.media3.common.PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE)
+            throw e
+        }
         response = r
         try {
-            if (r.body?.contentType()?.toString()?.substringBefore(';') !in setOf("audio/mpeg", "audio/mp3")) throw IOException("Studio did not return MP3 audio.")
+            if (r.body?.contentType()?.toString()?.substringBefore(';') !in setOf("audio/mpeg", "audio/mp3")) throw PodcastAudioException(AudioProblem.NOT_AUDIO)
             val stream = r.body!!.byteStream()
             input = stream
             if (r.code == 206 && r.header("Content-Range")?.startsWith("bytes ${dataSpec.position}-") != true) throw IOException("Invalid audio range.")
@@ -39,7 +45,7 @@ class PodcastDataSource(private val api: PodcastApi) : BaseDataSource(true) {
                 var skip = dataSpec.position
                 while (skip > 0) {
                     val n = stream.skip(skip)
-                    if (n > 0) skip -= n else if (stream.read() < 0) throw IOException("Audio position is beyond the file.") else skip--
+                    if (n > 0) skip -= n else if (stream.read() < 0) throw androidx.media3.datasource.DataSourceException(PodcastAudioException(AudioProblem.RANGE), androidx.media3.common.PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE) else skip--
                 }
             }
             left = if (dataSpec.length != C.LENGTH_UNSET.toLong()) dataSpec.length else r.body!!.contentLength().let {

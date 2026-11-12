@@ -79,4 +79,21 @@ class PodcastAudioTest {
         assertEquals(1, store.cleanupPodcasts(cache, 30, Instant.parse("2026-10-12T00:00:00Z")))
         assertEquals(setOf("queued", "unknown"), cache.library.value.map { it.job.id }.toSet())
     }
+    @Test fun playbackErrorsAreShownInFixedWordsOnly() {
+        assertNull(playbackErrorMessage(null))
+        val expired = RuntimeException("Source error", java.io.IOException("wrapped", PodcastAudioException(AudioProblem.EXPIRED)))
+        assertEquals(AudioProblem.EXPIRED.message, playbackErrorMessage(expired))
+        // The player service hands causes over as plain text; the wording alone identifies the problem.
+        assertEquals(AudioProblem.NOT_READY.message, playbackErrorMessage(RuntimeException("Source error", android.os.RemoteException(AudioProblem.NOT_READY.message))))
+        val other = playbackErrorMessage(RuntimeException("Source error", java.io.FileNotFoundException("/data/user/0/private/file.mp3 https://audio.example.org/x?sig=abc")))
+        assertFalse(other!!.contains("/data")); assertFalse(other.contains("sig="))
+    }
+    @Test fun seekingPastTheEndIsReportedToThePlayerAsOutOfRangeAndWrongContentIsTyped() {
+        val past = PodcastApi("https://studio.example.org", execute = { fakeSignedAudio(it) ?: fakeResponse(it, "", 416) }, token = { "fixture-key" })
+        val error = runCatching { PodcastDataSource(past).open(DataSpec.Builder().setUri(past.audioUrl("job1")).setPosition(999).build()) }.exceptionOrNull()
+        assertEquals(androidx.media3.common.PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE, (error as androidx.media3.datasource.DataSourceException).reason)
+        val html = PodcastApi("https://studio.example.org", execute = { fakeSignedAudio(it) ?: fakeResponse(it, "<html>", type = "text/html") }, token = { "fixture-key" })
+        val wrong = runCatching { PodcastDataSource(html).open(DataSpec(Uri.parse(html.audioUrl("job1")))) }.exceptionOrNull()
+        assertEquals(AudioProblem.NOT_AUDIO, (wrong as PodcastAudioException).problem)
+    }
 }

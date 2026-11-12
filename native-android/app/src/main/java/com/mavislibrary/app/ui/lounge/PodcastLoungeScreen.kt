@@ -42,7 +42,6 @@ import com.mavislibrary.app.ui.podcast.episodeHeadline
 import com.mavislibrary.app.ui.reader.ReaderTarget
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.catch
 
 private data class DetailsTarget(val saved: SavedPodcast, val onPlay: () -> Unit)
 private data class ExportProgressState(val label: String, val fraction: Float?)
@@ -97,14 +96,16 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val api = remember(identity) { container.podcastApi() }
     val repo = remember(identity) { container.podcastRepository() }
     val wakingStudio by repo.wakingStudio.collectAsStateWithLifecycle(initialValue = false)
+    val isMine: (SavedPodcast) -> Boolean = { identity == "owner" || identity != null && it.accountId == identity }
+    val sync = remember(repo, loaded.address) { PodcastSync(repo, container.podcastSettings.library) { isMine(it) && it.studio == loaded.address } }
+    val syncState by sync.state.collectAsStateWithLifecycle()
+    val playbackState by playback.state.collectAsStateWithLifecycle()
     var draft by remember(initial) { mutableStateOf(initial ?: PodcastDraft()) }
     // Shortcuts (a chapter, an article, a book) arrive with something to make; plain visits open on the gallery.
     var composing by remember(initial) { mutableStateOf(initial != null && initial != PodcastDraft()) }
     var style by remember { mutableStateOf(loaded.style) }
     var length by remember { mutableStateOf(loaded.length) }
     var engine by remember { mutableStateOf(loaded.engine) }
-    var accessReady by remember(signedIn, owner) { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Connecting to your studio…") }
     var message by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -113,9 +114,7 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     var chosenKind by remember(initial) { mutableStateOf(initial?.takeUnless { it.pickSource }?.let { if (it.title.startsWith("Bible - ")) "bible" else it.kind }) }
     var confirmed by remember(initial) { mutableStateOf(initial != null && initial != PodcastDraft() && !initial.pickSource) }
     var moreOptions by remember { mutableStateOf(false) }
-    var refresh by remember { mutableIntStateOf(0) }
-    val pollingMessages = remember(loaded.address) { mutableStateMapOf<String, String>() }
-    val active = remember(loaded.address) { mutableMapOf<String, Job>() }
+    val pollingMessages = syncState.tracking.mapValues { trackingNote(it.value) }
     var delete by remember { mutableStateOf<SavedPodcast?>(null) }
     var reading by remember { mutableStateOf<SavedPodcast?>(null) }
     var details by remember { mutableStateOf<DetailsTarget?>(null) }
@@ -126,53 +125,24 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     val jobs = visiblePodcasts(all, identity, loaded.address, loaded.cleanupDays)
     val nowPlaying by playback.state.collectAsStateWithLifecycle()
     val shelves = gallery(jobs, positions)
+    val banner = loungeBanner(syncState, jobs.isNotEmpty(), wakingStudio)
 
     suspend fun allowed() = loungeRouteAllowed(context.kidsPrefs().state.first().enabled)
-    suspend fun refreshStudio() {
-        try {
-            if (!allowed()) return
-            repo.refresh()
-            accessReady = true; status = "Studio connected"; message = null
-        } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            accessReady = false
-            status = "Studio offline · downloaded podcasts still play"
-            message = e.message ?: "Studio unavailable, try later"
-        }
-    }
-    LaunchedEffect(loaded.address, identity, refresh, lifecycle) {
+    // One sync per identity and studio follows the list and every podcast being made, for as long as the screen shows.
+    LaunchedEffect(sync, lifecycle) {
         if (loaded.address.isBlank()) return@LaunchedEffect
-        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            try { coroutineScope {
-                launch { while (isActive) { refreshStudio(); delay(30_000) } }
-                launch {
-                    container.podcastSettings.library.collect { list ->
-                        list.filter { (identity == "owner" || identity != null && it.accountId == identity) && it.studio == loaded.address && !it.job.terminal }.forEach { saved ->
-                            if (saved.job.id !in active) active[saved.job.id] = launch {
-                                repo.poll(saved.job.id).catch { pollingMessages[saved.job.id] = it.message ?: "Couldn't track this podcast. Tap Refresh to try again." }.collect { event ->
-                                    pollingMessages[saved.job.id] = when (event) {
-                                        is PodcastPoll.Updated -> ""
-                                        PodcastPoll.Unreachable -> "Studio unreachable · trying again"
-                                        PodcastPoll.TimedOut -> "Still not finished after 25 minutes. It may still finish; tap Refresh to check."
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } } finally { active.values.forEach { it.cancel() }; active.clear() }
-        }
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { if (allowed()) sync.run() }
     }
     LaunchedEffect(loaded.cleanupDays) {
         try { if (allowed()) container.audioFiles.cleanupPodcasts(container.podcastSettings, loaded.cleanupDays) }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { message = "Local cleanup couldn't finish. Your studio originals are unchanged." }
     }
-    DisposableEffect(loaded.address, identity, refresh) { onDispose { active.values.forEach { it.cancel() }; active.clear() } }
     fun act(action: suspend () -> Unit) {
         scope.launch {
             if (busy || !allowed()) return@launch
             busy = true; message = null; notice = null
-            try { action() } catch (e: CancellationException) { throw e } catch (e: Exception) { message = e.message ?: "The studio couldn't complete that request." }
+            try { action() } catch (e: CancellationException) { throw e } catch (e: Exception) { message = e.toPodcastProblem().message }
             finally { busy = false }
         }
     }
@@ -276,13 +246,18 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ListenTitle(onPodcastSettings)
                     // Status only when something needs attention; a connected studio stays out of the way.
-                    if (wakingStudio || !accessReady) Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (wakingStudio) "Waking up the studio…" else status, style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { active.values.forEach { it.cancel() }; active.clear(); refresh++ }) { Text("Refresh") }
+                    if (wakingStudio || banner.busy || banner.error || syncState.problem != null) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("lounge_status")) {
+                        if (banner.busy) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
+                        Text(banner.text, style = MaterialTheme.typography.bodyMedium,
+                            color = if (banner.error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        // Refresh asks for a new look; podcasts being followed keep being followed.
+                        TextButton(enabled = !syncState.loading, onClick = { message = null; sync.refreshNow() }) { Text(if (syncState.loading) "Refreshing…" else "Refresh") }
                     }
-                    if (message == "Request access" || message == "Sign in to use Podcast Lounge") Button(onClick = onSettings) { Text(message!!) }
+                    banner.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    banner.settingsLabel?.let { label -> Button(onClick = onSettings) { Text(label) } }
+                    if (banner.settingsLabel == null && (message == "Request access" || message == "Sign in to use Podcast Lounge")) Button(onClick = onSettings) { Text(message!!) }
                     message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    playbackState.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("playback_error")) }
                     notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                     exportProgress?.let { progress ->
                         Column(Modifier.fillMaxWidth().testTag("podcast_export_progress"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -310,9 +285,11 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                 items(daily, key = { "daily_${it.id}" }) { card -> YourDailyCard(card, !busy, onOpen = onPodcastSettings, onPlay = { playToday(listOf(it)) }) }
             }
             item { SectionHeading("New episodes", trailing = shelves[PodcastShelf.NEW]?.size?.let { "$it new" }) }
-            if (jobs.isEmpty()) item {
-                Text("Your podcasts will appear here. Tap New to make one, or start something that arrives every day.",
-                    Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyLarge)
+            if (banner.skeleton) items(3) { EpisodePlaceholder() }
+            else if (jobs.isEmpty()) item {
+                Text(if (syncState.synced) "Your podcasts will appear here. Tap New to make one, or start something that arrives every day."
+                    else "Your podcasts couldn't be loaded yet. Tap Refresh to try again.",
+                    Modifier.padding(vertical = 16.dp).testTag("lounge_empty"), style = MaterialTheme.typography.bodyLarge)
             }
             if (jobs.isNotEmpty()) item(key = "records") {
                 RecordSelector(
@@ -336,7 +313,10 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                             DropdownMenuItem({ Text("Transcript and sources") }, { close(); reading = episode.saved })
                         val request = episode.saved.request
                         if (job.status == "failed" && request != null && episode.saved.studio == loaded.address)
-                            DropdownMenuItem({ Text("Try again") }, { close(); act { repo.create(request); notice = "Sent to your studio again." } })
+                            DropdownMenuItem({ Text("Try again") }, { close(); act {
+                                val result = repo.retry(episode.saved)
+                                notice = if (result.job.id == job.id) "The studio says this one is ${stageLabel(result.job).lowercase()}. Nothing new was sent." else "Sent to your studio again."
+                            } })
                         DropdownMenuItem({ Text(if (job.terminal) "Delete" else "Cancel and delete") }, { close(); delete = episode.saved })
                     },
                 )
@@ -395,13 +375,13 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
                     style = MaterialTheme.typography.bodySmall)
             }
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Button(enabled = !busy && accessReady && !sharedConfirm, modifier = Modifier.fillMaxWidth(), onClick = { act {
+            Button(enabled = !busy && banner.canCreate && !sharedConfirm, modifier = Modifier.fillMaxWidth(), onClick = { act {
                 repo.create(draft.request(style, length, engine))
                 com.mavislibrary.app.work.WidgetUpdater.refresh(context)
                 notice = "Sent to your studio. It appears under Being made."
                 composing = false
             } }) { Text(if (busy) "Working…" else "Make podcast") }
-            if (!accessReady) Text("Waiting for your studio to connect.", style = MaterialTheme.typography.bodySmall)
+            if (!banner.canCreate) Text(if (syncState.firstLoad) "Waiting for your studio to connect." else banner.text, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -436,7 +416,6 @@ fun PodcastLoungeScreen(container: AppContainer, playback: PlaybackController, i
     if (sharedConfirm) AlertDialog(onDismissRequest = { sharedConfirm = false; composing = false; draft = PodcastDraft() }, title = { Text("Podcast this?") }, text = { Text(draft.url.ifBlank { "Shared text · ${draft.text.length} characters. Review the source and style before sending it to your home studio." }) }, confirmButton = { TextButton(onClick = { sharedConfirm = false }) { Text("Review podcast") } }, dismissButton = { TextButton(onClick = { sharedConfirm = false; composing = false; draft = PodcastDraft() }) { Text("Not now") } })
     delete?.let { saved -> AlertDialog(onDismissRequest = { delete = null }, title = { Text("Delete podcast?") }, text = { Text("Delete ${saved.job.title} from this phone and from your studio? A podcast still being made is cancelled. Without a studio connection, deletion can't finish.") }, confirmButton = { TextButton(onClick = { delete = null; act {
         require(saved.studio == loaded.address) { "Select this podcast's studio in Settings before deleting it." }
-        active.remove(saved.job.id)?.cancelAndJoin()
         repo.delete(saved.job.id)
         container.audioFiles.deletePodcastCopy(saved.studio, saved.job.id)
     } }) { Text("Delete") } }, dismissButton = { TextButton(onClick = { delete = null }) { Text("Keep") } }) }
@@ -464,5 +443,18 @@ private fun coverColors(title: String): List<Color> {
 fun PodcastCover(title: String) {
     Box(Modifier.fillMaxWidth().height(100.dp).background(Brush.linearGradient(coverColors(title))).padding(16.dp)) {
         Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge, maxLines = 3)
+    }
+}
+
+/** Stand-in row shown while the first list is still on its way, so "loading" doesn't look like "no podcasts". */
+@Composable
+internal fun EpisodePlaceholder() {
+    val shade = MaterialTheme.colorScheme.surfaceVariant
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("episode_placeholder"), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(shade))
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.fillMaxWidth(.7f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(shade))
+            Box(Modifier.fillMaxWidth(.4f).height(10.dp).clip(RoundedCornerShape(4.dp)).background(shade))
+        }
     }
 }

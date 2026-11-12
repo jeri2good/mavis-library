@@ -1,6 +1,9 @@
 package com.mavislibrary.app.ui.lounge
 
 import com.mavislibrary.app.data.podcast.PodcastJob
+import com.mavislibrary.app.data.podcast.PodcastProblem
+import com.mavislibrary.app.data.podcast.PodcastProblemKind
+import com.mavislibrary.app.data.podcast.PodcastSyncState
 import com.mavislibrary.app.data.podcast.SavedPodcast
 import org.junit.Assert.*
 import org.junit.Test
@@ -41,5 +44,31 @@ class PodcastGalleryTest {
         assertEquals("Today 6:44 AM · Future Tools · IGN · 14 min · Deep dive", episodeDetails(Episode(briefing, null), utc, now))
         assertEquals(0.5f, Episode(saved("x"), 420_000).heard!!, 0.001f)
         assertEquals("45 sec", minutesLabel(45))
+    }
+
+    @Test fun firstLoadRefreshAndEachFailureReadDifferently() {
+        val first = loungeBanner(PodcastSyncState(), hasEpisodes = false, waking = false)
+        assertEquals("Loading your podcasts…", first.text); assertTrue(first.skeleton); assertTrue(first.busy); assertFalse(first.canCreate)
+        val firstWithCache = loungeBanner(PodcastSyncState(), hasEpisodes = true, waking = false)
+        assertFalse(firstWithCache.skeleton); assertTrue(firstWithCache.busy)
+        val connected = loungeBanner(PodcastSyncState(loading = false, synced = true, lastSyncMs = 1), true, false)
+        assertEquals("Studio connected", connected.text); assertFalse(connected.busy); assertFalse(connected.error); assertTrue(connected.canCreate)
+        val refreshing = loungeBanner(PodcastSyncState(loading = true, synced = true), true, false)
+        assertEquals("Checking for new podcasts…", refreshing.text); assertTrue(refreshing.busy); assertFalse(refreshing.skeleton); assertTrue(refreshing.canCreate)
+        val offline = loungeBanner(PodcastSyncState(false, false, PodcastProblem(PodcastProblemKind.OFFLINE, "Can't reach Mavis. Check your connection.")), true, false)
+        assertEquals("You're offline", offline.text); assertTrue(offline.error); assertFalse(offline.skeleton)
+        assertTrue(offline.detail!!.contains("Downloaded podcasts still play.")); assertTrue(offline.detail!!.contains("keeps trying"))
+        assertTrue(offline.canCreate); assertNull(offline.settingsLabel)
+        val retrying = loungeBanner(PodcastSyncState(true, false, PodcastProblem(PodcastProblemKind.STUDIO_DOWN, "Studio unavailable, try later")), false, false)
+        assertEquals("Studio not answering · trying again…", retrying.text); assertTrue(retrying.busy); assertFalse(retrying.error); assertFalse(retrying.skeleton)
+        val signIn = loungeBanner(PodcastSyncState(false, false, PodcastProblem(PodcastProblemKind.SIGN_IN, "Sign in to use Podcast Lounge")), false, false)
+        assertEquals("Sign in in Settings", signIn.settingsLabel); assertFalse(signIn.canCreate); assertNull(signIn.detail)
+        val access = loungeBanner(PodcastSyncState(false, false, PodcastProblem(PodcastProblemKind.ACCESS, "Your account doesn't have podcast access yet.")), true, false)
+        assertEquals("Request access", access.settingsLabel); assertFalse(access.canCreate)
+        assertFalse(loungeBanner(PodcastSyncState(false, false, PodcastProblem(PodcastProblemKind.NOT_CONFIGURED, "x")), false, false).canCreate)
+        val waking = loungeBanner(PodcastSyncState(), false, true)
+        assertEquals("Waking up the studio…", waking.text); assertTrue(waking.skeleton)
+        assertEquals("Checking less often for a minute", trackingNote(PodcastProblem(PodcastProblemKind.SLOW_DOWN, "x")))
+        assertTrue(trackingNote(PodcastProblem(PodcastProblemKind.OFFLINE, "x")).contains("offline"))
     }
 }

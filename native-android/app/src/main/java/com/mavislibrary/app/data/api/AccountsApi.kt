@@ -28,15 +28,24 @@ import java.io.IOException
 @Serializable data class SubscriberPage(val items: List<Subscriber>, val cursor: String? = null)
 
 fun loungeError(status: Int, body: String): ApiException {
-    val code = runCatching { ApiJson.parseToJsonElement(body).jsonObject["code"]?.jsonPrimitive?.content }.getOrNull()
+    val json = runCatching { ApiJson.parseToJsonElement(body).jsonObject }.getOrNull()
+    fun text(key: String) = runCatching { json?.get(key)?.jsonPrimitive?.content }.getOrNull()?.takeIf(String::isNotBlank)
+    // Subscription errors carry `code`; the gateway's plain rate limit only carries `error`.
+    val code = text("code") ?: text("error")
     val message = when (status) {
         401 -> "Sign in to use Podcast Lounge"
         403 -> "Request access"
-        429 -> if (code == "studio_busy") "Studio busy, try later" else if (code == "active_limit") "Two podcasts are already in progress" else "Daily limit reached"
+        429 -> when (code) {
+            "studio_busy" -> "Studio busy, try later"
+            "active_limit" -> "Two podcasts are already in progress"
+            "rate_limited" -> "Too many requests just now. Mavis will slow down and try again."
+            else -> "Daily limit reached"
+        }
         502, 503 -> "Studio unavailable, try later"
         else -> MavisApi.errorFrom(status, body).message
     }
-    return ApiException(code ?: "http_$status", message, status)
+    val retryAfter = runCatching { json?.get("retryAfter")?.jsonPrimitive?.content?.toInt() }.getOrNull()?.takeIf { it in 1..3600 }
+    return ApiException(code ?: "http_$status", message, status, retryAfterSec = retryAfter)
 }
 
 class AccountsApi(

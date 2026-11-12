@@ -51,6 +51,8 @@ class AccountsApiTest {
             assertEquals(message, loungeError(code, """{"message":"private diagnostics"}""").message)
         }
         assertEquals("Studio busy, try later", loungeError(429, """{"code":"studio_busy"}""").message)
+        assertEquals("rate_limited", loungeError(429, """{"error":"rate_limited","message":"private diagnostics"}""").code)
+        assertFalse(loungeError(429, """{"error":"rate_limited","message":"private diagnostics"}""").message.contains("private"))
     }
 
     @Test fun signupAndRecoveryBodiesAndOwnerPaginationMatchTheLiveContract() = runTest {

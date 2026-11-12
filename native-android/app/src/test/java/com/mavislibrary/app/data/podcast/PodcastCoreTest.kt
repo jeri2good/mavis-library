@@ -103,7 +103,8 @@ class PodcastCoreTest {
         assertEquals("fixture-owner", seen.single().header("x-mavis-access"))
         assertTrue(runCatching { api.audioRequest("https://other.example.org/v1/podcasts/job1/audio") }.isFailure)
         assertTrue(runCatching { api.audio(api.audioUrl("job1")) }.isFailure)
-        assertEquals(3, seen.size)
+        // The link signed a moment ago is reused, so the second open goes straight to the studio (was a third request before).
+        assertEquals(2, seen.size)
         assertNull(seen.last().header("Authorization")); assertNull(seen.last().header("x-mavis-access"))
     }
     @Test fun expiredMalformedOrUnsignedAudioLinksAreRejectedWithoutPrintingTheLink() = runTest {

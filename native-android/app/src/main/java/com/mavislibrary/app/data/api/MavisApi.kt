@@ -16,6 +16,8 @@ class ApiException(
     val status: Int? = null,
     val offline: Boolean = false,
     cause: Throwable? = null,
+    /** Seconds the server asked us to wait, when it said. */
+    val retryAfterSec: Int? = null,
 ) : IOException(message, cause)
 
 /** Fetches raw JSON so the repository can cache exactly what the server sent. */

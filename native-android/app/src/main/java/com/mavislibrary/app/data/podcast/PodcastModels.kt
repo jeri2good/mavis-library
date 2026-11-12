@@ -51,7 +51,8 @@ fun loungeRouteAllowed(kidsMode: Boolean?) = kidsMode != null && adultRoutesAllo
 @Serializable data class DevotionalMeta(val devotional: String, val kind: String, val reference: String, val topic: String? = null)
 @Serializable data class PodcastJob(
     val id: String, val status: String, val progress: Double = 0.0, val stage: String = "",
-    val engine: String = "", val title: String, val kind: String, val style: String,
+    // The gateway leaves out title/kind/style it doesn't recognise; one such job must not make a whole list unreadable.
+    val engine: String = "", val title: String = "", val kind: String = "", val style: String = "",
     val durationSec: Int? = null, val createdAt: String = "", val error: String? = null,
     val transcript: String? = null, val sources: List<PodcastSource> = emptyList(),
     val queuePosition: Int? = null, val etaMin: Int? = null,
@@ -60,6 +61,8 @@ fun loungeRouteAllowed(kidsMode: Boolean?) = kidsMode != null && adultRoutesAllo
     val terminal get() = status in setOf("ready", "failed")
     val engineLabel get() = when (engine) { "notebooklm" -> "Made with NotebookLM"; "local" -> "Made with local voices"; else -> "Engine not reported yet" }
 }
+/** What one look at the studio's list found. [complete] is false when paging stopped early, so absent jobs prove nothing. */
+data class PodcastListing(val jobs: List<PodcastJob>, val complete: Boolean = true, val skipped: Int = 0)
 @Serializable data class PodcastList(val items: List<PodcastJob>)
 @Serializable data class PodcastError(val detail: String)
 @Serializable data class StudioEngine(val available: Boolean, val loggedIn: Boolean = false, val note: String = "")
@@ -75,6 +78,24 @@ fun loungeRouteAllowed(kidsMode: Boolean?) = kidsMode != null && adultRoutesAllo
 @Serializable data class SavedPodcast(val job: PodcastJob, val studio: String, val localFile: String? = null, val request: PodcastRequest? = null, val accountId: String? = null) {
     val key get() = "$studio/${job.id}"
     val resumeKey get() = "podcast:$key"
+    /**
+     * This newer answer laid over what the phone already holds for the same podcast. Keeps what the newer answer lacks:
+     * the downloaded copy, the retry source, the transcript (lists never carry one) and descriptive fields. A finished
+     * podcast is never moved back to "being made" by a slower, older answer.
+     */
+    fun mergedOver(old: SavedPodcast?): SavedPodcast {
+        if (old == null || old.key != key) return this
+        val newer = if (old.job.terminal && !job.terminal) old.job else job.copy(
+            title = job.title.ifBlank { old.job.title }, kind = job.kind.ifBlank { old.job.kind }, style = job.style.ifBlank { old.job.style },
+            engine = job.engine.ifBlank { old.job.engine }, createdAt = job.createdAt.ifBlank { old.job.createdAt },
+            durationSec = job.durationSec ?: old.job.durationSec, transcript = job.transcript ?: old.job.transcript,
+            sources = job.sources.ifEmpty { old.job.sources },
+        ).let { j ->
+            // Single-job status reads don't carry the briefing's site/story list; keep what the list call saved.
+            if (j.sites.isEmpty() && j.stories.isEmpty()) j.copy(sites = old.job.sites, stories = old.job.stories, meta = j.meta ?: old.job.meta) else j
+        }
+        return copy(job = newer, localFile = localFile ?: old.localFile, request = request ?: old.request, accountId = accountId ?: old.accountId)
+    }
 }
 
 object StudioAddress {

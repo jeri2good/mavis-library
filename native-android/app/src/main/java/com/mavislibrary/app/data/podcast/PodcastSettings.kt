@@ -23,6 +23,17 @@ interface PodcastLibrary {
     val library: Flow<List<SavedPodcast>>
     suspend fun save(podcast: SavedPodcast)
     suspend fun remove(id: String, studio: String)
+    /**
+     * Applies [change] to the whole library. The phone's store does it in one write (and none when nothing changed),
+     * so a refresh of many podcasts doesn't rewrite the library once per podcast.
+     */
+    suspend fun update(change: (List<SavedPodcast>) -> List<SavedPodcast>) {
+        val before = library.first()
+        val after = change(before)
+        val kept = after.map { it.key }.toSet()
+        before.filterNot { it.key in kept }.forEach { remove(it.job.id, it.studio) }
+        after.filterNot { it in before }.forEach { save(it) }
+    }
 }
 class PodcastSettings(private val store: DataStore<Preferences>, private val secrets: SecureStore) : PodcastLibrary {
     private val mutex = Mutex()
@@ -44,14 +55,16 @@ class PodcastSettings(private val store: DataStore<Preferences>, private val sec
         store.edit { it[STYLE] = style; it[LENGTH] = length; it[ENGINE] = engine }
     }
     suspend fun setCleanupDays(days: Int) { require(days in 0..3650); store.edit { it[CLEANUP] = days } }
-    override suspend fun save(podcast: SavedPodcast) {
+    override suspend fun save(podcast: SavedPodcast) = update { all ->
+        listOf(podcast.mergedOver(all.find { it.key == podcast.key })) + all.filterNot { it.key == podcast.key }
+    }
+    override suspend fun update(change: (List<SavedPodcast>) -> List<SavedPodcast>) {
         store.edit { p ->
-            if (podcastExpired(podcast.job, p[CLEANUP] ?: 0)) return@edit
-            val old = decode(p).find { it.key == podcast.key }
-            // Single-job status reads don't carry the briefing's site/story list; keep what the list call saved.
-            val job = if (old != null && podcast.job.sites.isEmpty() && podcast.job.stories.isEmpty()) podcast.job.copy(sites = old.job.sites, stories = old.job.stories, meta = podcast.job.meta ?: old.job.meta) else podcast.job
-            val merged = podcast.copy(job = job, localFile = podcast.localFile ?: old?.localFile, request = podcast.request ?: old?.request)
-            p[LIBRARY] = podcastJson.encodeToString(listOf(merged) + decode(p).filterNot { it.key == merged.key })
+            val before = decode(p)
+            val known = before.map { it.key }.toSet()
+            // A finished podcast already cleaned up from this phone isn't brought back by the studio's list.
+            val after = change(before).filter { it.key in known || !podcastExpired(it.job, p[CLEANUP] ?: 0) }
+            if (after != before) p[LIBRARY] = podcastJson.encodeToString(after)
         }
     }
     suspend fun clearDownload(id: String, studio: String) {

@@ -97,6 +97,7 @@ class PodcastRepositoryTest {
                 }
                 override suspend fun create(request: PodcastRequest): PodcastCreated { attempt(); return PodcastCreated("job1", "queued") }
                 override suspend fun list(): List<PodcastJob> { attempt(); return listOf(podcastFixtures()[4]) }
+                override suspend fun listing() = PodcastListing(list())
                 override suspend fun get(id: String): PodcastJob { attempt(); return podcastFixtures()[4].copy(id = id) }
             }
             val repo = PodcastRepository(service, MemoryPodcastLibrary(), "studio")
@@ -127,6 +128,7 @@ class PodcastRepositoryTest {
             val service = object : PodcastService by FakeStudio(listOf(podcastFixtures()[4])) {
                 override suspend fun create(request: PodcastRequest): PodcastCreated { attempts++; throw error }
                 override suspend fun list(): List<PodcastJob> { attempts++; throw error }
+                override suspend fun listing() = PodcastListing(list())
                 override suspend fun get(id: String): PodcastJob { attempts++; throw error }
             }
             val repo = PodcastRepository(service, MemoryPodcastLibrary(), "studio")
@@ -154,6 +156,7 @@ class PodcastRepositoryTest {
             var attempts = 0
             val service = object : PodcastService by FakeStudio(listOf(podcastFixtures()[4])) {
                 override suspend fun list(): List<PodcastJob> { attempts++; throw error }
+                override suspend fun listing() = PodcastListing(list())
             }
             val repo = PodcastRepository(service, MemoryPodcastLibrary(), "studio")
             assertSame(error, runCatching { repo.refresh() }.exceptionOrNull())
@@ -172,6 +175,7 @@ class PodcastRepositoryTest {
         var attempts = 0
         val service = object : PodcastService by FakeStudio(listOf(podcastFixtures()[4])) {
             override suspend fun list(): List<PodcastJob> { attempts++; throw com.mavislibrary.app.data.api.ApiException("studio_unavailable", "Unavailable", 502) }
+            override suspend fun listing() = PodcastListing(list())
         }
         val repo = PodcastRepository(service, MemoryPodcastLibrary(), "studio")
         val task = launch { repo.refresh() }

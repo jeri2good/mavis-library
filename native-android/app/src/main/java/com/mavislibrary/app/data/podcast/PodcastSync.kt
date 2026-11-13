@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -82,12 +83,13 @@ class PodcastSync(
         val age = mutableMapOf<String, Long>()
         var failures = 0
         while (true) {
-            val active = library.first().filter { mine(it) && !it.job.terminal }.map { it.job.id }
+            // The library ending (storage closed) ends tracking quietly, as the old per-podcast collectors did.
+            val active = (library.firstOrNull() ?: return).filter { mine(it) && !it.job.terminal }.map { it.job.id }
             age.keys.retainAll(active.toSet())
             _state.update { s -> s.copy(tracking = s.tracking.filterKeys { it in active }) }
             if (active.isEmpty()) {
                 failures = 0
-                library.first { list -> list.any { mine(it) && !it.job.terminal } }
+                library.firstOrNull { list -> list.any { mine(it) && !it.job.terminal } } ?: return
                 continue
             }
             var worst: PodcastProblem? = null
